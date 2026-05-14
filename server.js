@@ -121,14 +121,15 @@ app.post("/api/auth/login", async (req, res) => {
   let dynamicPool;
 
   try {
-    const { databaseName, userId, password } = req.body;
+    const { databaseName, userId, password, deviceId } = req.body;
 
     console.log("🔐 Login Request");
-
     console.log("Database:", databaseName);
     console.log("User ID:", userId);
+    console.log("Device ID:", deviceId);
 
-    // ── VALIDATION ─────────────────────────────
+    // ───────────────── VALIDATION ─────────────────
+
     if (!databaseName || !userId || !password) {
       return res.status(400).json({
         success: false,
@@ -136,7 +137,8 @@ app.post("/api/auth/login", async (req, res) => {
       });
     }
 
-    // ── DB CONFIG ──────────────────────────────
+    // ───────────────── DB CONFIG ─────────────────
+
     const dbConfig = {
       user: process.env.DB_USER,
       password: process.env.DB_PASSWORD,
@@ -151,12 +153,14 @@ app.post("/api/auth/login", async (req, res) => {
       },
     };
 
-    // ── CONNECT ────────────────────────────────
+    // ───────────────── CONNECT ─────────────────
+
     dynamicPool = await new sql.ConnectionPool(dbConfig).connect();
 
     console.log("✅ Connected");
 
-    // ── LOGIN QUERY ────────────────────────────
+    // ───────────────── LOGIN QUERY ─────────────────
+
     const userResult = await dynamicPool
       .request()
       .input("userId", sql.NVarChar, userId)
@@ -167,42 +171,178 @@ app.post("/api/auth/login", async (req, res) => {
         AND utp = @password
       `);
 
-    console.log(userResult.recordset);
+    // ───────────────── INVALID LOGIN ─────────────────
 
-    // ── SUCCESS ────────────────────────────────
-    if (userResult.recordset.length > 0) {
-      const user = userResult.recordset[0];
-
-      const jwt = require("jsonwebtoken");
-      const token = jwt.sign(
-        { userId: user.uti, database: databaseName },
-        process.env.JWT_SECRET,
-        { expiresIn: "7d" }
-      );
-
-      return res.json({
-        success: true,
-        token,
-
-        userId: user.uti || userId,
-        name: user.uti || "",
-        email: "",
-
-        databaseName,
+    if (userResult.recordset.length === 0) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid User ID or Password",
       });
     }
 
-    // ── INVALID LOGIN ──────────────────────────
-    return res.status(401).json({
-      success: false,
-      message: "Invalid User ID or Password",
+    const user = userResult.recordset[0];
+
+    console.log("✅ User Found");
+
+    // ───────────────── VALIDATE DEVICE ID ─────────────────
+
+    // deviceId must be sent by client; reject if missing
+    if (!deviceId || deviceId.trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Device ID is required",
+      });
+    }
+
+    const cleanDeviceId = deviceId.trim();
+
+    // ───────────────── CHECK DEVICE LOGIN ─────────────────
+
+    const oldDeviceId = user.logged_device_id
+      ? user.logged_device_id.trim()
+      : null;
+
+    // mssql returns BIT as true/false OR 1/0 depending on driver version
+    const isLoggedIn = user.is_logged_in === true || user.is_logged_in === 1;
+
+    console.log("🔍 is_logged_in:", user.is_logged_in, "→", isLoggedIn);
+    console.log("🔍 oldDeviceId :", oldDeviceId);
+    console.log("🔍 newDeviceId :", cleanDeviceId);
+
+    // BLOCK LOGIN IF ANOTHER DEVICE IS ACTIVE
+    if (isLoggedIn && oldDeviceId && oldDeviceId !== cleanDeviceId) {
+      console.log("❌ Already logged in on another device");
+
+      return res.status(403).json({
+        success: false,
+        message: "This account is already logged in on another device",
+      });
+    }
+
+    // ───────────────── UPDATE LOGIN STATUS ─────────────────
+
+    await dynamicPool
+      .request()
+      .input("userId",   sql.NVarChar, userId)
+      .input("deviceId", sql.NVarChar, cleanDeviceId)
+      .query(`
+        UPDATE rh_secut
+        SET
+          is_logged_in     = 1,
+          logged_device_id = @deviceId,
+          last_login       = GETDATE()
+        WHERE uti = @userId
+      `);
+
+    console.log("✅ Login status updated → device:", cleanDeviceId);
+
+    console.log("✅ Login status updated");
+
+    // ───────────────── JWT TOKEN ─────────────────
+
+    const jwt = require("jsonwebtoken");
+
+    const token = jwt.sign(
+      {
+        userId: user.uti,
+        database: databaseName,
+      },
+      process.env.JWT_SECRET,
+      {
+        expiresIn: "7d",
+      },
+    );
+
+    // ───────────────── SUCCESS RESPONSE ─────────────────
+
+    return res.json({
+      success: true,
+      token,
+
+      userId: user.uti || userId,
+      name: user.uti || "",
+      email: "",
+
+      databaseName,
+
+      message: "Login Successful",
     });
   } catch (error) {
     console.error("❌ LOGIN ERROR:", error);
 
     return res.status(500).json({
       success: false,
+      message: "Server Error",
       error: error.message,
+    });
+  } finally {
+    if (dynamicPool) {
+      await dynamicPool.close();
+    }
+  }
+});
+app.post("/api/auth/logout", async (req, res) => {
+  let dynamicPool;
+
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader) {
+      return res.status(401).json({
+        success: false,
+        message: "No token provided",
+      });
+    }
+
+    const token = authHeader.split(" ")[1];
+
+    const jwt = require("jsonwebtoken");
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    const userId = decoded.userId;
+    const databaseName = decoded.database;
+
+    // DB CONFIG
+
+    const dbConfig = {
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      server: process.env.DB_HOST,
+      port: parseInt(process.env.DB_PORT || "1433"),
+
+      database: databaseName,
+
+      options: {
+        encrypt: false,
+        trustServerCertificate: true,
+      },
+    };
+
+    // CONNECT
+
+    dynamicPool = await new sql.ConnectionPool(dbConfig).connect();
+
+    // UPDATE LOGOUT STATUS
+
+    await dynamicPool.request().input("userId", sql.NVarChar, userId).query(`
+        UPDATE rh_secut
+        SET
+          is_logged_in = 0,
+          logged_device_id = NULL
+        WHERE uti = @userId
+      `);
+
+    return res.json({
+      success: true,
+      message: "Logout successful",
+    });
+  } catch (error) {
+    console.log("LOGOUT ERROR:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
     });
   } finally {
     if (dynamicPool) {
