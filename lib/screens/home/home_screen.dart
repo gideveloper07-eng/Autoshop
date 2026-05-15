@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
 import '../auth/login_screen.dart';
+import '../challan/challan_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final String userName;
@@ -195,7 +196,14 @@ Future<void> _logout() async {
                       subtitle: "View & manage challans",
                       gradient: [const Color(0xFF1565C0), const Color(0xFF1E88E5)],
                       accentColor: const Color(0xFF82B1FF),
-                      onTap: () {},
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const ChallanScreen(),
+                          ),
+                        );
+                      },
                     )),
                     const SizedBox(width: 14),
                     Expanded(child: _dashCard(

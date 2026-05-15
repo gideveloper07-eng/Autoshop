@@ -181,7 +181,39 @@ class ApiService {
       return <String, dynamic>{};
     }
   }
-static Future<void> logout(String token) async {
+// ───────────────── CHALLAN ─────────────────
+
+  /// Fetches Retail Incentive challans from the stored procedure.
+  /// Returns a list of maps with keys: date, sp_468, sp_469
+  static Future<List<Map<String, dynamic>>> getChallanRetailIncentive() async {
+    try {
+      final token = await getToken();
+      if (token == null || token.isEmpty) return [];
+
+      final res = await http.get(
+        Uri.parse("$baseUrl/api/challan/retail-incentive"),
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer $token",
+        },
+      ).timeout(const Duration(seconds: 30));
+
+      if (res.statusCode == 200) {
+        final body = jsonDecode(res.body) as Map<String, dynamic>;
+        if (body['success'] == true && body['data'] is List) {
+          return List<Map<String, dynamic>>.from(
+            (body['data'] as List).map((e) => Map<String, dynamic>.from(e as Map)),
+          );
+        }
+      }
+      return [];
+    } catch (e) {
+      print("CHALLAN ERROR: $e");
+      return [];
+    }
+  }
+
+  static Future<void> logout(String token) async {
 
   try {
 
