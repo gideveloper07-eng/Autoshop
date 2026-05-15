@@ -17,6 +17,7 @@ const publicRoutes = require("./routes/publicRoutes");
 const applicationRoutes = require("./routes/applicationRoutes");
 const wishlistRoutes = require("./routes/wishlistRoutes");
 const agentRoutes = require("./routes/agentRoutes");
+const challanRoutes = require("./routes/challanRoutes");
 
 const app = express();
 
@@ -33,6 +34,7 @@ app.use("/api/public", publicRoutes);
 app.use("/api/applications", applicationRoutes);
 app.use("/api/wishlist", wishlistRoutes);
 app.use("/api/agent", agentRoutes);
+app.use("/api/challan", challanRoutes);
 
 // ── HEALTH CHECK ─────────────────────────────────────
 app.get("/", (_, res) => {
