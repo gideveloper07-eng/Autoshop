@@ -117,6 +117,52 @@ app.post("/api/validate-company", async (req, res) => {
 // NOTE: /api/auth/login and /api/auth/logout are handled by authRoutes (routes/authRoutes.js)
 
 // ─────────────────────────────────────────────────────
+// CHALLAN GRID API
+// POST /api/challan/grid
+// Body: { databaseName, prefix, what, fromDate, toDate }
+// ─────────────────────────────────────────────────────
+app.post("/api/challan/grid", async (req, res) => {
+  let dynamicPool;
+  try {
+    const {
+      databaseName,
+      prefix   = "",
+      what     = "Retail_Incentive",
+      fromDate = "",
+      toDate   = "",
+    } = req.body;
+
+    if (!databaseName) {
+      return res.status(400).json({ success: false, message: "databaseName is required" });
+    }
+
+    dynamicPool = await new sql.ConnectionPool({
+      user:     process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      server:   process.env.DB_HOST,
+      port:     parseInt(process.env.DB_PORT || "1433"),
+      database: databaseName,
+      options:  { encrypt: false, trustServerCertificate: true },
+    }).connect();
+
+    const result = await dynamicPool
+      .request()
+      .input("prefix",   sql.NVarChar(50), prefix)
+      .input("what",     sql.NVarChar(50), what)
+      .input("FromDate", sql.NVarChar(50), fromDate)
+      .input("ToDate",   sql.NVarChar(50), toDate)
+      .execute("A_SP_FOR_ApplicationChallangrid");
+
+    return res.json({ success: true, data: result.recordset });
+  } catch (err) {
+    console.error("❌ CHALLAN GRID ERROR:", err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  } finally {
+    if (dynamicPool) await dynamicPool.close();
+  }
+});
+
+// ─────────────────────────────────────────────────────
 // START SERVER
 // ─────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
