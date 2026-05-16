@@ -83,4 +83,66 @@ router.get("/retail-incentive", async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/edit/:sp_462
+// Calls A_SP_FOR_ApplicationChallangrid with @what = 'Edit' and @sp_462
+// Returns: Complete challan details for the specified sp_462
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/edit/:sp_462", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const { database: databaseName } = decoded;
+    if (!databaseName) {
+      return res.status(400).json({ success: false, message: "Database not found in token" });
+    }
+
+    const { sp_462 } = req.params;
+    if (!sp_462) {
+      return res.status(400).json({ success: false, message: "sp_462 parameter is required" });
+    }
+
+    console.log("📝 CHALLAN — Edit — DB:", databaseName, "sp_462:", sp_462);
+
+    pool = await openPool(databaseName);
+
+    const result = await pool
+      .request()
+      .input("prefix",   sql.NVarChar(50), "")
+      .input("what",     sql.NVarChar(50), "Edit")
+      .input("FromDate", sql.NVarChar(50), "")
+      .input("ToDate",   sql.NVarChar(50), "")
+      .input("sp_462",   sql.NVarChar(50), sp_462)
+      .execute("A_SP_FOR_ApplicationChallangrid");
+
+    if (result.recordset.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Challan not found",
+      });
+    }
+
+    console.log(`✅ Challan edit data retrieved for sp_462: ${sp_462}`);
+
+    return res.json({
+      success: true,
+      data: result.recordset[0],
+    });
+
+  } catch (err) {
+    console.error("❌ CHALLAN EDIT ERROR:", err.message);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  } finally {
+    if (pool) await pool.close();
+  }
+});
+
 module.exports = router;
