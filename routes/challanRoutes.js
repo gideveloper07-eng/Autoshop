@@ -174,16 +174,24 @@ router.post("/approve", async (req, res) => {
 
     const request = pool.request();
     
-    // Add all parameters from the request body
+    // Add basic parameters
     request.input("prefix", sql.NVarChar(50), "");
     request.input("what", sql.NVarChar(50), "approve");
     request.input("FromDate", sql.NVarChar(50), "");
     request.input("ToDate", sql.NVarChar(50), "");
     
     // Add all sp_ parameters (sp_461 to sp_654)
+    // All parameters are NVarChar in the stored procedure
     for (let i = 461; i <= 654; i++) {
       const key = `sp_${i}`;
-      const value = data[key] || "";
+      let value = data[key];
+      
+      // Convert null/undefined to empty string
+      if (value === null || value === undefined) {
+        value = "";
+      } else {
+        value = String(value);
+      }
       
       // Handle different data types based on column
       if (key === "sp_524" || key === "sp_577" || key === "sp_581" || key === "sp_585" || 
@@ -247,16 +255,24 @@ router.post("/reject", async (req, res) => {
 
     const request = pool.request();
     
-    // Add all parameters from the request body
+    // Add basic parameters
     request.input("prefix", sql.NVarChar(50), "");
     request.input("what", sql.NVarChar(50), "reject");
     request.input("FromDate", sql.NVarChar(50), "");
     request.input("ToDate", sql.NVarChar(50), "");
     
     // Add all sp_ parameters (sp_461 to sp_654)
+    // All parameters are NVarChar in the stored procedure
     for (let i = 461; i <= 654; i++) {
       const key = `sp_${i}`;
-      const value = data[key] || "";
+      let value = data[key];
+      
+      // Convert null/undefined to empty string
+      if (value === null || value === undefined) {
+        value = "";
+      } else {
+        value = String(value);
+      }
       
       // Handle different data types based on column
       if (key === "sp_524" || key === "sp_577" || key === "sp_581" || key === "sp_585" || 
