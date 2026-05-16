@@ -145,4 +145,134 @@ router.get("/edit/:sp_462", async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/challan/approve
+// Calls A_SP_FOR_ApplicationChallangrid with @what = 'approve' and all challan data
+// Returns: Success message
+// ─────────────────────────────────────────────────────────────────────────────
+router.post("/approve", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const { database: databaseName } = decoded;
+    if (!databaseName) {
+      return res.status(400).json({ success: false, message: "Database not found in token" });
+    }
+
+    const data = req.body;
+    if (!data.sp_462) {
+      return res.status(400).json({ success: false, message: "sp_462 is required" });
+    }
+
+    console.log("✅ CHALLAN — Approve — DB:", databaseName, "sp_462:", data.sp_462);
+
+    pool = await openPool(databaseName);
+
+    const request = pool.request();
+    
+    // Add all parameters from the request body
+    request.input("prefix", sql.NVarChar(50), "");
+    request.input("what", sql.NVarChar(50), "approve");
+    request.input("FromDate", sql.NVarChar(50), "");
+    request.input("ToDate", sql.NVarChar(50), "");
+    
+    // Add all sp_ parameters (sp_461 to sp_654)
+    for (let i = 461; i <= 654; i++) {
+      const key = `sp_${i}`;
+      const value = data[key] || "";
+      
+      // Handle different data types based on column
+      if (key === "sp_524" || key === "sp_577" || key === "sp_581" || key === "sp_585" || 
+          key === "sp_589" || key === "sp_590" || key === "sp_591" || key === "sp_592" || key === "sp_593") {
+        request.input(key, sql.NVarChar(sql.MAX), value);
+      } else if (key === "sp_616") {
+        request.input(key, sql.NVarChar(500), value);
+      } else {
+        request.input(key, sql.NVarChar(50), value);
+      }
+    }
+
+    const result = await request.execute("A_SP_FOR_ApplicationChallangrid");
+
+    console.log(`✅ Challan approved successfully: ${data.sp_462}`);
+
+    return res.json({
+      success: true,
+      message: result.recordset[0]?.err || "Challan approved successfully",
+      data: result.recordset[0],
+    });
+
+  } catch (err) {
+    console.error("❌ CHALLAN APPROVE ERROR:", err.message);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  } finally {
+    if (pool) await pool.close();
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/challan/reject
+// Calls A_SP_FOR_ApplicationChallangrid with @what = 'reject' and challan data
+// Returns: Success message
+// ─────────────────────────────────────────────────────────────────────────────
+router.post("/reject", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const { database: databaseName } = decoded;
+    if (!databaseName) {
+      return res.status(400).json({ success: false, message: "Database not found in token" });
+    }
+
+    const { sp_462, rejectRemark } = req.body;
+    if (!sp_462) {
+      return res.status(400).json({ success: false, message: "sp_462 is required" });
+    }
+
+    console.log("❌ CHALLAN — Reject — DB:", databaseName, "sp_462:", sp_462);
+
+    pool = await openPool(databaseName);
+
+    const request = pool.request();
+    request.input("prefix", sql.NVarChar(50), "");
+    request.input("what", sql.NVarChar(50), "reject");
+    request.input("FromDate", sql.NVarChar(50), "");
+    request.input("ToDate", sql.NVarChar(50), "");
+    request.input("sp_462", sql.NVarChar(50), sp_462);
+    request.input("sp_581", sql.NVarChar(sql.MAX), rejectRemark || "");
+
+    const result = await request.execute("A_SP_FOR_ApplicationChallangrid");
+
+    console.log(`✅ Challan rejected successfully: ${sp_462}`);
+
+    return res.json({
+      success: true,
+      message: "Challan rejected successfully",
+      data: result.recordset[0],
+    });
+
+  } catch (err) {
+    console.error("❌ CHALLAN REJECT ERROR:", err.message);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  } finally {
+    if (pool) await pool.close();
+  }
+});
+
 module.exports = router;
