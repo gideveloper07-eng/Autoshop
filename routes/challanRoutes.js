@@ -199,13 +199,16 @@ router.post("/approve", async (req, res) => {
       const key = `sp_${i}`;
       let value = data[key];
 
-      // Convert null/undefined to empty string
+      // Convert null/undefined/array to empty string or "0"
       if (Array.isArray(value)) {
         value = "0";
-      } else if (value === null || value === undefined) {
+      } else if (value === null || value === undefined || value === "") {
         value = "";
+      } else if (typeof value === 'object') {
+        // Handle any other object types
+        value = "0";
       } else {
-        value = String(value);
+        value = String(value).trim();
       }
 
       // Handle different data types based on column
@@ -299,11 +302,16 @@ router.post("/reject", async (req, res) => {
       const key = `sp_${i}`;
       let value = data[key];
 
-      // Convert null/undefined to empty string
-      if (value === null || value === undefined) {
+      // Convert null/undefined/array to empty string or "0"
+      if (Array.isArray(value)) {
+        value = "0";
+      } else if (value === null || value === undefined || value === "") {
         value = "";
+      } else if (typeof value === 'object') {
+        // Handle any other object types
+        value = "0";
       } else {
-        value = String(value);
+        value = String(value).trim();
       }
 
       // Handle different data types based on column
