@@ -182,6 +182,10 @@ router.post("/approve", async (req, res) => {
       "sp_462:",
       data.sp_462,
     );
+    console.log(
+      "CHALLAN APPROVE: Body",
+      JSON.stringify({ success: true, data }, null, 2),
+    );
 
     pool = await openPool(databaseName);
 
@@ -195,45 +199,68 @@ router.post("/approve", async (req, res) => {
 
     // Add all sp_ parameters (sp_461 to sp_654)
     // All parameters are NVarChar in the stored procedure
+    const numericFields = [
+      474, 475, 476, 477, 478, 479, 481, 482, 484, 487, 490, 492, 493, 494, 495,
+      496, 497, 498, 499, 500, 502, 503, 504, 505, 506, 507, 508, 509, 510, 511,
+      512, 513, 514, 515, 516, 517, 518, 519, 520, 521, 522, 537, 539, 540, 541,
+      542, 543, 544, 545, 546, 549, 553, 554, 555, 556, 557, 560, 561, 573, 591,
+      592, 596, 600, 601, 602, 603, 606, 607, 608, 609, 612, 614, 615, 634, 635,
+      636, 637, 653, 654,
+    ];
+
     for (let i = 461; i <= 654; i++) {
       const key = `sp_${i}`;
       let value = data[key];
 
-      // Convert null/undefined/array to empty string or "0"
-      if (Array.isArray(value)) {
-        value = "0";
-      } else if (value === null || value === undefined || value === "") {
-        value = "";
-      } else if (typeof value === 'object') {
-        // Handle any other object types
-        value = "0";
-      } else {
-        value = String(value).trim();
+      // null / undefined / empty
+      if (value === null || value === undefined || value === "") {
+        value = numericFields.includes(i) ? 0 : "";
       }
 
-      // Handle different data types based on column
-      if (
-        key === "sp_524" ||
-        key === "sp_577" ||
-        key === "sp_581" ||
-        key === "sp_585" ||
-        key === "sp_589" ||
-        key === "sp_590" ||
-        key === "sp_591" ||
-        key === "sp_592" ||
-        key === "sp_593"
-      ) {
-        request.input(key, sql.NVarChar(sql.MAX), value);
-      } else if (key === "sp_616") {
-        request.input(key, sql.NVarChar(500), value);
-      } else {
-        request.input(key, sql.NVarChar(50), value);
+      // array handling
+      if (Array.isArray(value)) {
+        value = 0;
+      }
+
+      // object handling
+      if (typeof value === "object" && !Array.isArray(value)) {
+        value = numericFields.includes(i) ? 0 : "";
+      }
+
+      // numeric columns
+      if (numericFields.includes(i)) {
+        const numValue = parseFloat(value);
+
+        request.input(key, sql.Numeric(18, 2), isNaN(numValue) ? 0 : numValue);
+      }
+
+      // text columns
+      else {
+        if (
+          key === "sp_524" ||
+          key === "sp_577" ||
+          key === "sp_581" ||
+          key === "sp_585" ||
+          key === "sp_589" ||
+          key === "sp_590" ||
+          key === "sp_591" ||
+          key === "sp_592" ||
+          key === "sp_593"
+        ) {
+          request.input(key, sql.NVarChar(sql.MAX), String(value));
+        } else if (key === "sp_616") {
+          request.input(key, sql.NVarChar(500), String(value));
+        } else {
+          request.input(key, sql.NVarChar(50), String(value));
+        }
       }
     }
 
     const result = await request.execute("A_SP_FOR_ApplicationChallangrid");
 
     console.log(`✅ Challan approved successfully: ${data.sp_462}`);
+    console.log("✅ CHALLAN APPROVE: Data updated successfully");
+    console.log("Updated Data:", JSON.stringify(result.recordset[0], null, 2));
 
     return res.json({
       success: true,
@@ -307,7 +334,7 @@ router.post("/reject", async (req, res) => {
         value = "0";
       } else if (value === null || value === undefined || value === "") {
         value = "";
-      } else if (typeof value === 'object') {
+      } else if (typeof value === "object") {
         // Handle any other object types
         value = "0";
       } else {
