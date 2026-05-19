@@ -34,6 +34,20 @@ function decodeToken(req) {
   }
 }
 
+function getClientIp(req) {
+  const forwardedFor = req.headers["x-forwarded-for"];
+  const rawIp = Array.isArray(forwardedFor)
+    ? forwardedFor[0]
+    : forwardedFor?.split(",")[0] ||
+      req.headers["x-real-ip"] ||
+      req.headers["cf-connecting-ip"] ||
+      req.socket?.remoteAddress ||
+      req.ip ||
+      "";
+
+  return String(rawIp).replace(/^::ffff:/, "").trim();
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/challan/retail-incentive
 // Calls A_SP_FOR_ApplicationChallangrid with @what = 'Retail_Incentive'
@@ -172,6 +186,14 @@ router.post("/approve", async (req, res) => {
 
     const data = { ...req.body };
 
+    console.log("LOGIN USER ID :", data.loginUserId);
+
+    if (data.loginUserId) {
+      data.sp_583 = data.loginUserId;
+    }
+
+    data.sp_584 = getClientIp(req);
+
     /*
       If approve body is coming from edit API response,
       convert display field names to stored procedure parameter names.
@@ -216,7 +238,6 @@ router.post("/approve", async (req, res) => {
       CESS: "sp_502",
       subtotal: "sp_503",
       Amount: "sp_504",
-
       InsuranceAmount: "sp_520",
       netamount: "sp_521",
       lessofallencashmentschemne: "sp_522",
@@ -271,6 +292,7 @@ router.post("/approve", async (req, res) => {
       appdate: "sp_574",
       appid: "sp_571",
       afappdate: "sp_582",
+
       afappid: "sp_584",
       hmidis: "sp_591",
       odis: "sp_592",
@@ -391,6 +413,18 @@ router.post("/approve", async (req, res) => {
 
     const result = await request.execute("A_SP_FOR_ApplicationChallangrid");
 
+    if (data.sp_584) {
+      await pool
+        .request()
+        .input("sp_462", sql.NVarChar(100), String(data.sp_462))
+        .input("sp_584", sql.NVarChar(50), String(data.sp_584))
+        .query(`
+          UPDATE rh_sp_46
+          SET sp_584 = @sp_584
+          WHERE sp_462 = @sp_462
+        `);
+    }
+
     console.log(`✅ Challan approved successfully: ${data.sp_462}`);
     console.log(
       "Updated Data:",
@@ -437,6 +471,13 @@ router.post("/reject", async (req, res) => {
     }
 
     const data = { ...req.body };
+    console.log("LOGIN USER ID :", data.loginUserId);
+
+    if (data.loginUserId) {
+      data.sp_587 = data.loginUserId;
+    }
+
+    data.sp_588 = getClientIp(req);
 
     const aliasMap = {
       unq: "sp_462",
@@ -660,6 +701,18 @@ router.post("/reject", async (req, res) => {
     const result = await request.execute("A_SP_FOR_ApplicationChallangrid");
 
     console.log(`✅ Challan rejected successfully: ${data.sp_462}`);
+
+    if (data.sp_588) {
+      await pool
+        .request()
+        .input("sp_462", sql.NVarChar(100), String(data.sp_462))
+        .input("sp_588", sql.NVarChar(50), String(data.sp_588))
+        .query(`
+          UPDATE rh_sp_46
+          SET sp_588 = @sp_588
+          WHERE sp_462 = @sp_462
+        `);
+    }
 
     return res.json({
       success: true,
