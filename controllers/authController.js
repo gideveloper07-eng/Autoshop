@@ -6,10 +6,10 @@ const { sql } = require("../config/db");
 // ─────────────────────────────────────────────────────────────────────────────
 async function openPool(databaseName) {
   const pool = await new sql.ConnectionPool({
-    user:     process.env.DB_USER,
+    user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
-    server:   process.env.DB_HOST,
-    port:     parseInt(process.env.DB_PORT || "1433"),
+    server: process.env.DB_HOST,
+    port: parseInt(process.env.DB_PORT || "1433"),
     database: databaseName,
     options: {
       encrypt: false,
@@ -56,14 +56,14 @@ const loginUser = async (req, res) => {
     // ── 3. Verify credentials ────────────────────────────────────────────────
     const userResult = await pool
       .request()
-      .input("userId",   sql.NVarChar, userId)
-      .input("password", sql.NVarChar, password)
-      .query(`
+      .input("userId", sql.NVarChar, userId)
+      .input("password", sql.NVarChar, password).query(`
         SELECT TOP 1
           uti,
           is_logged_in,
           logged_device_id,
-          last_login
+          last_login,
+          utg as utg
         FROM rh_secut
         WHERE uti = @userId
           AND utp = @password
@@ -81,10 +81,12 @@ const loginUser = async (req, res) => {
     console.log("✅ User found:", user.uti);
     console.log("   is_logged_in    :", user.is_logged_in);
     console.log("   logged_device_id:", user.logged_device_id);
-
+    console.log(user);
+    console.log("UTG:", user.utg);
+    console.log("UTG CAPS:", user.UTG);
     // ── 4. Device-lock check ─────────────────────────────────────────────────
     // mssql BIT can come back as true/false or 1/0 depending on driver version
-    const isLoggedIn  = user.is_logged_in === true || user.is_logged_in === 1;
+    const isLoggedIn = user.is_logged_in === true || user.is_logged_in === 1;
     const oldDeviceId = user.logged_device_id
       ? String(user.logged_device_id).trim()
       : null;
@@ -100,9 +102,8 @@ const loginUser = async (req, res) => {
     // ── 5. Mark as logged in ─────────────────────────────────────────────────
     await pool
       .request()
-      .input("userId",   sql.NVarChar, userId)
-      .input("deviceId", sql.NVarChar, cleanDeviceId)
-      .query(`
+      .input("userId", sql.NVarChar, userId)
+      .input("deviceId", sql.NVarChar, cleanDeviceId).query(`
         UPDATE rh_secut
         SET
           is_logged_in     = 1,
@@ -117,26 +118,26 @@ const loginUser = async (req, res) => {
     const token = jwt.sign(
       { userId: user.uti, database: databaseName },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "7d" },
     );
 
     // ── 7. Respond ───────────────────────────────────────────────────────────
     return res.json({
-      success:      true,
+      success: true,
       token,
-      userId:       user.uti || userId,
-      name:         user.uti || userId,
-      email:        "",
+      userId: user.uti || userId,
+      name: user.uti || userId,
+      email: "",
       databaseName,
-      message:      "Login Successful",
+      utg: user.UTG || user.utg,
+      message: "Login Successful",
     });
-
   } catch (err) {
     console.error("❌ LOGIN ERROR:", err.message);
     return res.status(500).json({
       success: false,
       message: "Server Error",
-      error:   err.message,
+      error: err.message,
     });
   } finally {
     if (pool) await pool.close();
@@ -151,7 +152,9 @@ const logoutUser = async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ success: false, message: "No token provided" });
+      return res
+        .status(401)
+        .json({ success: false, message: "No token provided" });
     }
 
     const token = authHeader.split(" ")[1];
@@ -167,10 +170,7 @@ const logoutUser = async (req, res) => {
 
     pool = await openPool(databaseName);
 
-    await pool
-      .request()
-      .input("userId", sql.NVarChar, userId)
-      .query(`
+    await pool.request().input("userId", sql.NVarChar, userId).query(`
         UPDATE rh_secut
         SET
           is_logged_in     = 0,
@@ -181,7 +181,6 @@ const logoutUser = async (req, res) => {
     console.log("✅ DB updated — is_logged_in=0 for:", userId);
 
     return res.json({ success: true, message: "Logout successful" });
-
   } catch (err) {
     console.error("❌ LOGOUT ERROR:", err.message);
     return res.status(500).json({ success: false, message: "Server Error" });
