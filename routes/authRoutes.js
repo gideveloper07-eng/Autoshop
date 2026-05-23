@@ -1,12 +1,38 @@
 const express = require("express");
+
 const router = express.Router();
+
+const sql = require("mssql");
+
 const {
   registerUser,
   loginUser,
   logoutUser,
 } = require("../controllers/authController");
-const { decodeToken } = require("../middleware/authMiddleware");
-const verifyToken = require("../middleware/authMiddleware");
+
+const { decodeToken, verifyToken } = require("../middleware/authMiddleware");
+
+async function openPool(databaseName) {
+  const pool = await new sql.ConnectionPool({
+    user: process.env.DB_USER,
+
+    password: process.env.DB_PASSWORD,
+
+    server: process.env.DB_HOST,
+
+    port: parseInt(process.env.DB_PORT || "1433"),
+
+    database: databaseName,
+
+    options: {
+      encrypt: false,
+
+      trustServerCertificate: true,
+    },
+  }).connect();
+
+  return pool;
+}
 
 router.post("/register", registerUser);
 router.post("/login", loginUser);
