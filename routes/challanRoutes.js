@@ -3,6 +3,7 @@ const router = express.Router();
 const jwt = require("jsonwebtoken");
 const sql = require("mssql");
 const { createNotification } = require("../utils/notificationHelper");
+const { sendPushNotification } = require("../utils/pushNotificationHelper");
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper: open a dynamic pool to a specific database (same pattern as authController)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -471,7 +472,15 @@ router.post("/approve", async (req, res) => {
         "CHALLAN_APPROVED",
         data.sp_462,
       );
+      await sendPushNotification(
+        pool,
 
+        creatorUserId,
+
+        "Challan Approved",
+
+        `Your challan ${data.sp_468} has been approved`,
+      );
       console.log("✅ Notification sent to:", creatorUserId);
     }
 
@@ -816,7 +825,15 @@ router.post("/reject", async (req, res) => {
         "CHALLAN_REJECTED",
         data.sp_462,
       );
+      await sendPushNotification(
+        pool,
 
+        creatorUserId,
+
+        "Challan Rejected",
+
+        `Your challan ${data.sp_468} has been rejected`,
+      );
       console.log("✅ Rejection notification sent to:", creatorUserId);
     }
 
