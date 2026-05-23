@@ -452,12 +452,12 @@ router.post("/approve", async (req, res) => {
       .request()
 
       .input("sp_462", sql.NVarChar, data.sp_462).query(`
-    SELECT sp_473
+    SELECT sp_463
     FROM rh_sp_46
     WHERE sp_462 = @sp_462
   `);
 
-    const creatorUserId = creatorResult.recordset[0]?.sp_473;
+    const creatorUserId = creatorResult.recordset[0]?.sp_463;
 
     console.log("CREATOR USER:", creatorUserId);
 
@@ -797,12 +797,12 @@ router.post("/reject", async (req, res) => {
       .request()
 
       .input("sp_462", sql.NVarChar, data.sp_462).query(`
-    SELECT sp_473
+    SELECT sp_463
     FROM rh_sp_46
     WHERE sp_462 = @sp_462
   `);
 
-    const creatorUserId = creatorResult.recordset[0]?.sp_473;
+    const creatorUserId = creatorResult.recordset[0]?.sp_463;
 
     console.log("CREATOR USER:", creatorUserId);
 
