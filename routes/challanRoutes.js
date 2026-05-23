@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const jwt = require("jsonwebtoken");
 const sql = require("mssql");
-
+const { createNotification } = require("../utils/notificationHelper");
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper: open a dynamic pool to a specific database (same pattern as authController)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -448,9 +448,21 @@ router.post("/approve", async (req, res) => {
 
     // ───────────────── NOTIFICATION ─────────────────
 
-    const creatorUserId = data.sp_571;
-    console.log(data);
+    const creatorResult = await pool
+      .request()
+
+      .input("sp_462", sql.NVarChar, data.sp_462).query(`
+    SELECT sp_473
+    FROM rh_sp_46
+    WHERE sp_462 = @sp_462
+  `);
+
+    const creatorUserId = creatorResult.recordset[0]?.sp_473;
+
+    console.log("CREATOR USER:", creatorUserId);
+
     if (creatorUserId) {
+      console.log("INSERTING NOTIFICATION...");
       await createNotification(
         pool,
         creatorUserId,
@@ -490,7 +502,6 @@ router.post("/approve", async (req, res) => {
 // Calls A_SP_FOR_ApplicationChallangrid with @what = 'reject' and all challan data
 // Returns: Success message
 // ─────────────────────────────────────────────────────────────────────────────
-const { createNotification } = require("../utils/notificationHelper");
 
 router.post("/reject", async (req, res) => {
   let pool;
@@ -782,9 +793,21 @@ router.post("/reject", async (req, res) => {
 
     // ───────────────── NOTIFICATION ─────────────────
 
-    const creatorUserId = data.sp_571;
+    const creatorResult = await pool
+      .request()
+
+      .input("sp_462", sql.NVarChar, data.sp_462).query(`
+    SELECT sp_473
+    FROM rh_sp_46
+    WHERE sp_462 = @sp_462
+  `);
+
+    const creatorUserId = creatorResult.recordset[0]?.sp_473;
+
+    console.log("CREATOR USER:", creatorUserId);
 
     if (creatorUserId) {
+      console.log("INSERTING NOTIFICATION...");
       await createNotification(
         pool,
         creatorUserId,
