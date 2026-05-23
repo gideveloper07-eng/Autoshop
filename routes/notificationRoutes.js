@@ -1,9 +1,11 @@
 const router = require("express").Router();
 
-const verifyToken = require("../middleware/authMiddleware");
+const { verifyToken } = require("../middleware/authMiddleware");
 
 //const { getNotifications } = require("../controllers/notificationController");
-const {markNotificationAsRead} = require("../controllers/notificationController");
+const {
+  markNotificationAsRead,
+} = require("../controllers/notificationController");
 const {
   getNotifications,
   getUnreadNotificationCount,

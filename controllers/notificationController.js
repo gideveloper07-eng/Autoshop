@@ -1,5 +1,5 @@
 const { sql } = require("../config/db");
-
+const { decodeToken } = require("../middleware/authMiddleware");
 async function openPool(databaseName) {
   const pool = await new sql.ConnectionPool({
     user: process.env.DB_USER,
@@ -20,7 +20,16 @@ const getNotifications = async (req, res) => {
   let pool;
 
   try {
-    const { database: databaseName, userId } = req.user;
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { database: databaseName, userId } = decoded;
 
     pool = await openPool(databaseName);
 
@@ -52,7 +61,16 @@ const getUnreadNotificationCount = async (req, res) => {
   let pool;
 
   try {
-    const { database: databaseName, userId } = req.user;
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { database: databaseName, userId } = decoded;
 
     pool = await openPool(databaseName);
 
@@ -84,7 +102,16 @@ const markNotificationAsRead = async (req, res) => {
   let pool;
 
   try {
-    const { database: databaseName, userId } = req.user;
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { database: databaseName, userId } = decoded;
 
     const { id } = req.params;
 
@@ -120,4 +147,4 @@ module.exports = {
   getNotifications,
   getUnreadNotificationCount,
   markNotificationAsRead,
-  };
+};
