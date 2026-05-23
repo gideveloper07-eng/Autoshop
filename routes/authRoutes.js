@@ -5,6 +5,7 @@ const {
   loginUser,
   logoutUser,
 } = require("../controllers/authController");
+const { decodeToken } = require("../middleware/authMiddleware");
 const verifyToken = require("../middleware/authMiddleware");
 
 router.post("/register", registerUser);
