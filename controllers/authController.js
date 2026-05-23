@@ -116,7 +116,11 @@ const loginUser = async (req, res) => {
 
     // ── 6. Issue JWT ─────────────────────────────────────────────────────────
     const token = jwt.sign(
-      { userId: user.uti, database: databaseName },
+      {
+        userId: user.uti,
+        database: databaseName,
+        utg: user.UTG || user.utg,
+      },
       process.env.JWT_SECRET,
       { expiresIn: "7d" },
     );

@@ -18,7 +18,7 @@ const applicationRoutes = require("./routes/applicationRoutes");
 const wishlistRoutes = require("./routes/wishlistRoutes");
 const agentRoutes = require("./routes/agentRoutes");
 const challanRoutes = require("./routes/challanRoutes");
-
+const notificationRoutes = require("./routes/notificationRoutes");
 const app = express();
 
 // ── MIDDLEWARE ───────────────────────────────────────
@@ -35,6 +35,7 @@ app.use("/api/applications", applicationRoutes);
 app.use("/api/wishlist", wishlistRoutes);
 app.use("/api/agent", agentRoutes);
 app.use("/api/challan", challanRoutes);
+app.use("/api", notificationRoutes);
 
 // ── HEALTH CHECK ─────────────────────────────────────
 app.get("/", (_, res) => {
@@ -128,31 +129,33 @@ app.post("/api/challan/grid", async (req, res) => {
   try {
     const {
       databaseName,
-      prefix   = "",
-      what     = "Retail_Incentive",
+      prefix = "",
+      what = "Retail_Incentive",
       fromDate = "",
-      toDate   = "",
+      toDate = "",
     } = req.body;
 
     if (!databaseName) {
-      return res.status(400).json({ success: false, message: "databaseName is required" });
+      return res
+        .status(400)
+        .json({ success: false, message: "databaseName is required" });
     }
 
     dynamicPool = await new sql.ConnectionPool({
-      user:     process.env.DB_USER,
+      user: process.env.DB_USER,
       password: process.env.DB_PASSWORD,
-      server:   process.env.DB_HOST,
-      port:     parseInt(process.env.DB_PORT || "1433"),
+      server: process.env.DB_HOST,
+      port: parseInt(process.env.DB_PORT || "1433"),
       database: databaseName,
-      options:  { encrypt: false, trustServerCertificate: true },
+      options: { encrypt: false, trustServerCertificate: true },
     }).connect();
 
     const result = await dynamicPool
       .request()
-      .input("prefix",   sql.NVarChar(50), prefix)
-      .input("what",     sql.NVarChar(50), what)
+      .input("prefix", sql.NVarChar(50), prefix)
+      .input("what", sql.NVarChar(50), what)
       .input("FromDate", sql.NVarChar(50), fromDate)
-      .input("ToDate",   sql.NVarChar(50), toDate)
+      .input("ToDate", sql.NVarChar(50), toDate)
       .execute("A_SP_FOR_ApplicationChallangrid");
 
     return res.json({ success: true, data: result.recordset });

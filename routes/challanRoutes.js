@@ -45,7 +45,9 @@ function getClientIp(req) {
       req.ip ||
       "";
 
-  return String(rawIp).replace(/^::ffff:/, "").trim();
+  return String(rawIp)
+    .replace(/^::ffff:/, "")
+    .trim();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -168,36 +170,52 @@ router.get("/edit/:sp_462", async (req, res) => {
 // Calls A_SP_FOR_ApplicationChallangrid with @what = 'approve' and all challan data
 // Returns: Success message
 // ─────────────────────────────────────────────────────────────────────────────
+
 router.post("/approve", async (req, res) => {
   let pool;
 
   try {
+    // ───────────────── AUTH ─────────────────
+
     const decoded = decodeToken(req);
+
     if (!decoded) {
-      return res.status(401).json({ success: false, message: "Unauthorized" });
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
     }
 
-    const { database: databaseName } = decoded;
+    const { database: databaseName, userId, utg } = decoded;
+
+    // ───────────────── GROUP SECURITY ─────────────────
+
+    if (utg !== "4848C835-2A09-4A80-A7E2-383C95926C54") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied",
+      });
+    }
+
     if (!databaseName) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Database not found in token" });
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
     }
 
     const data = { ...req.body };
 
-    console.log("LOGIN USER ID :", data.loginUserId);
+    console.log("LOGIN USER ID :", userId);
 
-    if (data.loginUserId) {
-      data.sp_583 = data.loginUserId;
-    }
+    // SAVE APPROVER USER
+    data.sp_583 = userId;
 
+    // SAVE CLIENT IP
     data.sp_584 = getClientIp(req);
 
-    /*
-      If approve body is coming from edit API response,
-      convert display field names to stored procedure parameter names.
-    */
+    // ───────────────── FIELD MAPPING ─────────────────
+
     const aliasMap = {
       unq: "sp_462",
       date: "sp_467",
@@ -351,24 +369,23 @@ router.post("/approve", async (req, res) => {
     data.sp_624 ??= data.WORKSHOPINVOICEAMOUNT;
 
     if (!data.sp_462) {
-      return res
-        .status(400)
-        .json({ success: false, message: "sp_462 is required" });
+      return res.status(400).json({
+        success: false,
+        message: "sp_462 is required",
+      });
     }
 
     console.log(
-      "✅ CHALLAN — Approve — DB:",
+      "✅ CHALLAN APPROVE — DB:",
       databaseName,
       "sp_462:",
       data.sp_462,
     );
 
-    console.log(
-      "CHALLAN APPROVE: Body",
-      JSON.stringify({ success: true, data }, null, 2),
-    );
+    // ───────────────── DB ─────────────────
 
     pool = await openPool(databaseName);
+
     const request = pool.request();
 
     request.input("prefix", sql.NVarChar(50), "");
@@ -378,6 +395,7 @@ router.post("/approve", async (req, res) => {
 
     for (let i = 461; i <= 654; i++) {
       const key = `sp_${i}`;
+
       let value = data[key];
 
       if (value === null || value === undefined) {
@@ -411,25 +429,43 @@ router.post("/approve", async (req, res) => {
       }
     }
 
+    // ───────────────── EXECUTE SP ─────────────────
+
     const result = await request.execute("A_SP_FOR_ApplicationChallangrid");
+
+    // ───────────────── UPDATE IP ─────────────────
 
     if (data.sp_584) {
       await pool
         .request()
         .input("sp_462", sql.NVarChar(100), String(data.sp_462))
-        .input("sp_584", sql.NVarChar(50), String(data.sp_584))
-        .query(`
+        .input("sp_584", sql.NVarChar(50), String(data.sp_584)).query(`
           UPDATE rh_sp_46
           SET sp_584 = @sp_584
           WHERE sp_462 = @sp_462
         `);
     }
 
+    // ───────────────── NOTIFICATION ─────────────────
+
+    const creatorUserId = data.sp_571;
+    console.log(data);
+    if (creatorUserId) {
+      await createNotification(
+        pool,
+        creatorUserId,
+        "Challan Approved",
+        `Your challan ${data.sp_468} has been approved`,
+        "CHALLAN_APPROVED",
+        data.sp_462,
+      );
+
+      console.log("✅ Notification sent to:", creatorUserId);
+    }
+
     console.log(`✅ Challan approved successfully: ${data.sp_462}`);
-    console.log(
-      "Updated Data:",
-      JSON.stringify(result.recordset?.[0], null, 2),
-    );
+
+    // ───────────────── RESPONSE ─────────────────
 
     return res.json({
       success: true,
@@ -454,30 +490,52 @@ router.post("/approve", async (req, res) => {
 // Calls A_SP_FOR_ApplicationChallangrid with @what = 'reject' and all challan data
 // Returns: Success message
 // ─────────────────────────────────────────────────────────────────────────────
+const { createNotification } = require("../utils/notificationHelper");
+
 router.post("/reject", async (req, res) => {
   let pool;
 
   try {
+    // ───────────────── AUTH ─────────────────
+
     const decoded = decodeToken(req);
+
     if (!decoded) {
-      return res.status(401).json({ success: false, message: "Unauthorized" });
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
     }
 
-    const { database: databaseName } = decoded;
+    const { database: databaseName, userId, utg } = decoded;
+
+    // ───────────────── GROUP SECURITY ─────────────────
+
+    if (utg !== "4848C835-2A09-4A80-A7E2-383C95926C54") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied",
+      });
+    }
+
     if (!databaseName) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Database not found in token" });
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
     }
 
     const data = { ...req.body };
-    console.log("LOGIN USER ID :", data.loginUserId);
 
-    if (data.loginUserId) {
-      data.sp_587 = data.loginUserId;
-    }
+    console.log("LOGIN USER ID :", userId);
 
+    // SAVE REJECT USER
+    data.sp_587 = userId;
+
+    // SAVE CLIENT IP
     data.sp_588 = getClientIp(req);
+
+    // ───────────────── FIELD MAP ─────────────────
 
     const aliasMap = {
       unq: "sp_462",
@@ -641,19 +699,23 @@ router.post("/reject", async (req, res) => {
     data.sp_624 ??= data.WORKSHOPINVOICEAMOUNT;
 
     if (!data.sp_462) {
-      return res
-        .status(400)
-        .json({ success: false, message: "sp_462 is required" });
+      return res.status(400).json({
+        success: false,
+        message: "sp_462 is required",
+      });
     }
 
     console.log(
-      "❌ CHALLAN — Reject — DB:",
+      "❌ CHALLAN REJECT — DB:",
       databaseName,
       "sp_462:",
       data.sp_462,
     );
 
+    // ───────────────── DB ─────────────────
+
     pool = await openPool(databaseName);
+
     const request = pool.request();
 
     request.input("prefix", sql.NVarChar(50), "");
@@ -663,6 +725,7 @@ router.post("/reject", async (req, res) => {
 
     for (let i = 461; i <= 654; i++) {
       const key = `sp_${i}`;
+
       let value = data[key];
 
       if (value === null || value === undefined) {
@@ -698,21 +761,43 @@ router.post("/reject", async (req, res) => {
       }
     }
 
+    // ───────────────── EXECUTE SP ─────────────────
+
     const result = await request.execute("A_SP_FOR_ApplicationChallangrid");
 
     console.log(`✅ Challan rejected successfully: ${data.sp_462}`);
+
+    // ───────────────── UPDATE IP ─────────────────
 
     if (data.sp_588) {
       await pool
         .request()
         .input("sp_462", sql.NVarChar(100), String(data.sp_462))
-        .input("sp_588", sql.NVarChar(50), String(data.sp_588))
-        .query(`
+        .input("sp_588", sql.NVarChar(50), String(data.sp_588)).query(`
           UPDATE rh_sp_46
           SET sp_588 = @sp_588
           WHERE sp_462 = @sp_462
         `);
     }
+
+    // ───────────────── NOTIFICATION ─────────────────
+
+    const creatorUserId = data.sp_571;
+
+    if (creatorUserId) {
+      await createNotification(
+        pool,
+        creatorUserId,
+        "Challan Rejected",
+        `Your challan ${data.sp_468} has been rejected`,
+        "CHALLAN_REJECTED",
+        data.sp_462,
+      );
+
+      console.log("✅ Rejection notification sent to:", creatorUserId);
+    }
+
+    // ───────────────── RESPONSE ─────────────────
 
     return res.json({
       success: true,

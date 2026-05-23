@@ -1,17 +1,33 @@
 const jwt = require("jsonwebtoken");
 
 /**
- * Extracts userId from Bearer token.
- * Returns null if missing or invalid — callers decide whether to 401.
+ * Verify JWT token middleware
  */
-const getUserId = (req) => {
+const verifyToken = (req, res, next) => {
   const auth = req.headers.authorization;
-  if (!auth) return null;
+
+  if (!auth || !auth.startsWith("Bearer ")) {
+    return res.status(401).json({
+      success: false,
+      message: "No token provided",
+    });
+  }
+
   try {
-    return jwt.verify(auth.split(" ")[1], process.env.JWT_SECRET).id;
-  } catch {
-    return null;
+    const token = auth.split(" ")[1];
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // STORE COMPLETE USER DATA
+    req.user = decoded;
+
+    next();
+  } catch (err) {
+    return res.status(401).json({
+      success: false,
+      message: "Invalid token",
+    });
   }
 };
 
-module.exports = { getUserId };
+module.exports = verifyToken;

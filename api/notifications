@@ -1,0 +1,16 @@
+const getNotifications = async (req, res) => {
+  const userId = req.user.userId;
+
+  const result = await pool.request().input("userId", sql.NVarChar, userId)
+    .query(`
+         SELECT *
+         FROM app_notifications
+         WHERE user_id = @userId
+         ORDER BY created_on DESC
+      `);
+
+  return res.json({
+    success: true,
+    data: result.recordset,
+  });
+};
