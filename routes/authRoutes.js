@@ -69,14 +69,27 @@ router.post("/save-fcm-token", async (req, res) => {
       .input("user_id", sql.NVarChar, userId)
 
       .input("fcm_token", sql.NVarChar(sql.MAX), token).query(`
-          INSERT INTO app_user_devices (
-            user_id,
-            fcm_token
-          )
-          VALUES (
-            @user_id,
-            @fcm_token
-          )
+       IF NOT EXISTS (
+
+    SELECT 1
+    FROM app_user_devices
+    WHERE fcm_token = @fcm_token
+)
+
+BEGIN
+
+    INSERT INTO app_user_devices (
+
+        user_id,
+        fcm_token
+
+    )
+    VALUES (
+
+        @user_id,
+        @fcm_token
+    )
+END
         `);
 
     return res.json({
