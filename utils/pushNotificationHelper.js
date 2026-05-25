@@ -12,7 +12,11 @@ async function sendPushNotification(
   body,
 ) {
   try {
-    // GET USER TOKENS
+    console.log("PUSH FUNCTION CALLED");
+
+    console.log("TARGET USER:", userId);
+
+    // GET TOKENS
 
     const tokenResult = await pool
       .request()
@@ -23,21 +27,25 @@ async function sendPushNotification(
         WHERE user_id = @user_id
       `);
 
+    console.log("TOKEN RESULT:", tokenResult.recordset);
+
     const tokens = tokenResult.recordset
+
       .map((x) => x.fcm_token)
+
       .filter(Boolean);
 
+    console.log("TOKENS:", tokens);
+
     if (tokens.length === 0) {
-      console.log("NO FCM TOKENS FOUND");
+      console.log("NO TOKENS FOUND");
 
       return;
     }
 
-    console.log("SENDING PUSH TO:", tokens.length);
-
     // SEND PUSH
 
-    await admin.messaging().sendEachForMulticast({
+    const response = await admin.messaging().sendEachForMulticast({
       tokens,
 
       notification: {
@@ -54,9 +62,13 @@ async function sendPushNotification(
       },
     });
 
-    console.log("✅ PUSH SENT");
+    console.log("PUSH RESPONSE:");
+
+    console.log(response);
   } catch (err) {
-    console.error("PUSH ERROR:", err.message);
+    console.error("PUSH ERROR:");
+
+    console.error(err);
   }
 }
 
