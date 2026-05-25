@@ -88,7 +88,7 @@ async function sendPushToGroup(
 
       .input("utg", sql.NVarChar, utg).query(`
         SELECT uti
-        FROM mst_user
+        FROM rh_secut
         WHERE utg = @utg
       `);
 
