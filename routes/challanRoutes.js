@@ -892,6 +892,7 @@ router.post(
 
         `New challan ${challanNo} created`,
       );
+      console.log("ADMIN PUSH SENT");
 
       return res.json({
         success: true,
