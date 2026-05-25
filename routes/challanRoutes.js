@@ -3,7 +3,10 @@ const router = express.Router();
 const jwt = require("jsonwebtoken");
 const sql = require("mssql");
 const { createNotification } = require("../utils/notificationHelper");
-const { sendPushNotification } = require("../utils/pushNotificationHelper");
+const {
+  sendPushNotification,
+  sendPushToGroup,
+} = require("../utils/pushNotificationHelper");
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper: open a dynamic pool to a specific database (same pattern as authController)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -857,4 +860,53 @@ router.post("/reject", async (req, res) => {
   }
 });
 
+router.post(
+  "/send-admin-push",
+
+  async (req, res) => {
+    let pool;
+
+    try {
+      const { challanNo } = req.body;
+
+      if (!challanNo) {
+        return res.status(400).json({
+          success: false,
+
+          message: "challanNo required",
+        });
+      }
+
+      // OPEN DB
+
+      pool = await openPool("AUTOSHOP_TEST_INS");
+
+      // SEND PUSH TO ADMIN GROUP
+
+      await sendPushToGroup(
+        pool,
+
+        "4848C835-2A09-4A80-A7E2-383C95926C54",
+
+        "New Challan Created",
+
+        `New challan ${challanNo} created`,
+      );
+
+      return res.json({
+        success: true,
+      });
+    } catch (err) {
+      console.error("ADMIN PUSH ERROR:", err.message);
+
+      return res.status(500).json({
+        success: false,
+
+        message: err.message,
+      });
+    } finally {
+      if (pool) await pool.close();
+    }
+  },
+);
 module.exports = router;

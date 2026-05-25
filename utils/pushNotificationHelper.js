@@ -71,7 +71,46 @@ async function sendPushNotification(
     console.error(err);
   }
 }
+async function sendPushToGroup(
+  pool,
 
+  utg,
+
+  title,
+
+  body,
+) {
+  try {
+    // GET USERS OF GROUP
+
+    const userResult = await pool
+      .request()
+
+      .input("utg", sql.NVarChar, utg).query(`
+        SELECT uti
+        FROM mst_user
+        WHERE utg = @utg
+      `);
+
+    const users = userResult.recordset;
+
+    for (const user of users) {
+      await sendPushNotification(
+        pool,
+
+        user.uti,
+
+        title,
+
+        body,
+      );
+    }
+  } catch (err) {
+    console.error("GROUP PUSH ERROR:", err.message);
+  }
+}
 module.exports = {
   sendPushNotification,
+
+  sendPushToGroup,
 };
