@@ -867,7 +867,13 @@ router.post(
     let pool;
 
     try {
-      const { challanNo } = req.body;
+      const { challanNo, databaseName } = req.body;
+
+      console.log("SEND ADMIN PUSH API CALLED");
+
+      console.log("CHALLAN NO:", challanNo);
+
+      console.log("DATABASE:", databaseName);
 
       if (!challanNo) {
         return res.status(400).json({
@@ -877,9 +883,17 @@ router.post(
         });
       }
 
-      // OPEN DB
+      if (!databaseName) {
+        return res.status(400).json({
+          success: false,
 
-      pool = await openPool("AUTOSHOP_TEST_INS");
+          message: "databaseName required",
+        });
+      }
+
+      // DATABASE-WISE CONNECTION
+
+      pool = await openPool(databaseName);
 
       // SEND PUSH TO ADMIN GROUP
 
@@ -892,6 +906,7 @@ router.post(
 
         `New challan ${challanNo} created`,
       );
+
       console.log("ADMIN PUSH SENT");
 
       return res.json({
