@@ -57,7 +57,8 @@ function getClientIp(req) {
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/challan/retail-incentive
 // Calls A_SP_FOR_ApplicationChallangrid with @what = 'Retail_Incentive'
-// Returns: [ { date, sp_468, sp_469 }, ... ]
+// Returns: [ { date, exdate, sp_468, sp_469 }, ... ]
+// date = Challan Date (sp_467), exdate = Expected Delivery Date (from rh_bo_1.bo_32)
 // ─────────────────────────────────────────────────────────────────────────────
 router.get("/retail-incentive", async (req, res) => {
   let pool;
