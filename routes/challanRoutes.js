@@ -57,8 +57,9 @@ function getClientIp(req) {
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/challan/retail-incentive
 // Calls A_SP_FOR_ApplicationChallangrid with @what = 'Retail_Incentive'
-// Returns: [ { date, exdate, sp_468, sp_469 }, ... ]
-// date = Challan Date (sp_467), exdate = Expected Delivery Date (from rh_bo_1.bo_32)
+// Query param: dateType = 'challan' (default) or 'expected'
+// - dateType='challan' → @prefix='1' → Returns date field (Challan Date - sp_467)
+// - dateType='expected' → @prefix='' → Returns exdate field (Expected Delivery Date - bo_32)
 // ─────────────────────────────────────────────────────────────────────────────
 router.get("/retail-incentive", async (req, res) => {
   let pool;
@@ -75,13 +76,21 @@ router.get("/retail-incentive", async (req, res) => {
         .json({ success: false, message: "Database not found in token" });
     }
 
-    console.log("📋 CHALLAN — Retail Incentive — DB:", databaseName);
+    // Get dateType from query parameter (default: 'challan')
+    const dateType = req.query.dateType || 'challan';
+    
+    // Set prefix based on dateType
+    // prefix='1' → IF condition → returns 'date' field (Challan Date)
+    // prefix='' → ELSE condition → returns 'exdate' field (Expected Delivery Date)
+    const prefix = dateType === 'challan' ? '1' : '';
+
+    console.log("📋 CHALLAN — Retail Incentive — DB:", databaseName, "dateType:", dateType, "prefix:", prefix);
 
     pool = await openPool(databaseName);
 
     const result = await pool
       .request()
-      .input("prefix", sql.NVarChar(50), "")
+      .input("prefix", sql.NVarChar(50), prefix)
       .input("what", sql.NVarChar(50), "Retail_Incentive")
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
