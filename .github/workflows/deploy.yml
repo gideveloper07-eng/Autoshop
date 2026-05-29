@@ -1,0 +1,19 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+      - name: Deploy to Server
+        shell: cmd
+        run: |
+          cd /d G:\autoshopbackend\Autoshop
+          git pull origin main
+          call npm install
+          pm2 restart autoshop-api
