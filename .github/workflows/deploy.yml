@@ -10,10 +10,11 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      - name: Deploy to Server
+      - name: Deploy
         shell: cmd
         run: |
           cd /d G:\autoshopbackend\Autoshop
-          git pull origin main
-          call npm install
-          pm2 restart autoshop-api
+          git fetch origin
+          git reset --hard origin/main
+          C:\nvm4w\nodejs\npm.cmd install
+          C:\nvm4w\nodejs\pm2.cmd restart autoshop-api
