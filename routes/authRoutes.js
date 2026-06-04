@@ -126,38 +126,57 @@ router.post("/activity-log", async (req, res) => {
 
     const { database: databaseName, userId } = decoded;
 
-    const { activityType, activityName, screenName, userName } = req.body;
+    const {
+      activityType,
+      activityName,
+      screenName,
+      userName,
+      deviceInfo,
+      appVersion,
+    } = req.body;
 
     console.log("DATABASE:", databaseName);
-
+    const ipAddress =
+      req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
+      req.socket.remoteAddress ||
+      req.connection?.remoteAddress ||
+      "";
     pool = await openPool(databaseName);
 
     await pool
       .request()
-      .input("userId", sql.NVarChar, userId)
-      .input("userName", sql.NVarChar, userName || "")
-      .input("activityType", sql.NVarChar, activityType)
-      .input("activityName", sql.NVarChar, activityName)
-      .input("screenName", sql.NVarChar, screenName || "").query(`
+      .input("userId", sql.VarChar, userId)
+      .input("activityType", sql.VarChar, activityType)
+      .input("activityName", sql.VarChar, activityName)
+      .input("screenName", sql.VarChar, screenName || "")
+      .input("deviceInfo", sql.VarChar, deviceInfo || "")
+      .input("appVersion", sql.VarChar, appVersion || "")
+      .input("ipAddress", sql.VarChar, ipAddress).query(`
     INSERT INTO MA_UserActivityHistory
-(
-  UAH_ID,
-  UserId,
-  ActivityType,
-  ActivityName,
-  ScreenName,
-  ActivityDateTime
-)
-VALUES
-(
-  NEWID(),
-  @userId,
-  @activityType,
-  @activityName,
-  @screenName,
-  GETDATE()
-)
-      `);
+    (
+      UAH_ID,
+      UserId,
+      ActivityType,
+      ActivityName,
+      ScreenName,
+      ActivityDateTime,
+      DeviceInfo,
+      AppVersion,
+      IPAddress
+    )
+    VALUES
+    (
+      NEWID(),
+      @userId,
+      @activityType,
+      @activityName,
+      @screenName,
+      GETDATE(),
+      @deviceInfo,
+      @appVersion,
+      @ipAddress
+    )
+  `);
 
     return res.json({
       success: true,
