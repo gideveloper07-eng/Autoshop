@@ -139,24 +139,24 @@ router.post("/activity-log", async (req, res) => {
       .input("activityType", sql.NVarChar, activityType)
       .input("activityName", sql.NVarChar, activityName)
       .input("screenName", sql.NVarChar, screenName || "").query(`
-        INSERT INTO MA_UserActivityHistory
-        (
-          UserId,
-          UserName,
-          ActivityType,
-          ActivityName,
-          ScreenName,
-          ActivityTime
-        )
-        VALUES
-        (
-          @userId,
-          @userName,
-          @activityType,
-          @activityName,
-          @screenName,
-          GETDATE()
-        )
+    INSERT INTO MA_UserActivityHistory
+(
+  UAH_ID,
+  UserId,
+  ActivityType,
+  ActivityName,
+  ScreenName,
+  ActivityDateTime
+)
+VALUES
+(
+  NEWID(),
+  @userId,
+  @activityType,
+  @activityName,
+  @screenName,
+  GETDATE()
+)
       `);
 
     return res.json({

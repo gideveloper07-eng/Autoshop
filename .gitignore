@@ -3,4 +3,4 @@ node_modules/
 uploads/
 *.log
 firebase-service-account.json
-config/
+db.js
