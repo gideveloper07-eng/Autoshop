@@ -106,4 +106,64 @@ END
     if (pool) await pool.close();
   }
 });
+router.post("/activity-log", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { database: databaseName, userId } = decoded;
+
+    const { activityType, activityName, screenName, userName } = req.body;
+
+    pool = await openPool(databaseName);
+
+    await pool
+      .request()
+      .input("userId", sql.NVarChar, userId)
+      .input("userName", sql.NVarChar, userName || "")
+      .input("activityType", sql.NVarChar, activityType)
+      .input("activityName", sql.NVarChar, activityName)
+      .input("screenName", sql.NVarChar, screenName || "").query(`
+        INSERT INTO MA_UserActivityHistory
+        (
+          UserId,
+          UserName,
+          ActivityType,
+          ActivityName,
+          ScreenName,
+          ActivityTime
+        )
+        VALUES
+        (
+          @userId,
+          @userName,
+          @activityType,
+          @activityName,
+          @screenName,
+          GETDATE()
+        )
+      `);
+
+    return res.json({
+      success: true,
+    });
+  } catch (err) {
+    console.error("ACTIVITY LOG ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  } finally {
+    if (pool) await pool.close();
+  }
+});
 module.exports = router;
