@@ -110,7 +110,12 @@ router.post("/activity-log", async (req, res) => {
   let pool;
 
   try {
+    console.log("===== ACTIVITY LOG REQUEST =====");
+    console.log("BODY:", req.body);
+
     const decoded = decodeToken(req);
+
+    console.log("DECODED TOKEN:", decoded);
 
     if (!decoded) {
       return res.status(401).json({
@@ -122,6 +127,8 @@ router.post("/activity-log", async (req, res) => {
     const { database: databaseName, userId } = decoded;
 
     const { activityType, activityName, screenName, userName } = req.body;
+
+    console.log("DATABASE:", databaseName);
 
     pool = await openPool(databaseName);
 
@@ -156,7 +163,8 @@ router.post("/activity-log", async (req, res) => {
       success: true,
     });
   } catch (err) {
-    console.error("ACTIVITY LOG ERROR:", err);
+    console.error("ACTIVITY LOG ERROR:");
+    console.error(err);
 
     return res.status(500).json({
       success: false,
