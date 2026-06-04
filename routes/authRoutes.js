@@ -112,11 +112,10 @@ router.post("/activity-log", async (req, res) => {
   try {
     const decoded = decodeToken(req);
 
-    // If no token, just return success (activity log is optional)
     if (!decoded) {
-      return res.json({
-        success: true,
-        message: "Activity logged (unauthenticated)",
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
       });
     }
 
