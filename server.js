@@ -19,6 +19,7 @@ const wishlistRoutes = require("./routes/wishlistRoutes");
 const agentRoutes = require("./routes/agentRoutes");
 const challanRoutes = require("./routes/challanRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
+const chatRoutes = require("./routes/chatRoutes");
 const app = express();
 
 // ── MIDDLEWARE ───────────────────────────────────────
@@ -36,7 +37,7 @@ app.use("/api/wishlist", wishlistRoutes);
 app.use("/api/agent", agentRoutes);
 app.use("/api/challan", challanRoutes);
 app.use("/api", notificationRoutes);
-
+app.use("/api/chat", chatRoutes);
 // ── HEALTH CHECK ─────────────────────────────────────
 app.get("/", (_, res) => {
   res.json({
