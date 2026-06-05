@@ -125,4 +125,5 @@ router.get("/:challanId", async (req, res) => {
     if (pool) await pool.close();
   }
 });
+
 module.exports = router;
