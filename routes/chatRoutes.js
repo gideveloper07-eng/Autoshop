@@ -3,6 +3,7 @@ const router = express.Router();
 const sql = require("mssql");
 
 const { decodeToken } = require("../middleware/authMiddleware");
+const { sendPushNotification } = require("../utils/pushNotificationHelper");
 
 async function openPool(databaseName) {
   return await new sql.ConnectionPool({
@@ -38,6 +39,7 @@ router.post("/send", async (req, res) => {
 
     pool = await openPool(databaseName);
 
+    // ── INSERT MESSAGE ────────────────────────────────────────────────
     await pool
       .request()
       .input("challanId", sql.VarChar, challanId)
@@ -66,10 +68,63 @@ router.post("/send", async (req, res) => {
         )
       `);
 
-    return res.json({ success: true });
+    // ── RESPOND IMMEDIATELY so the sender is not kept waiting ─────────
+    res.json({ success: true });
+
+    // ── PUSH NOTIFICATIONS (fire-and-forget after response) ───────────
+    // Find all distinct users who have participated in this challan chat,
+    // excluding the sender — notify them all.
+    try {
+      const participantsResult = await pool
+        .request()
+        .input("challanId", sql.VarChar, challanId)
+        .input("senderId", sql.VarChar, userId).query(`
+          SELECT DISTINCT SenderUserId
+          FROM MA_ChallanChat
+          WHERE ChallanId = @challanId
+            AND SenderUserId <> @senderId
+        `);
+
+      const participantIds = participantsResult.recordset.map(
+        (r) => r.SenderUserId,
+      );
+
+      // Also notify the challan owner (sp_462 → look up via challan details)
+      // if they are not already in the participant list.
+      // We store challan owner separately when available.
+      // For now, notify all found participants.
+
+      const shortMessage =
+        messageText.length > 60
+          ? messageText.substring(0, 57) + "..."
+          : messageText;
+
+      for (const recipientId of participantIds) {
+        // sendPushNotification handles missing tokens gracefully
+        sendPushNotification(
+          pool,
+          recipientId,
+          `New message from ${senderName}`,
+          shortMessage,
+          {
+            type: "CHAT_MESSAGE",
+            challanId: challanId,
+            senderName: senderName,
+          },
+        ).catch((e) =>
+          console.error("PUSH NOTIFY ERROR for", recipientId, e.message),
+        );
+      }
+    } catch (notifyErr) {
+      // Never let notification errors bubble up — message was already sent
+      console.error("CHAT PUSH NOTIFICATION ERROR:", notifyErr.message);
+    }
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ success: false, message: err.message });
+    // Only send error response if headers not already sent
+    if (!res.headersSent) {
+      return res.status(500).json({ success: false, message: err.message });
+    }
   } finally {
     if (pool) await pool.close();
   }
