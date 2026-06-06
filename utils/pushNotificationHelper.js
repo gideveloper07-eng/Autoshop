@@ -1,21 +1,14 @@
 const admin = require("../firebase");
-
 const sql = require("mssql");
 
 /**
- * Send a push notification to a single user.
- * @param {object} pool   - MSSQL connection pool
- * @param {string} userId - Recipient user ID
- * @param {string} title  - Notification title
- * @param {string} body   - Notification body text
- * @param {object} data   - Optional key/value data payload (e.g. { type, challanId })
- *                          All values must be strings.
+ * Send push notification to a single user
  */
 async function sendPushNotification(pool, userId, title, body, data = {}) {
   try {
     console.log("PUSH FUNCTION CALLED — USER:", userId);
 
-    // GET FCM TOKENS FOR THIS USER
+    // GET USER TOKENS
     const tokenResult = await pool
       .request()
       .input("user_id", sql.NVarChar, userId).query(`
@@ -24,7 +17,9 @@ async function sendPushNotification(pool, userId, title, body, data = {}) {
         WHERE user_id = @user_id
       `);
 
-    const tokens = tokenResult.recordset.map((x) => x.fcm_token).filter(Boolean);
+    const tokens = tokenResult.recordset
+      .map((x) => x.fcm_token)
+      .filter(Boolean);
 
     console.log("TOKENS:", tokens);
 
@@ -33,24 +28,33 @@ async function sendPushNotification(pool, userId, title, body, data = {}) {
       return;
     }
 
-    // Ensure all data values are strings (FCM requirement)
+    // FCM requires string values
     const stringData = {};
-    for (const [k, v] of Object.entries(data)) {
-      stringData[k] = String(v ?? "");
+
+    for (const [key, value] of Object.entries(data)) {
+      stringData[key] = String(value ?? "");
     }
 
-    // SEND PUSH NOTIFICATION
+    // SEND NOTIFICATION
     const response = await admin.messaging().sendEachForMulticast({
       tokens,
-      notification: { title, body },
+
+      notification: {
+        title,
+        body,
+      },
+
       data: stringData,
+
       android: {
         priority: "high",
+
         notification: {
           sound: "default",
           channelId: "chat_messages",
         },
       },
+
       apns: {
         payload: {
           aps: {
@@ -65,45 +69,42 @@ async function sendPushNotification(pool, userId, title, body, data = {}) {
       `PUSH SENT: ${response.successCount} ok, ${response.failureCount} failed`,
     );
 
-    // Clean up invalid tokens
-    response.responses.forEach(async (resp, idx) => {
+    // REMOVE INVALID TOKENS
+    for (let i = 0; i < response.responses.length; i++) {
+      const resp = response.responses[i];
+
       if (
         !resp.success &&
         (resp.error?.code === "messaging/registration-token-not-registered" ||
           resp.error?.code === "messaging/invalid-registration-token")
       ) {
-        const badToken = tokens[idx];
+        const badToken = tokens[i];
+
         console.log("REMOVING INVALID TOKEN:", badToken?.substring(0, 20));
+
         try {
           await pool
             .request()
-            .input("fcm_token", sql.NVarChar(sql.MAX), badToken)
-            .query(`DELETE FROM app_user_devices WHERE fcm_token = @fcm_token`);
+            .input("fcm_token", sql.NVarChar(sql.MAX), badToken).query(`
+              DELETE FROM app_user_devices
+              WHERE fcm_token = @fcm_token
+            `);
+
+          console.log("TOKEN REMOVED");
         } catch (delErr) {
           console.error("TOKEN CLEANUP ERROR:", delErr.message);
         }
       }
-    });
+    }
   } catch (err) {
     console.error("PUSH ERROR:", err.message);
   }
 }
-async function sendPushToGroup(
-  pool,
 
-  utg,
-
-  title,
-
-  body,
-) {
+async function sendPushToGroup(pool, utg, title, body) {
   try {
-    // GET USERS OF GROUP
-
-    const userResult = await pool
-      .request()
-
-      .input("utg", sql.NVarChar, utg).query(`
+    const userResult = await pool.request().input("utg", sql.NVarChar, utg)
+      .query(`
         SELECT uti
         FROM rh_secut
         WHERE utg = @utg
@@ -112,22 +113,14 @@ async function sendPushToGroup(
     const users = userResult.recordset;
 
     for (const user of users) {
-      await sendPushNotification(
-        pool,
-
-        user.uti,
-
-        title,
-
-        body,
-      );
+      await sendPushNotification(pool, user.uti, title, body);
     }
   } catch (err) {
     console.error("GROUP PUSH ERROR:", err.message);
   }
 }
+
 module.exports = {
   sendPushNotification,
-
   sendPushToGroup,
 };
