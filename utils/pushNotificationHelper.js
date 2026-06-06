@@ -46,7 +46,7 @@ async function sendPushNotification(pool, userId, title, body, data = {}) {
       data: stringData,
       android: {
         priority: "high",
-        ttl: "86400s",
+        ttl: 86400000, // 24 hours in milliseconds (number, not string)
       },
       apns: {
         headers: {
