@@ -20,6 +20,7 @@ async function openPool(databaseName) {
 }
 
 // ── POST /api/chat/send ──────────────────────────────────────────────────────
+// ── POST /api/chat/send ─────────────────────────────────────────────
 router.post("/send", async (req, res) => {
   let pool;
 
@@ -39,7 +40,7 @@ router.post("/send", async (req, res) => {
 
     pool = await openPool(databaseName);
 
-    // ── INSERT MESSAGE ────────────────────────────────────────────────
+    // INSERT CHAT MESSAGE
     await pool
       .request()
       .input("challanId", sql.VarChar, challanId)
@@ -48,47 +49,38 @@ router.post("/send", async (req, res) => {
       .input("messageText", sql.VarChar(sql.MAX), messageText).query(`
         INSERT INTO MA_ChallanChat
         (
-            ChatId,
-            ChallanId,
-            SenderUserId,
-            SenderName,
-            MessageText,
-            MessageTime,
-            IsRead
+          ChatId,
+          ChallanId,
+          SenderUserId,
+          SenderName,
+          MessageText,
+          MessageTime,
+          IsRead
         )
         VALUES
         (
-            NEWID(),
-            @challanId,
-            @userId,
-            @senderName,
-            @messageText,
-            GETDATE(),
-            0
+          NEWID(),
+          @challanId,
+          @userId,
+          @senderName,
+          @messageText,
+          GETDATE(),
+          0
         )
       `);
 
-    // ── RESPOND IMMEDIATELY so the sender is not kept waiting ─────────
-    res.json({ success: true });
-
-    // ── PUSH NOTIFICATIONS (fire-and-forget after response) ───────────
-    // Strategy: notify ALL users who have an FCM token in this database
-    // EXCEPT the sender. This covers:
-    //   - Users who have never sent a message (first-time recipients)
-    //   - Users who have previously participated
-    // We query app_user_devices for all registered mobile users,
-    // then exclude the sender.
+    // SEND PUSH NOTIFICATIONS
     try {
       const shortMessage =
         messageText.length > 60
           ? messageText.substring(0, 57) + "..."
           : messageText;
 
-      // Get all users with FCM tokens in this database, except the sender
       const deviceResult = await pool
         .request()
         .input("senderId", sql.NVarChar, userId).query(`
-          SELECT DISTINCT user_id
+          SELECT DISTINCT
+            user_id
           FROM app_user_devices
           WHERE user_id <> @senderId
             AND fcm_token IS NOT NULL
@@ -100,31 +92,44 @@ router.post("/send", async (req, res) => {
       );
 
       for (const row of deviceResult.recordset) {
-        sendPushNotification(
-          pool,
-          row.user_id,
-          `New message from ${senderName}`,
-          shortMessage,
-          {
-            type: "CHAT_MESSAGE",
-            challanId: challanId,
-            senderName: senderName,
-          },
-        ).catch((e) =>
-          console.error("PUSH NOTIFY ERROR for", row.user_id, e.message),
-        );
+        try {
+          await sendPushNotification(
+            pool,
+            row.user_id,
+            `New message from ${senderName}`,
+            shortMessage,
+            {
+              type: "CHAT_MESSAGE",
+              challanId: challanId,
+              senderName: senderName,
+            },
+          );
+        } catch (pushErr) {
+          console.error(
+            "PUSH NOTIFY ERROR FOR USER:",
+            row.user_id,
+            pushErr.message,
+          );
+        }
       }
     } catch (notifyErr) {
       console.error("CHAT PUSH NOTIFICATION ERROR:", notifyErr.message);
     }
+
+    return res.json({
+      success: true,
+    });
   } catch (err) {
     console.error(err);
-    // Only send error response if headers not already sent
-    if (!res.headersSent) {
-      return res.status(500).json({ success: false, message: err.message });
-    }
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
   } finally {
-    if (pool) await pool.close();
+    if (pool) {
+      await pool.close();
+    }
   }
 });
 
@@ -272,7 +277,11 @@ router.get("/debug/tokens", async (req, res) => {
       ORDER BY created_on DESC
     `);
 
-    return res.json({ success: true, count: result.recordset.length, data: result.recordset });
+    return res.json({
+      success: true,
+      count: result.recordset.length,
+      data: result.recordset,
+    });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   } finally {
