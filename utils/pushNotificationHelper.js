@@ -64,6 +64,14 @@ async function sendPushNotification(pool, userId, title, body, data = {}) {
       `PUSH SENT: ${response.successCount} ok, ${response.failureCount} failed`,
     );
 
+    // LOG EACH FAILURE with full error details
+    for (let i = 0; i < response.responses.length; i++) {
+      const resp = response.responses[i];
+      if (!resp.success) {
+        console.error(`PUSH FAILED [${i}]:`, resp.error?.code, resp.error?.message);
+      }
+    }
+
     // REMOVE INVALID TOKENS
     for (let i = 0; i < response.responses.length; i++) {
       const resp = response.responses[i];
