@@ -72,38 +72,37 @@ router.post("/send", async (req, res) => {
     res.json({ success: true });
 
     // ── PUSH NOTIFICATIONS (fire-and-forget after response) ───────────
-    // Find all distinct users who have participated in this challan chat,
-    // excluding the sender — notify them all.
+    // Strategy: notify ALL users who have an FCM token in this database
+    // EXCEPT the sender. This covers:
+    //   - Users who have never sent a message (first-time recipients)
+    //   - Users who have previously participated
+    // We query app_user_devices for all registered mobile users,
+    // then exclude the sender.
     try {
-      const participantsResult = await pool
-        .request()
-        .input("challanId", sql.VarChar, challanId)
-        .input("senderId", sql.VarChar, userId).query(`
-          SELECT DISTINCT SenderUserId
-          FROM MA_ChallanChat
-          WHERE ChallanId = @challanId
-            AND SenderUserId <> @senderId
-        `);
-
-      const participantIds = participantsResult.recordset.map(
-        (r) => r.SenderUserId,
-      );
-
-      // Also notify the challan owner (sp_462 → look up via challan details)
-      // if they are not already in the participant list.
-      // We store challan owner separately when available.
-      // For now, notify all found participants.
-
       const shortMessage =
         messageText.length > 60
           ? messageText.substring(0, 57) + "..."
           : messageText;
 
-      for (const recipientId of participantIds) {
-        // sendPushNotification handles missing tokens gracefully
+      // Get all users with FCM tokens in this database, except the sender
+      const deviceResult = await pool
+        .request()
+        .input("senderId", sql.NVarChar, userId).query(`
+          SELECT DISTINCT user_id
+          FROM app_user_devices
+          WHERE user_id <> @senderId
+            AND fcm_token IS NOT NULL
+            AND fcm_token <> ''
+        `);
+
+      console.log(
+        `CHAT PUSH: found ${deviceResult.recordset.length} device users to notify`,
+      );
+
+      for (const row of deviceResult.recordset) {
         sendPushNotification(
           pool,
-          recipientId,
+          row.user_id,
           `New message from ${senderName}`,
           shortMessage,
           {
@@ -112,11 +111,10 @@ router.post("/send", async (req, res) => {
             senderName: senderName,
           },
         ).catch((e) =>
-          console.error("PUSH NOTIFY ERROR for", recipientId, e.message),
+          console.error("PUSH NOTIFY ERROR for", row.user_id, e.message),
         );
       }
     } catch (notifyErr) {
-      // Never let notification errors bubble up — message was already sent
       console.error("CHAT PUSH NOTIFICATION ERROR:", notifyErr.message);
     }
   } catch (err) {
@@ -247,6 +245,35 @@ router.get("/:challanId", async (req, res) => {
     });
   } catch (err) {
     console.error(err);
+    return res.status(500).json({ success: false, message: err.message });
+  } finally {
+    if (pool) await pool.close();
+  }
+});
+
+// ── GET /api/chat/debug/tokens ───────────────────────────────────────────────
+// DEBUG: lists all FCM tokens in the database for the logged-in user's company
+// Call this from browser: GET https://api.myautoshop365.com/api/chat/debug/tokens
+// with Authorization header to verify tokens are saved
+router.get("/debug/tokens", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded) return res.status(401).json({ success: false });
+
+    const { database: databaseName } = decoded;
+    pool = await openPool(databaseName);
+
+    const result = await pool.request().query(`
+      SELECT user_id,
+             LEFT(fcm_token, 30) + '...' AS token_preview,
+             created_on
+      FROM app_user_devices
+      ORDER BY created_on DESC
+    `);
+
+    return res.json({ success: true, count: result.recordset.length, data: result.recordset });
+  } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   } finally {
     if (pool) await pool.close();
