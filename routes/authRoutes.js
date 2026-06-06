@@ -63,26 +63,20 @@ router.post("/save-fcm-token", async (req, res) => {
 
     pool = await openPool(databaseName);
 
+    // DELETE all old tokens for this user, then insert the new one.
+    // This ensures 1 user = 1 token = 1 notification (no duplicates).
     await pool
       .request()
       .input("user_id", sql.NVarChar, userId)
       .input("fcm_token", sql.NVarChar(sql.MAX), token).query(`
-      DELETE FROM app_user_devices
-      WHERE user_id = @user_id;
+        -- Remove all existing tokens for this user
+        DELETE FROM app_user_devices
+        WHERE user_id = @user_id;
 
-      INSERT INTO app_user_devices
-      (
-          user_id,
-          fcm_token,
-          created_on
-      )
-      VALUES
-      (
-          @user_id,
-          @fcm_token,
-          GETDATE()
-      );
-  `);
+        -- Insert the fresh token
+        INSERT INTO app_user_devices (user_id, fcm_token)
+        VALUES (@user_id, @fcm_token);
+      `);
 
     return res.json({
       success: true,
