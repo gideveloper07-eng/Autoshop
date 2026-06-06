@@ -29,37 +29,32 @@ async function sendPushNotification(pool, userId, title, body, data = {}) {
     }
 
     // FCM requires string values
-    const stringData = {};
+    const stringData = {
+      title,
+      body,
+    };
 
     for (const [key, value] of Object.entries(data)) {
       stringData[key] = String(value ?? "");
     }
 
-    // SEND NOTIFICATION
+    // SEND DATA-ONLY — no notification block so FCM does NOT auto-show a
+    // system notification. Flutter's background handler shows exactly ONE
+    // local notification, preventing duplicates.
     const response = await admin.messaging().sendEachForMulticast({
       tokens,
-
-      notification: {
-        title,
-        body,
-      },
-
       data: stringData,
-
       android: {
         priority: "high",
-
-        notification: {
-          sound: "default",
-          channelId: "chat_messages",
-        },
+        ttl: "86400s",
       },
-
       apns: {
+        headers: {
+          "apns-priority": "10",
+        },
         payload: {
           aps: {
-            sound: "default",
-            badge: 1,
+            contentAvailable: true,
           },
         },
       },
