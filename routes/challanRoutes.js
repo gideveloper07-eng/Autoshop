@@ -870,6 +870,69 @@ router.post("/reject", async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/dashboard-stats
+// Returns today's booking count and today's sale count
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/dashboard-stats", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const { database: databaseName } = decoded;
+    if (!databaseName) {
+      return res.status(400).json({ success: false, message: "Database not found in token" });
+    }
+
+    console.log("📊 DASHBOARD STATS — DB:", databaseName);
+
+    pool = await openPool(databaseName);
+
+    // Today Booking
+    const bookingResult = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "")
+      .input("what", sql.NVarChar(50), "TodayBooking")
+      .input("FromDate", sql.NVarChar(50), "")
+      .input("ToDate", sql.NVarChar(50), "")
+      .execute("A_SP_FOR_ApplicationChallangrid");
+
+    // Today Sale
+    const saleResult = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "")
+      .input("what", sql.NVarChar(50), "TodaySale")
+      .input("FromDate", sql.NVarChar(50), "")
+      .input("ToDate", sql.NVarChar(50), "")
+      .execute("A_SP_FOR_ApplicationChallangrid");
+
+    const todayBooking = bookingResult.recordset?.[0]?.todaybooking ?? 0;
+    const todaySale = saleResult.recordset?.[0]?.todaydelivery ?? 0;
+
+    console.log(`✅ Dashboard stats — Booking: ${todayBooking}, Sale: ${todaySale}`);
+
+    return res.json({
+      success: true,
+      data: {
+        todayBooking,
+        todaySale,
+      },
+    });
+  } catch (err) {
+    console.error("❌ DASHBOARD STATS ERROR:", err.message);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  } finally {
+    if (pool) await pool.close();
+  }
+});
+
 router.post(
   "/send-admin-push",
 

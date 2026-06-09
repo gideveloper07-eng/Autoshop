@@ -68,7 +68,11 @@ async function sendPushNotification(pool, userId, title, body, data = {}) {
     for (let i = 0; i < response.responses.length; i++) {
       const resp = response.responses[i];
       if (!resp.success) {
-        console.error(`PUSH FAILED [${i}]:`, resp.error?.code, resp.error?.message);
+        console.error(
+          `PUSH FAILED [${i}]:`,
+          resp.error?.code,
+          resp.error?.message,
+        );
       }
     }
 

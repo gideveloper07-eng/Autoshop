@@ -36,17 +36,17 @@ router.post("/send", async (req, res) => {
 
     const { database: databaseName, userId } = decoded;
 
-    const { challanId, messageText, senderName } = req.body;
+    const { challanId, messageText, senderName, challanNo } = req.body;
 
     pool = await openPool(databaseName);
 
     // INSERT CHAT MESSAGE
     await pool
       .request()
-      .input("challanId", sql.VarChar, challanId)
-      .input("userId", sql.VarChar, userId)
-      .input("senderName", sql.VarChar, senderName)
-      .input("messageText", sql.VarChar(sql.MAX), messageText).query(`
+      .input("challanId", sql.NVarChar(100), challanId)
+      .input("userId", sql.NVarChar(100), userId)
+      .input("senderName", sql.NVarChar(500), senderName)
+      .input("messageText", sql.NVarChar(sql.MAX), messageText).query(`
         INSERT INTO MA_ChallanChat
         (
           ChatId,
@@ -76,6 +76,29 @@ router.post("/send", async (req, res) => {
           ? messageText.substring(0, 57) + "..."
           : messageText;
 
+      // Fetch the challan number (sp_468) for this challanId so we can
+      // show "Challan Chat - 982" instead of the raw GUID in the notification
+      let challanNo = challanId;
+      try {
+        const challanResult = await pool
+          .request()
+          .input("challanId", sql.VarChar, challanId).query(`
+            SELECT TOP 1 sp_468
+            FROM MA_SP_462
+            WHERE sp_462 = @challanId
+          `);
+        if (challanResult.recordset.length > 0 && challanResult.recordset[0].sp_468) {
+          challanNo = challanResult.recordset[0].sp_468.toString();
+        }
+      } catch (e) {
+        // sp_468 lookup failed — fall back to challanId, not a critical error
+        console.log("CHALLAN NO LOOKUP SKIPPED:", e.message);
+      }
+
+      // Use challanNo passed from client (already known by Flutter)
+      // Fall back to challanId if not provided
+      const displayChallanNo = challanNo || challanId;
+
       const deviceResult = await pool
         .request()
         .input("senderId", sql.NVarChar, userId).query(`
@@ -101,6 +124,7 @@ router.post("/send", async (req, res) => {
             {
               type: "CHAT_MESSAGE",
               challanId: challanId,
+              challanNo: displayChallanNo,
               senderName: senderName,
             },
           );
@@ -153,8 +177,8 @@ router.post("/mark-read/:challanId", async (req, res) => {
 
     await pool
       .request()
-      .input("challanId", sql.VarChar, challanId)
-      .input("userId", sql.VarChar, userId).query(`
+      .input("challanId", sql.NVarChar(100), challanId)
+      .input("userId", sql.NVarChar(100), userId).query(`
         UPDATE MA_ChallanChat
         SET IsRead = 1
         WHERE ChallanId = @challanId
@@ -191,8 +215,8 @@ router.get("/unread-count/:challanId", async (req, res) => {
 
     const result = await pool
       .request()
-      .input("challanId", sql.VarChar, challanId)
-      .input("userId", sql.VarChar, userId).query(`
+      .input("challanId", sql.NVarChar(100), challanId)
+      .input("userId", sql.NVarChar(100), userId).query(`
         SELECT COUNT(*) AS UnreadCount
         FROM MA_ChallanChat
         WHERE ChallanId = @challanId
@@ -232,7 +256,7 @@ router.get("/:challanId", async (req, res) => {
 
     const result = await pool
       .request()
-      .input("challanId", sql.VarChar, req.params.challanId).query(`
+      .input("challanId", sql.NVarChar(100), req.params.challanId).query(`
         SELECT
             ChatId,
             SenderUserId,
