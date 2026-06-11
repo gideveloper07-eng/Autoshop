@@ -323,13 +323,15 @@ router.get("/:challanId", async (req, res) => {
     const result = await pool
       .request()
       .input("challanId", sql.NVarChar(100), req.params.challanId).query(`
-        SELECT
-            ChatId,
-            SenderUserId,
-            SenderName,
-            MessageText,
-            MessageTime
-        FROM MA_ChallanChat
+   SELECT
+    ChatId,
+    SenderUserId,
+    SenderName,
+    MessageText,
+    MessageType,
+    DocumentId,
+    MessageTime
+FROM MA_ChallanChat
         WHERE ChallanId = @challanId
         ORDER BY MessageTime
       `);
@@ -345,7 +347,62 @@ router.get("/:challanId", async (req, res) => {
     if (pool) await pool.close();
   }
 });
+router.get("/document/:documentId", async (req, res) => {
+  let pool;
 
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { database: databaseName } = decoded;
+
+    pool = await openPool(databaseName);
+
+    const { documentId } = req.params;
+
+    const result = await pool
+      .request()
+      .input("documentId", sql.UniqueIdentifier, documentId).query(`
+          SELECT
+              DocumentId,
+              DocumentType,
+              DocumentNo,
+              FileName,
+              FilePath
+          FROM MA_ChatDocuments
+          WHERE DocumentId = @documentId
+      `);
+
+    if (result.recordset.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found",
+      });
+    }
+
+    const doc = result.recordset[0];
+
+    return res.json({
+      success: true,
+      data: doc,
+    });
+  } catch (err) {
+    console.error(err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  } finally {
+    if (pool) await pool.close();
+  }
+});
 // ── GET /api/chat/debug/tokens ───────────────────────────────────────────────
 // DEBUG: lists all FCM tokens in the database for the logged-in user's company
 // Call this from browser: GET https://api.myautoshop365.com/api/chat/debug/tokens
