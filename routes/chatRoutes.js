@@ -323,17 +323,27 @@ router.get("/:challanId", async (req, res) => {
     const result = await pool
       .request()
       .input("challanId", sql.NVarChar(100), req.params.challanId).query(`
-   SELECT
-    ChatId,
-    SenderUserId,
-    SenderName,
-    MessageText,
-    MessageType,
-    DocumentId,
-    MessageTime
-FROM MA_ChallanChat
-        WHERE ChallanId = @challanId
-        ORDER BY MessageTime
+SELECT
+    c.ChatId,
+    c.SenderUserId,
+    c.SenderName,
+    c.MessageText,
+    c.MessageType,
+    c.DocumentId,
+    c.MessageTime,
+
+    d.DocumentNo,
+    d.DocumentType,
+    d.FileName
+
+FROM MA_ChallanChat c
+
+LEFT JOIN MA_ChatDocuments d
+    ON c.DocumentId = d.DocumentId
+
+WHERE c.ChallanId = @challanId
+
+ORDER BY c.MessageTime
       `);
 
     return res.json({
