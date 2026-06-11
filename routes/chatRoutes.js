@@ -331,6 +331,7 @@ SELECT
     c.MessageType,
     c.DocumentId,
     c.MessageTime,
+    c.IsRead,
 
     d.DocumentNo,
     d.DocumentType,
