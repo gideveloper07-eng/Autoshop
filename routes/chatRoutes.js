@@ -36,7 +36,14 @@ router.post("/send", async (req, res) => {
 
     const { database: databaseName, userId } = decoded;
 
-    const { challanId, messageText, senderName, challanNo } = req.body;
+    const {
+      challanId,
+      messageText,
+      senderName,
+      challanNo,
+      messageType,
+      documentId,
+    } = req.body;
 
     pool = await openPool(databaseName);
 
@@ -46,28 +53,34 @@ router.post("/send", async (req, res) => {
       .input("challanId", sql.NVarChar(100), challanId)
       .input("userId", sql.NVarChar(100), userId)
       .input("senderName", sql.NVarChar(500), senderName)
-      .input("messageText", sql.NVarChar(sql.MAX), messageText).query(`
-        INSERT INTO MA_ChallanChat
-        (
+      .input("messageText", sql.NVarChar(sql.MAX), messageText)
+      .input("messageType", sql.VarChar(20), messageType || "TEXT")
+      .input("documentId", sql.UniqueIdentifier, documentId || null).query(`
+      INSERT INTO MA_ChallanChat
+      (
           ChatId,
           ChallanId,
           SenderUserId,
           SenderName,
           MessageText,
+          MessageType,
+          DocumentId,
           MessageTime,
           IsRead
-        )
-        VALUES
-        (
+      )
+      VALUES
+      (
           NEWID(),
           @challanId,
           @userId,
           @senderName,
           @messageText,
+          @messageType,
+          @documentId,
           GETDATE(),
           0
-        )
-      `);
+      )
+  `);
 
     // SEND PUSH NOTIFICATIONS
     try {
@@ -87,7 +100,10 @@ router.post("/send", async (req, res) => {
             FROM MA_SP_462
             WHERE sp_462 = @challanId
           `);
-        if (challanResult.recordset.length > 0 && challanResult.recordset[0].sp_468) {
+        if (
+          challanResult.recordset.length > 0 &&
+          challanResult.recordset[0].sp_468
+        ) {
           challanNo = challanResult.recordset[0].sp_468.toString();
         }
       } catch (e) {
@@ -234,7 +250,57 @@ router.get("/unread-count/:challanId", async (req, res) => {
     if (pool) await pool.close();
   }
 });
+router.get("/documents", async (req, res) => {
+  let pool;
 
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { database: databaseName } = decoded;
+
+    if (!databaseName) {
+      return res.status(400).json({
+        success: false,
+        message: "Database not found",
+      });
+    }
+
+    pool = await openPool(databaseName);
+
+    const result = await pool.request().query(`
+      SELECT
+          DocumentId,
+          DocumentType,
+          DocumentNo,
+          FileName,
+          FilePath,
+          CreatedDate
+      FROM MA_ChatDocuments
+      ORDER BY CreatedDate DESC
+    `);
+
+    return res.json({
+      success: true,
+      data: result.recordset,
+    });
+  } catch (err) {
+    console.error("GET DOCUMENTS ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  } finally {
+    if (pool) await pool.close();
+  }
+});
 // ── GET /api/chat/:challanId ─────────────────────────────────────────────────
 // Fetch all messages for a challan (wildcard — must be LAST)
 router.get("/:challanId", async (req, res) => {
