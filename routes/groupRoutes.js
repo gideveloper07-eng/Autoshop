@@ -2,10 +2,24 @@ const express = require("express");
 const sql = require("mssql");
 const crypto = require("crypto");
 
-const { openPool } = require("../config/db");
 const { decodeToken, verifyToken } = require("../middleware/authMiddleware");
 
 const router = express.Router();
+
+// Creates a dynamic pool to the user's company database (same pattern as chatRoutes.js)
+async function openPool(databaseName) {
+  return await new sql.ConnectionPool({
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    server: process.env.DB_HOST,
+    port: parseInt(process.env.DB_PORT || "1433"),
+    database: databaseName,
+    options: {
+      encrypt: false,
+      trustServerCertificate: true,
+    },
+  }).connect();
+}
 
 // ── GET /api/group/users ──────────────────────────────────────────────────────
 // Returns all company employees for the "Add Member" picker.
