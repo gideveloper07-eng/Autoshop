@@ -492,38 +492,6 @@ router.get("/members/:challanId", async (req, res) => {
   }
 });
 
-// ── GET /api/chat/users ───────────────────────────────────────────────────────
-// Returns all users in the company for the "Add Member" picker
-router.get("/users", async (req, res) => {
-  let pool;
-  try {
-    const decoded = decodeToken(req);
-    if (!decoded)
-      return res.status(401).json({ success: false, message: "Unauthorized" });
-    const { database: databaseName, userId: currentUserId } = decoded;
-    pool = await openPool(databaseName);
-
-    const result = await pool
-      .request()
-      .input("currentUserId", sql.NVarChar(100), currentUserId).query(`
-        SELECT
-          uti  AS UserId,
-          utn  AS UserName,
-          utg  AS UserGroup
-        FROM rh_secut
-        WHERE uti <> @currentUserId
-        ORDER BY utn
-      `);
-
-    return res.json({ success: true, data: result.recordset });
-  } catch (err) {
-    console.error("GET USERS ERROR:", err);
-    return res.status(500).json({ success: false, message: err.message });
-  } finally {
-    if (pool) await pool.close();
-  }
-});
-
 // ── POST /api/chat/members/add ────────────────────────────────────────────────
 // Add a user as a member of a challan chat group
 router.post("/members/add", async (req, res) => {

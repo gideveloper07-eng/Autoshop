@@ -3,9 +3,42 @@ const sql = require("mssql");
 const crypto = require("crypto");
 
 const { openPool } = require("../config/db");
-const { decodeToken } = require("../middleware/authMiddleware");
+const { decodeToken, verifyToken } = require("../middleware/authMiddleware");
 
 const router = express.Router();
+
+// ── GET /api/group/users ──────────────────────────────────────────────────────
+// Returns all company employees for the "Add Member" picker.
+// Uses rh_mcm_1 (employee master) with a self-join to show reporting head.
+router.get("/users", verifyToken, async (req, res) => {
+  let pool;
+  try {
+    const databaseName = req.user.database;
+    const currentUserId = req.user.userId;
+
+    pool = await openPool(databaseName);
+
+    const result = await pool
+      .request()
+      .input("currentUserId", sql.NVarChar(100), currentUserId)
+      .query(`
+        SELECT
+          mcm_14 AS UserId,
+          mcm_15 AS UserName
+        FROM rh_mcm_1
+        WHERE mcm_29 = '1900-01-01 00:00:00.000'
+          AND mcm_14 <> @currentUserId
+        ORDER BY mcm_15
+      `);
+
+    return res.json({ success: true, data: result.recordset });
+  } catch (err) {
+    console.error("GET GROUP USERS ERROR:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  } finally {
+    if (pool) await pool.close();
+  }
+});
 
 //
 // CREATE GROUP
