@@ -447,4 +447,171 @@ router.get("/debug/tokens", async (req, res) => {
   }
 });
 
+// ── GET /api/chat/members/:challanId ─────────────────────────────────────────
+// Returns all active members of a challan chat group
+router.get("/members/:challanId", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded) return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { database: databaseName } = decoded;
+    const { challanId } = req.params;
+    pool = await openPool(databaseName);
+
+    // Ensure the table exists (auto-create so no manual SQL step needed)
+    await pool.request().query(`
+      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'MA_ChallanChatMembers')
+      CREATE TABLE MA_ChallanChatMembers (
+        MemberId  UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID() PRIMARY KEY,
+        ChallanId NVARCHAR(100)    NOT NULL,
+        UserId    NVARCHAR(100)    NOT NULL,
+        UserName  NVARCHAR(500)    NOT NULL,
+        AddedBy   NVARCHAR(100)    NOT NULL,
+        AddedOn   DATETIME         NOT NULL DEFAULT GETDATE(),
+        IsActive  BIT              NOT NULL DEFAULT 1,
+        CONSTRAINT UQ_ChallanChatMember UNIQUE (ChallanId, UserId)
+      )
+    `);
+
+    const result = await pool.request()
+      .input("challanId", sql.NVarChar(100), challanId)
+      .query(`
+        SELECT MemberId, UserId, UserName, AddedBy, AddedOn
+        FROM MA_ChallanChatMembers
+        WHERE ChallanId = @challanId AND IsActive = 1
+        ORDER BY AddedOn
+      `);
+
+    return res.json({ success: true, data: result.recordset });
+  } catch (err) {
+    console.error("GET MEMBERS ERROR:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  } finally {
+    if (pool) await pool.close();
+  }
+});
+
+// ── GET /api/chat/users ───────────────────────────────────────────────────────
+// Returns all users in the company for the "Add Member" picker
+router.get("/users", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded) return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { database: databaseName, userId: currentUserId } = decoded;
+    pool = await openPool(databaseName);
+
+    const result = await pool.request()
+      .input("currentUserId", sql.NVarChar(100), currentUserId)
+      .query(`
+        SELECT
+          uti  AS UserId,
+          utn  AS UserName,
+          utg  AS UserGroup
+        FROM rh_secut
+        WHERE uti <> @currentUserId
+        ORDER BY utn
+      `);
+
+    return res.json({ success: true, data: result.recordset });
+  } catch (err) {
+    console.error("GET USERS ERROR:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  } finally {
+    if (pool) await pool.close();
+  }
+});
+
+// ── POST /api/chat/members/add ────────────────────────────────────────────────
+// Add a user as a member of a challan chat group
+router.post("/members/add", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded) return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { database: databaseName, userId: addedBy } = decoded;
+    const { challanId, userId, userName } = req.body;
+    if (!challanId || !userId || !userName) {
+      return res.status(400).json({ success: false, message: "challanId, userId, userName required" });
+    }
+    pool = await openPool(databaseName);
+
+    // Upsert: if already exists but inactive, reactivate; else insert
+    await pool.request()
+      .input("challanId", sql.NVarChar(100), challanId)
+      .input("userId",    sql.NVarChar(100), userId)
+      .input("userName",  sql.NVarChar(500), userName)
+      .input("addedBy",   sql.NVarChar(100), addedBy)
+      .query(`
+        IF EXISTS (SELECT 1 FROM MA_ChallanChatMembers WHERE ChallanId = @challanId AND UserId = @userId)
+          UPDATE MA_ChallanChatMembers
+            SET IsActive = 1, AddedBy = @addedBy, AddedOn = GETDATE()
+          WHERE ChallanId = @challanId AND UserId = @userId
+        ELSE
+          INSERT INTO MA_ChallanChatMembers (ChallanId, UserId, UserName, AddedBy)
+          VALUES (@challanId, @userId, @userName, @addedBy)
+      `);
+
+    // Post a system message so everyone sees who was added
+    await pool.request()
+      .input("challanId",   sql.NVarChar(100), challanId)
+      .input("addedBy",     sql.NVarChar(100), addedBy)
+      .input("messageText", sql.NVarChar(sql.MAX), `${userName} was added to the group`)
+      .query(`
+        INSERT INTO MA_ChallanChat (ChatId, ChallanId, SenderUserId, SenderName, MessageText, MessageType, MessageTime, IsRead)
+        VALUES (NEWID(), @challanId, @addedBy, 'System', @messageText, 'SYSTEM', GETDATE(), 0)
+      `);
+
+    return res.json({ success: true, message: `${userName} added to chat` });
+  } catch (err) {
+    console.error("ADD MEMBER ERROR:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  } finally {
+    if (pool) await pool.close();
+  }
+});
+
+// ── DELETE /api/chat/members/remove ──────────────────────────────────────────
+// Remove (soft-delete) a member from a challan chat group
+router.delete("/members/remove", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded) return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { database: databaseName, userId: removedBy } = decoded;
+    const { challanId, userId, userName } = req.body;
+    if (!challanId || !userId) {
+      return res.status(400).json({ success: false, message: "challanId and userId required" });
+    }
+    pool = await openPool(databaseName);
+
+    await pool.request()
+      .input("challanId", sql.NVarChar(100), challanId)
+      .input("userId",    sql.NVarChar(100), userId)
+      .query(`
+        UPDATE MA_ChallanChatMembers
+        SET IsActive = 0
+        WHERE ChallanId = @challanId AND UserId = @userId
+      `);
+
+    // Post system message
+    const displayName = userName || userId;
+    await pool.request()
+      .input("challanId",   sql.NVarChar(100), challanId)
+      .input("removedBy",   sql.NVarChar(100), removedBy)
+      .input("messageText", sql.NVarChar(sql.MAX), `${displayName} was removed from the group`)
+      .query(`
+        INSERT INTO MA_ChallanChat (ChatId, ChallanId, SenderUserId, SenderName, MessageText, MessageType, MessageTime, IsRead)
+        VALUES (NEWID(), @challanId, @removedBy, 'System', @messageText, 'SYSTEM', GETDATE(), 0)
+      `);
+
+    return res.json({ success: true, message: `${displayName} removed from chat` });
+  } catch (err) {
+    console.error("REMOVE MEMBER ERROR:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  } finally {
+    if (pool) await pool.close();
+  }
+});
+
 module.exports = router;
