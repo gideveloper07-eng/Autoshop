@@ -416,7 +416,7 @@ router.get("/document/:documentId", async (req, res) => {
 });
 // ── GET /api/chat/debug/tokens ───────────────────────────────────────────────
 // DEBUG: lists all FCM tokens in the database for the logged-in user's company
-// Call this from browser: GET https://api.myautoshop365.com/api/chat/debug/tokens
+// Call this from browser: GET http://api.myautoshop365.com/api/chat/debug/tokens
 // with Authorization header to verify tokens are saved
 router.get("/debug/tokens", async (req, res) => {
   let pool;
@@ -453,7 +453,8 @@ router.get("/members/:challanId", async (req, res) => {
   let pool;
   try {
     const decoded = decodeToken(req);
-    if (!decoded) return res.status(401).json({ success: false, message: "Unauthorized" });
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
     const { database: databaseName } = decoded;
     const { challanId } = req.params;
     pool = await openPool(databaseName);
@@ -473,9 +474,9 @@ router.get("/members/:challanId", async (req, res) => {
       )
     `);
 
-    const result = await pool.request()
-      .input("challanId", sql.NVarChar(100), challanId)
-      .query(`
+    const result = await pool
+      .request()
+      .input("challanId", sql.NVarChar(100), challanId).query(`
         SELECT MemberId, UserId, UserName, AddedBy, AddedOn
         FROM MA_ChallanChatMembers
         WHERE ChallanId = @challanId AND IsActive = 1
@@ -497,13 +498,14 @@ router.get("/users", async (req, res) => {
   let pool;
   try {
     const decoded = decodeToken(req);
-    if (!decoded) return res.status(401).json({ success: false, message: "Unauthorized" });
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
     const { database: databaseName, userId: currentUserId } = decoded;
     pool = await openPool(databaseName);
 
-    const result = await pool.request()
-      .input("currentUserId", sql.NVarChar(100), currentUserId)
-      .query(`
+    const result = await pool
+      .request()
+      .input("currentUserId", sql.NVarChar(100), currentUserId).query(`
         SELECT
           uti  AS UserId,
           utn  AS UserName,
@@ -528,21 +530,27 @@ router.post("/members/add", async (req, res) => {
   let pool;
   try {
     const decoded = decodeToken(req);
-    if (!decoded) return res.status(401).json({ success: false, message: "Unauthorized" });
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
     const { database: databaseName, userId: addedBy } = decoded;
     const { challanId, userId, userName } = req.body;
     if (!challanId || !userId || !userName) {
-      return res.status(400).json({ success: false, message: "challanId, userId, userName required" });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "challanId, userId, userName required",
+        });
     }
     pool = await openPool(databaseName);
 
     // Upsert: if already exists but inactive, reactivate; else insert
-    await pool.request()
+    await pool
+      .request()
       .input("challanId", sql.NVarChar(100), challanId)
-      .input("userId",    sql.NVarChar(100), userId)
-      .input("userName",  sql.NVarChar(500), userName)
-      .input("addedBy",   sql.NVarChar(100), addedBy)
-      .query(`
+      .input("userId", sql.NVarChar(100), userId)
+      .input("userName", sql.NVarChar(500), userName)
+      .input("addedBy", sql.NVarChar(100), addedBy).query(`
         IF EXISTS (SELECT 1 FROM MA_ChallanChatMembers WHERE ChallanId = @challanId AND UserId = @userId)
           UPDATE MA_ChallanChatMembers
             SET IsActive = 1, AddedBy = @addedBy, AddedOn = GETDATE()
@@ -553,11 +561,15 @@ router.post("/members/add", async (req, res) => {
       `);
 
     // Post a system message so everyone sees who was added
-    await pool.request()
-      .input("challanId",   sql.NVarChar(100), challanId)
-      .input("addedBy",     sql.NVarChar(100), addedBy)
-      .input("messageText", sql.NVarChar(sql.MAX), `${userName} was added to the group`)
-      .query(`
+    await pool
+      .request()
+      .input("challanId", sql.NVarChar(100), challanId)
+      .input("addedBy", sql.NVarChar(100), addedBy)
+      .input(
+        "messageText",
+        sql.NVarChar(sql.MAX),
+        `${userName} was added to the group`,
+      ).query(`
         INSERT INTO MA_ChallanChat (ChatId, ChallanId, SenderUserId, SenderName, MessageText, MessageType, MessageTime, IsRead)
         VALUES (NEWID(), @challanId, @addedBy, 'System', @messageText, 'SYSTEM', GETDATE(), 0)
       `);
@@ -577,18 +589,21 @@ router.delete("/members/remove", async (req, res) => {
   let pool;
   try {
     const decoded = decodeToken(req);
-    if (!decoded) return res.status(401).json({ success: false, message: "Unauthorized" });
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
     const { database: databaseName, userId: removedBy } = decoded;
     const { challanId, userId, userName } = req.body;
     if (!challanId || !userId) {
-      return res.status(400).json({ success: false, message: "challanId and userId required" });
+      return res
+        .status(400)
+        .json({ success: false, message: "challanId and userId required" });
     }
     pool = await openPool(databaseName);
 
-    await pool.request()
+    await pool
+      .request()
       .input("challanId", sql.NVarChar(100), challanId)
-      .input("userId",    sql.NVarChar(100), userId)
-      .query(`
+      .input("userId", sql.NVarChar(100), userId).query(`
         UPDATE MA_ChallanChatMembers
         SET IsActive = 0
         WHERE ChallanId = @challanId AND UserId = @userId
@@ -596,16 +611,23 @@ router.delete("/members/remove", async (req, res) => {
 
     // Post system message
     const displayName = userName || userId;
-    await pool.request()
-      .input("challanId",   sql.NVarChar(100), challanId)
-      .input("removedBy",   sql.NVarChar(100), removedBy)
-      .input("messageText", sql.NVarChar(sql.MAX), `${displayName} was removed from the group`)
-      .query(`
+    await pool
+      .request()
+      .input("challanId", sql.NVarChar(100), challanId)
+      .input("removedBy", sql.NVarChar(100), removedBy)
+      .input(
+        "messageText",
+        sql.NVarChar(sql.MAX),
+        `${displayName} was removed from the group`,
+      ).query(`
         INSERT INTO MA_ChallanChat (ChatId, ChallanId, SenderUserId, SenderName, MessageText, MessageType, MessageTime, IsRead)
         VALUES (NEWID(), @challanId, @removedBy, 'System', @messageText, 'SYSTEM', GETDATE(), 0)
       `);
 
-    return res.json({ success: true, message: `${displayName} removed from chat` });
+    return res.json({
+      success: true,
+      message: `${displayName} removed from chat`,
+    });
   } catch (err) {
     console.error("REMOVE MEMBER ERROR:", err);
     return res.status(500).json({ success: false, message: err.message });
