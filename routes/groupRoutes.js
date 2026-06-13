@@ -107,8 +107,7 @@ router.post("/create", async (req, res) => {
         UserId     NVARCHAR(100)     NOT NULL,
         IsAdmin    BIT               NOT NULL DEFAULT 0,
         AddedBy    NVARCHAR(100)     NOT NULL,
-        AddedDate  DATETIME          NOT NULL DEFAULT GETDATE(),
-        CONSTRAINT UQ_GroupMember UNIQUE (GroupId, UserId)
+        AddedDate  DATETIME          NOT NULL DEFAULT GETDATE()
       )
     `);
 
@@ -262,8 +261,7 @@ router.get("/my-groups", async (req, res) => {
         MemberId UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID() PRIMARY KEY,
         GroupId UNIQUEIDENTIFIER NOT NULL, UserId NVARCHAR(100) NOT NULL,
         IsAdmin BIT NOT NULL DEFAULT 0, AddedBy NVARCHAR(100) NOT NULL,
-        AddedDate DATETIME NOT NULL DEFAULT GETDATE(),
-        CONSTRAINT UQ_GroupMember UNIQUE (GroupId, UserId)
+        AddedDate DATETIME NOT NULL DEFAULT GETDATE()
       )
     `);
 
@@ -592,7 +590,7 @@ router.post("/send-message", async (req, res) => {
       .request()
       .input("ChatId", sql.UniqueIdentifier, crypto.randomUUID())
       .input("GroupId", sql.UniqueIdentifier, groupId)
-      .input("SenderUserId", sql.UniqueIdentifier, userId)
+      .input("SenderUserId", sql.NVarChar(100), userId)
       .input("SenderName", sql.VarChar(200), userName || "")
       .input("MessageText", sql.NVarChar(sql.MAX), messageText || "")
       .input("MessageType", sql.VarChar(50), messageType)
