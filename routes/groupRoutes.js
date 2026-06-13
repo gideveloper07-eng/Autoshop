@@ -524,10 +524,15 @@ router.get("/messages/:groupId", async (req, res) => {
       .request()
       .input("GroupId", sql.NVarChar(50), groupId)
       .query(`
-        SELECT ChatId, GroupId, SenderUserId, SenderName, MessageText, MessageType, DocumentId, MessageTime
-        FROM MA_GroupChatMessages
-        WHERE GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId)
-        ORDER BY MessageTime ASC
+        SELECT
+          m.ChatId, m.GroupId, m.SenderUserId, m.SenderName,
+          m.MessageText, m.MessageType, m.DocumentId, m.MessageTime,
+          d.DocumentNo, d.DocumentType, d.FileName, d.FilePath
+        FROM MA_GroupChatMessages m
+        LEFT JOIN MA_ChatDocuments d
+          ON m.DocumentId = d.DocumentId
+        WHERE m.GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId)
+        ORDER BY m.MessageTime ASC
       `);
 
     return res.json({ success: true, data: result.recordset });
