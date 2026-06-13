@@ -89,7 +89,7 @@ router.post("/create", async (req, res) => {
       .request()
       .input("GroupId", sql.UniqueIdentifier, groupId)
       .input("GroupName", sql.VarChar(200), groupName.trim())
-      .input("CreatedBy", sql.UniqueIdentifier, userId).query(`
+      .input("CreatedBy", sql.NVarChar(100), userId).query(`
         INSERT INTO MA_ChatGroups
         (
             GroupId,
@@ -110,8 +110,8 @@ router.post("/create", async (req, res) => {
     await pool
       .request()
       .input("GroupId", sql.UniqueIdentifier, groupId)
-      .input("UserId", sql.UniqueIdentifier, userId)
-      .input("AddedBy", sql.UniqueIdentifier, userId).query(`
+      .input("UserId", sql.NVarChar(100), userId)
+      .input("AddedBy", sql.NVarChar(100), userId).query(`
         INSERT INTO MA_ChatGroupMembers
         (
             MemberId,
@@ -141,8 +141,8 @@ router.post("/create", async (req, res) => {
       await pool
         .request()
         .input("GroupId", sql.UniqueIdentifier, groupId)
-        .input("UserId", sql.UniqueIdentifier, memberId)
-        .input("AddedBy", sql.UniqueIdentifier, userId).query(`
+        .input("UserId", sql.NVarChar(100), memberId)
+        .input("AddedBy", sql.NVarChar(100), userId).query(`
           INSERT INTO MA_ChatGroupMembers
           (
               MemberId,
@@ -203,7 +203,7 @@ router.get("/my-groups", async (req, res) => {
 
     const result = await pool
       .request()
-      .input("UserId", sql.UniqueIdentifier, userId).query(`
+      .input("UserId", sql.NVarChar(100), userId).query(`
         SELECT
             g.GroupId,
             g.GroupName,
@@ -268,7 +268,7 @@ router.post("/add-member", async (req, res) => {
     const adminCheck = await pool
       .request()
       .input("GroupId", sql.UniqueIdentifier, groupId)
-      .input("UserId", sql.UniqueIdentifier, currentUserId).query(`
+      .input("UserId", sql.NVarChar(100), currentUserId).query(`
         SELECT IsAdmin
         FROM MA_ChatGroupMembers
         WHERE GroupId = @GroupId
@@ -288,7 +288,7 @@ router.post("/add-member", async (req, res) => {
     const exists = await pool
       .request()
       .input("GroupId", sql.UniqueIdentifier, groupId)
-      .input("UserId", sql.UniqueIdentifier, userId).query(`
+      .input("UserId", sql.NVarChar(100), userId).query(`
         SELECT TOP 1 1
         FROM MA_ChatGroupMembers
         WHERE GroupId = @GroupId
@@ -305,8 +305,8 @@ router.post("/add-member", async (req, res) => {
     await pool
       .request()
       .input("GroupId", sql.UniqueIdentifier, groupId)
-      .input("UserId", sql.UniqueIdentifier, userId)
-      .input("AddedBy", sql.UniqueIdentifier, currentUserId).query(`
+      .input("UserId", sql.NVarChar(100), userId)
+      .input("AddedBy", sql.NVarChar(100), currentUserId).query(`
         INSERT INTO MA_ChatGroupMembers
         (
             MemberId,
@@ -368,7 +368,7 @@ router.post("/remove-member", async (req, res) => {
     const adminCheck = await pool
       .request()
       .input("GroupId", sql.UniqueIdentifier, groupId)
-      .input("UserId", sql.UniqueIdentifier, currentUserId).query(`
+      .input("UserId", sql.NVarChar(100), currentUserId).query(`
         SELECT IsAdmin
         FROM MA_ChatGroupMembers
         WHERE GroupId = @GroupId
@@ -395,7 +395,7 @@ router.post("/remove-member", async (req, res) => {
     await pool
       .request()
       .input("GroupId", sql.UniqueIdentifier, groupId)
-      .input("UserId", sql.UniqueIdentifier, userId).query(`
+      .input("UserId", sql.NVarChar(100), userId).query(`
         DELETE FROM MA_ChatGroupMembers
         WHERE GroupId = @GroupId
         AND UserId = @UserId
@@ -447,18 +447,18 @@ router.get("/members/:groupId", async (req, res) => {
             gm.UserId,
             gm.IsAdmin,
             gm.AddedDate,
-            ISNULL(m1.m1_7,'') AS UserName
+            ISNULL(m.mcm_15, gm.UserId) AS UserName
 
         FROM MA_ChatGroupMembers gm
 
-        LEFT JOIN rh_m1 m1
-            ON m1.m1_2 = gm.UserId
+        LEFT JOIN rh_mcm_1 m
+            ON m.mcm_14 = gm.UserId
 
         WHERE gm.GroupId = @GroupId
 
         ORDER BY
             gm.IsAdmin DESC,
-            m1.m1_7
+            m.mcm_15
       `);
 
     return res.json({
@@ -507,7 +507,7 @@ router.post("/send-message", async (req, res) => {
     const memberCheck = await pool
       .request()
       .input("GroupId", sql.UniqueIdentifier, groupId)
-      .input("UserId", sql.UniqueIdentifier, userId).query(`
+      .input("UserId", sql.NVarChar(100), userId).query(`
         SELECT TOP 1 1
         FROM MA_ChatGroupMembers
         WHERE GroupId = @GroupId
@@ -602,7 +602,7 @@ router.get("/messages/:groupId", async (req, res) => {
     const memberCheck = await pool
       .request()
       .input("GroupId", sql.UniqueIdentifier, groupId)
-      .input("UserId", sql.UniqueIdentifier, userId).query(`
+      .input("UserId", sql.NVarChar(100), userId).query(`
         SELECT TOP 1 1
         FROM MA_ChatGroupMembers
         WHERE GroupId = @GroupId
