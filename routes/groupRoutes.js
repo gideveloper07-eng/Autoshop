@@ -83,6 +83,52 @@ router.post("/create", async (req, res) => {
 
     pool = await openPool(databaseName);
 
+    // ── Auto-create tables if they don't exist ──────────────────
+    await pool.request().query(`
+      IF NOT EXISTS (
+        SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'MA_ChatGroups'
+      )
+      CREATE TABLE MA_ChatGroups (
+        GroupId         UNIQUEIDENTIFIER  NOT NULL DEFAULT NEWID() PRIMARY KEY,
+        GroupName       NVARCHAR(200)     NOT NULL,
+        CreatedBy       NVARCHAR(100)     NOT NULL,
+        CreatedDate     DATETIME          NOT NULL DEFAULT GETDATE(),
+        LastMessageTime DATETIME          NULL
+      )
+    `);
+
+    await pool.request().query(`
+      IF NOT EXISTS (
+        SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'MA_ChatGroupMembers'
+      )
+      CREATE TABLE MA_ChatGroupMembers (
+        MemberId   UNIQUEIDENTIFIER  NOT NULL DEFAULT NEWID() PRIMARY KEY,
+        GroupId    UNIQUEIDENTIFIER  NOT NULL,
+        UserId     NVARCHAR(100)     NOT NULL,
+        IsAdmin    BIT               NOT NULL DEFAULT 0,
+        AddedBy    NVARCHAR(100)     NOT NULL,
+        AddedDate  DATETIME          NOT NULL DEFAULT GETDATE(),
+        CONSTRAINT UQ_GroupMember UNIQUE (GroupId, UserId)
+      )
+    `);
+
+    await pool.request().query(`
+      IF NOT EXISTS (
+        SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'MA_GroupChatMessages'
+      )
+      CREATE TABLE MA_GroupChatMessages (
+        ChatId        UNIQUEIDENTIFIER  NOT NULL DEFAULT NEWID() PRIMARY KEY,
+        GroupId       UNIQUEIDENTIFIER  NOT NULL,
+        SenderUserId  NVARCHAR(100)     NOT NULL,
+        SenderName    NVARCHAR(200)     NOT NULL,
+        MessageText   NVARCHAR(MAX)     NOT NULL,
+        MessageType   NVARCHAR(50)      NOT NULL DEFAULT 'TEXT',
+        DocumentId    UNIQUEIDENTIFIER  NULL,
+        MessageTime   DATETIME          NOT NULL DEFAULT GETDATE()
+      )
+    `);
+    // ────────────────────────────────────────────────────────────
+
     const groupId = crypto.randomUUID();
 
     await pool
@@ -201,6 +247,26 @@ router.get("/my-groups", async (req, res) => {
 
     pool = await openPool(databaseName);
 
+    // Auto-create tables silently if missing
+    await pool.request().query(`
+      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'MA_ChatGroups')
+      CREATE TABLE MA_ChatGroups (
+        GroupId UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID() PRIMARY KEY,
+        GroupName NVARCHAR(200) NOT NULL, CreatedBy NVARCHAR(100) NOT NULL,
+        CreatedDate DATETIME NOT NULL DEFAULT GETDATE(), LastMessageTime DATETIME NULL
+      )
+    `);
+    await pool.request().query(`
+      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'MA_ChatGroupMembers')
+      CREATE TABLE MA_ChatGroupMembers (
+        MemberId UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID() PRIMARY KEY,
+        GroupId UNIQUEIDENTIFIER NOT NULL, UserId NVARCHAR(100) NOT NULL,
+        IsAdmin BIT NOT NULL DEFAULT 0, AddedBy NVARCHAR(100) NOT NULL,
+        AddedDate DATETIME NOT NULL DEFAULT GETDATE(),
+        CONSTRAINT UQ_GroupMember UNIQUE (GroupId, UserId)
+      )
+    `);
+
     const result = await pool
       .request()
       .input("UserId", sql.NVarChar(100), userId).query(`
@@ -212,6 +278,7 @@ router.get("/my-groups", async (req, res) => {
 
             (
               SELECT COUNT(*)
+
               FROM MA_ChatGroupMembers gm
               WHERE gm.GroupId = g.GroupId
             ) AS MemberCount
