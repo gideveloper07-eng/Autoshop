@@ -18,7 +18,65 @@ async function openPool(databaseName) {
     },
   }).connect();
 }
+router.get("/my-chats", async (req, res) => {
+  let pool;
 
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { database: databaseName, userId, isAdmin } = decoded;
+
+    pool = await openPool(databaseName);
+
+    let result;
+
+    if (isAdmin) {
+      result = await pool.request().query(`
+        SELECT DISTINCT
+          c.ChallanId,
+          MAX(c.MessageTime) AS LastMessageTime
+        FROM MA_ChallanChat c
+        GROUP BY c.ChallanId
+        ORDER BY MAX(c.MessageTime) DESC
+      `);
+    } else {
+      result = await pool.request().input("userId", sql.NVarChar(100), userId)
+        .query(`
+          SELECT DISTINCT
+            c.ChallanId,
+            MAX(c.MessageTime) AS LastMessageTime
+          FROM MA_ChallanChat c
+          INNER JOIN MA_ChallanChatMembers m
+             ON c.ChallanId = m.ChallanId
+          WHERE m.UserId = @userId
+            AND m.IsActive = 1
+          GROUP BY c.ChallanId
+          ORDER BY MAX(c.MessageTime) DESC
+        `);
+    }
+
+    return res.json({
+      success: true,
+      data: result.recordset,
+    });
+  } catch (err) {
+    console.error("MY CHATS ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  } finally {
+    if (pool) await pool.close();
+  }
+});
 // ── POST /api/chat/send ──────────────────────────────────────────────────────
 // ── POST /api/chat/send ─────────────────────────────────────────────
 router.post("/send", async (req, res) => {
@@ -34,7 +92,7 @@ router.post("/send", async (req, res) => {
       });
     }
 
-    const { database: databaseName, userId } = decoded;
+    const { database: databaseName, userId, isAdmin } = decoded;
 
     const {
       challanId,
@@ -45,19 +103,51 @@ router.post("/send", async (req, res) => {
       documentId,
     } = req.body;
 
+    if (!challanId) {
+      return res.status(400).json({
+        success: false,
+        message: "ChallanId is required",
+      });
+    }
+
     pool = await openPool(databaseName);
 
-    // INSERT CHAT MESSAGE
+    // ─────────────────────────────────────────────
+    // SECURITY CHECK
+    // ─────────────────────────────────────────────
+    if (!isAdmin) {
+      const access = await pool
+        .request()
+        .input("challanId", sql.NVarChar(100), challanId)
+        .input("userId", sql.NVarChar(100), userId).query(`
+          SELECT 1
+          FROM MA_ChallanChatMembers
+          WHERE ChallanId = @challanId
+            AND UserId = @userId
+            AND IsActive = 1
+        `);
+
+      if (access.recordset.length === 0) {
+        return res.status(403).json({
+          success: false,
+          message: "You are not a member of this chat",
+        });
+      }
+    }
+
+    // ─────────────────────────────────────────────
+    // INSERT MESSAGE
+    // ─────────────────────────────────────────────
     await pool
       .request()
       .input("challanId", sql.NVarChar(100), challanId)
       .input("userId", sql.NVarChar(100), userId)
-      .input("senderName", sql.NVarChar(500), senderName)
-      .input("messageText", sql.NVarChar(sql.MAX), messageText)
+      .input("senderName", sql.NVarChar(500), senderName || userId)
+      .input("messageText", sql.NVarChar(sql.MAX), messageText || "")
       .input("messageType", sql.VarChar(20), messageType || "TEXT")
       .input("documentId", sql.UniqueIdentifier, documentId || null).query(`
-      INSERT INTO MA_ChallanChat
-      (
+        INSERT INTO MA_ChallanChat
+        (
           ChatId,
           ChallanId,
           SenderUserId,
@@ -67,9 +157,9 @@ router.post("/send", async (req, res) => {
           DocumentId,
           MessageTime,
           IsRead
-      )
-      VALUES
-      (
+        )
+        VALUES
+        (
           NEWID(),
           @challanId,
           @userId,
@@ -79,88 +169,47 @@ router.post("/send", async (req, res) => {
           @documentId,
           GETDATE(),
           0
-      )
-  `);
+        )
+      `);
 
-    // SEND PUSH NOTIFICATIONS
-    try {
-      const shortMessage =
-        messageText.length > 60
-          ? messageText.substring(0, 57) + "..."
-          : messageText;
+    // ─────────────────────────────────────────────
+    // SEND PUSH TO CHAT MEMBERS
+    // ─────────────────────────────────────────────
+    const members = await pool
+      .request()
+      .input("challanId", sql.NVarChar(100), challanId)
+      .input("senderId", sql.NVarChar(100), userId).query(`
+        SELECT UserId
+        FROM MA_ChallanChatMembers
+        WHERE ChallanId = @challanId
+          AND IsActive = 1
+          AND UserId <> @senderId
+      `);
 
-      // Fetch the challan number (sp_468) for this challanId so we can
-      // show "Challan Chat - 982" instead of the raw GUID in the notification
-      let challanNo = challanId;
+    for (const member of members.recordset) {
       try {
-        const challanResult = await pool
-          .request()
-          .input("challanId", sql.VarChar, challanId).query(`
-            SELECT TOP 1 sp_468
-            FROM MA_SP_462
-            WHERE sp_462 = @challanId
-          `);
-        if (
-          challanResult.recordset.length > 0 &&
-          challanResult.recordset[0].sp_468
-        ) {
-          challanNo = challanResult.recordset[0].sp_468.toString();
-        }
-      } catch (e) {
-        // sp_468 lookup failed — fall back to challanId, not a critical error
-        console.log("CHALLAN NO LOOKUP SKIPPED:", e.message);
+        await sendPushNotification(
+          pool,
+          member.UserId,
+          senderName || userId,
+          messageText || "New message",
+          {
+            type: "challan_chat",
+            challanId,
+            challanNo: challanNo || "",
+            senderId: userId,
+          },
+        );
+      } catch (pushErr) {
+        console.error(`PUSH ERROR FOR USER ${member.UserId}:`, pushErr.message);
       }
-
-      // Use challanNo passed from client (already known by Flutter)
-      // Fall back to challanId if not provided
-      const displayChallanNo = challanNo || challanId;
-
-      const deviceResult = await pool
-        .request()
-        .input("senderId", sql.NVarChar, userId).query(`
-          SELECT DISTINCT
-            user_id
-          FROM app_user_devices
-          WHERE user_id <> @senderId
-            AND fcm_token IS NOT NULL
-            AND fcm_token <> ''
-        `);
-
-      console.log(
-        `CHAT PUSH: found ${deviceResult.recordset.length} device users to notify`,
-      );
-
-      for (const row of deviceResult.recordset) {
-        try {
-          await sendPushNotification(
-            pool,
-            row.user_id,
-            `New message from ${senderName}`,
-            shortMessage,
-            {
-              type: "CHAT_MESSAGE",
-              challanId: challanId,
-              challanNo: displayChallanNo,
-              senderName: senderName,
-            },
-          );
-        } catch (pushErr) {
-          console.error(
-            "PUSH NOTIFY ERROR FOR USER:",
-            row.user_id,
-            pushErr.message,
-          );
-        }
-      }
-    } catch (notifyErr) {
-      console.error("CHAT PUSH NOTIFICATION ERROR:", notifyErr.message);
     }
 
     return res.json({
       success: true,
     });
   } catch (err) {
-    console.error(err);
+    console.error("SEND CHAT ERROR:", err);
 
     return res.status(500).json({
       success: false,
@@ -263,7 +312,7 @@ router.get("/documents", async (req, res) => {
       });
     }
 
-    const { database: databaseName } = decoded;
+    const { database: databaseName, userId, isAdmin } = decoded;
 
     if (!databaseName) {
       return res.status(400).json({
@@ -274,17 +323,51 @@ router.get("/documents", async (req, res) => {
 
     pool = await openPool(databaseName);
 
-    const result = await pool.request().query(`
-      SELECT
-          DocumentId,
-          DocumentType,
-          DocumentNo,
-          FileName,
-          FilePath,
-          CreatedDate
-      FROM MA_ChatDocuments
-      ORDER BY CreatedDate DESC
-    `);
+    let result;
+
+    // ─────────────────────────────────────────
+    // ADMIN → ALL DOCUMENTS
+    // ─────────────────────────────────────────
+    if (isAdmin) {
+      result = await pool.request().query(`
+        SELECT
+            DocumentId,
+            DocumentType,
+            DocumentNo,
+            FileName,
+            FilePath,
+            CreatedDate
+        FROM MA_ChatDocuments
+        ORDER BY CreatedDate DESC
+      `);
+    }
+
+    // ─────────────────────────────────────────
+    // USER → ONLY DOCUMENTS OF CHATS
+    // THEY BELONG TO
+    // ─────────────────────────────────────────
+    else {
+      result = await pool.request().input("userId", sql.NVarChar(100), userId)
+        .query(`
+          SELECT DISTINCT
+              d.DocumentId,
+              d.DocumentType,
+              d.DocumentNo,
+              d.FileName,
+              d.FilePath,
+              d.CreatedDate
+
+          FROM MA_ChatDocuments d
+
+          INNER JOIN MA_ChallanChatMembers m
+              ON d.ReferenceId = m.ChallanId
+
+          WHERE m.UserId = @userId
+            AND m.IsActive = 1
+
+          ORDER BY d.CreatedDate DESC
+        `);
+    }
 
     return res.json({
       success: true,
@@ -316,35 +399,58 @@ router.get("/:challanId", async (req, res) => {
       });
     }
 
-    const { database: databaseName } = decoded;
+    const { database: databaseName, userId, isAdmin } = decoded;
 
+    // Open DB connection first
     pool = await openPool(databaseName);
 
+    // Non-admin users must be chat members
+    if (!isAdmin) {
+      const access = await pool
+        .request()
+        .input("challanId", sql.NVarChar(100), req.params.challanId)
+        .input("userId", sql.NVarChar(100), userId).query(`
+          SELECT 1
+          FROM MA_ChallanChatMembers
+          WHERE ChallanId = @challanId
+            AND UserId = @userId
+            AND IsActive = 1
+        `);
+
+      if (access.recordset.length === 0) {
+        return res.status(403).json({
+          success: false,
+          message: "Access denied",
+        });
+      }
+    }
+
+    // Load chat messages
     const result = await pool
       .request()
       .input("challanId", sql.NVarChar(100), req.params.challanId).query(`
-SELECT
-    c.ChatId,
-    c.SenderUserId,
-    c.SenderName,
-    c.MessageText,
-    c.MessageType,
-    c.DocumentId,
-    c.MessageTime,
-    c.IsRead,
+        SELECT
+            c.ChatId,
+            c.SenderUserId,
+            c.SenderName,
+            c.MessageText,
+            c.MessageType,
+            c.DocumentId,
+            c.MessageTime,
+            c.IsRead,
 
-    d.DocumentNo,
-    d.DocumentType,
-    d.FileName
+            d.DocumentNo,
+            d.DocumentType,
+            d.FileName
 
-FROM MA_ChallanChat c
+        FROM MA_ChallanChat c
 
-LEFT JOIN MA_ChatDocuments d
-    ON c.DocumentId = d.DocumentId
+        LEFT JOIN MA_ChatDocuments d
+            ON c.DocumentId = d.DocumentId
 
-WHERE c.ChallanId = @challanId
+        WHERE c.ChallanId = @challanId
 
-ORDER BY c.MessageTime
+        ORDER BY c.MessageTime
       `);
 
     return res.json({
@@ -352,10 +458,16 @@ ORDER BY c.MessageTime
       data: result.recordset,
     });
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ success: false, message: err.message });
+    console.error("GET CHAT ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
   } finally {
-    if (pool) await pool.close();
+    if (pool) {
+      await pool.close();
+    }
   }
 });
 router.get("/document/:documentId", async (req, res) => {
@@ -371,37 +483,52 @@ router.get("/document/:documentId", async (req, res) => {
       });
     }
 
-    const { database: databaseName } = decoded;
+    const { database: databaseName, userId, isAdmin } = decoded;
 
     pool = await openPool(databaseName);
 
-    const { documentId } = req.params;
-
-    const result = await pool
+    // Get document
+    const docResult = await pool
       .request()
-      .input("documentId", sql.UniqueIdentifier, documentId).query(`
-          SELECT
-              DocumentId,
-              DocumentType,
-              DocumentNo,
-              FileName,
-              FilePath
-          FROM MA_ChatDocuments
-          WHERE DocumentId = @documentId
+      .input("challanId", sql.NVarChar(100), document.ReferenceId).query(`
+        SELECT *
+        FROM MA_ChatDocuments
+        WHERE DocumentId = @documentId
       `);
 
-    if (result.recordset.length === 0) {
+    if (docResult.recordset.length === 0) {
       return res.status(404).json({
         success: false,
         message: "Document not found",
       });
     }
 
-    const doc = result.recordset[0];
+    const document = docResult.recordset[0];
+
+    // Admin bypass
+    if (!isAdmin) {
+      const access = await pool
+        .request()
+        .input("challanId", sql.UniqueIdentifier, document.ReferenceId)
+        .input("userId", sql.NVarChar(100), userId).query(`
+          SELECT 1
+          FROM MA_ChallanChatMembers
+          WHERE ChallanId = @challanId
+          AND UserId = @userId
+          AND IsActive = 1
+        `);
+
+      if (access.recordset.length === 0) {
+        return res.status(403).json({
+          success: false,
+          message: "Access denied",
+        });
+      }
+    }
 
     return res.json({
       success: true,
-      data: doc,
+      data: document,
     });
   } catch (err) {
     console.error(err);
@@ -496,39 +623,79 @@ router.get("/members/:challanId", async (req, res) => {
 // Add a user as a member of a challan chat group
 router.post("/members/add", async (req, res) => {
   let pool;
+
   try {
     const decoded = decodeToken(req);
-    if (!decoded)
-      return res.status(401).json({ success: false, message: "Unauthorized" });
-    const { database: databaseName, userId: addedBy } = decoded;
-    const { challanId, userId, userName } = req.body;
-    if (!challanId || !userId || !userName) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "challanId, userId, userName required",
-        });
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
     }
+
+    // ADMIN ONLY
+    if (!decoded.isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: "Admin access only",
+      });
+    }
+
+    const { database: databaseName, userId: addedBy } = decoded;
+
+    const { challanId, userId, userName } = req.body;
+
+    if (!challanId || !userId || !userName) {
+      return res.status(400).json({
+        success: false,
+        message: "challanId, userId and userName required",
+      });
+    }
+
     pool = await openPool(databaseName);
 
-    // Upsert: if already exists but inactive, reactivate; else insert
     await pool
       .request()
       .input("challanId", sql.NVarChar(100), challanId)
       .input("userId", sql.NVarChar(100), userId)
       .input("userName", sql.NVarChar(500), userName)
       .input("addedBy", sql.NVarChar(100), addedBy).query(`
-        IF EXISTS (SELECT 1 FROM MA_ChallanChatMembers WHERE ChallanId = @challanId AND UserId = @userId)
+        IF EXISTS (
+          SELECT 1
+          FROM MA_ChallanChatMembers
+          WHERE ChallanId = @challanId
+            AND UserId = @userId
+        )
+        BEGIN
           UPDATE MA_ChallanChatMembers
-            SET IsActive = 1, AddedBy = @addedBy, AddedOn = GETDATE()
-          WHERE ChallanId = @challanId AND UserId = @userId
+          SET
+            IsActive = 1,
+            AddedBy = @addedBy,
+            AddedOn = GETDATE()
+          WHERE ChallanId = @challanId
+            AND UserId = @userId
+        END
         ELSE
-          INSERT INTO MA_ChallanChatMembers (ChallanId, UserId, UserName, AddedBy)
-          VALUES (@challanId, @userId, @userName, @addedBy)
+        BEGIN
+          INSERT INTO MA_ChallanChatMembers
+          (
+            ChallanId,
+            UserId,
+            UserName,
+            AddedBy
+          )
+          VALUES
+          (
+            @challanId,
+            @userId,
+            @userName,
+            @addedBy
+          )
+        END
       `);
 
-    // Post a system message so everyone sees who was added
+    // System message
     await pool
       .request()
       .input("challanId", sql.NVarChar(100), challanId)
@@ -536,18 +703,47 @@ router.post("/members/add", async (req, res) => {
       .input(
         "messageText",
         sql.NVarChar(sql.MAX),
-        `${userName} was added to the group`,
+        `${userName} was added to the chat`,
       ).query(`
-        INSERT INTO MA_ChallanChat (ChatId, ChallanId, SenderUserId, SenderName, MessageText, MessageType, MessageTime, IsRead)
-        VALUES (NEWID(), @challanId, @addedBy, 'System', @messageText, 'SYSTEM', GETDATE(), 0)
+        INSERT INTO MA_ChallanChat
+        (
+          ChatId,
+          ChallanId,
+          SenderUserId,
+          SenderName,
+          MessageText,
+          MessageType,
+          MessageTime,
+          IsRead
+        )
+        VALUES
+        (
+          NEWID(),
+          @challanId,
+          @addedBy,
+          'System',
+          @messageText,
+          'SYSTEM',
+          GETDATE(),
+          0
+        )
       `);
 
-    return res.json({ success: true, message: `${userName} added to chat` });
+    return res.json({
+      success: true,
+      message: `${userName} added successfully`,
+    });
   } catch (err) {
     console.error("ADD MEMBER ERROR:", err);
-    return res.status(500).json({ success: false, message: err.message });
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
   } finally {
-    if (pool) await pool.close();
+    if (pool) {
+      await pool.close();
+    }
   }
 });
 
@@ -555,17 +751,36 @@ router.post("/members/add", async (req, res) => {
 // Remove (soft-delete) a member from a challan chat group
 router.delete("/members/remove", async (req, res) => {
   let pool;
+
   try {
     const decoded = decodeToken(req);
-    if (!decoded)
-      return res.status(401).json({ success: false, message: "Unauthorized" });
-    const { database: databaseName, userId: removedBy } = decoded;
-    const { challanId, userId, userName } = req.body;
-    if (!challanId || !userId) {
-      return res
-        .status(400)
-        .json({ success: false, message: "challanId and userId required" });
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
     }
+
+    // ADMIN ONLY
+    if (!decoded.isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: "Admin access only",
+      });
+    }
+
+    const { database: databaseName, userId: removedBy } = decoded;
+
+    const { challanId, userId, userName } = req.body;
+
+    if (!challanId || !userId) {
+      return res.status(400).json({
+        success: false,
+        message: "challanId and userId required",
+      });
+    }
+
     pool = await openPool(databaseName);
 
     await pool
@@ -574,11 +789,12 @@ router.delete("/members/remove", async (req, res) => {
       .input("userId", sql.NVarChar(100), userId).query(`
         UPDATE MA_ChallanChatMembers
         SET IsActive = 0
-        WHERE ChallanId = @challanId AND UserId = @userId
+        WHERE ChallanId = @challanId
+          AND UserId = @userId
       `);
 
-    // Post system message
     const displayName = userName || userId;
+
     await pool
       .request()
       .input("challanId", sql.NVarChar(100), challanId)
@@ -586,22 +802,47 @@ router.delete("/members/remove", async (req, res) => {
       .input(
         "messageText",
         sql.NVarChar(sql.MAX),
-        `${displayName} was removed from the group`,
+        `${displayName} was removed from the chat`,
       ).query(`
-        INSERT INTO MA_ChallanChat (ChatId, ChallanId, SenderUserId, SenderName, MessageText, MessageType, MessageTime, IsRead)
-        VALUES (NEWID(), @challanId, @removedBy, 'System', @messageText, 'SYSTEM', GETDATE(), 0)
+        INSERT INTO MA_ChallanChat
+        (
+          ChatId,
+          ChallanId,
+          SenderUserId,
+          SenderName,
+          MessageText,
+          MessageType,
+          MessageTime,
+          IsRead
+        )
+        VALUES
+        (
+          NEWID(),
+          @challanId,
+          @removedBy,
+          'System',
+          @messageText,
+          'SYSTEM',
+          GETDATE(),
+          0
+        )
       `);
 
     return res.json({
       success: true,
-      message: `${displayName} removed from chat`,
+      message: `${displayName} removed successfully`,
     });
   } catch (err) {
     console.error("REMOVE MEMBER ERROR:", err);
-    return res.status(500).json({ success: false, message: err.message });
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
   } finally {
-    if (pool) await pool.close();
+    if (pool) {
+      await pool.close();
+    }
   }
 });
-
 module.exports = router;

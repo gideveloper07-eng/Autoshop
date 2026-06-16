@@ -60,6 +60,7 @@ const loginUser = async (req, res) => {
       .input("password", sql.NVarChar, password).query(`
         SELECT TOP 1
           uti,
+           utnm,
           is_logged_in,
           logged_device_id,
           last_login,
@@ -78,6 +79,7 @@ const loginUser = async (req, res) => {
     }
 
     const user = userResult.recordset[0];
+    const isAdmin = String(user.uti).trim().toLowerCase() === "adm";
     console.log("✅ User found:", user.uti);
     console.log("   is_logged_in    :", user.is_logged_in);
     console.log("   logged_device_id:", user.logged_device_id);
@@ -114,15 +116,18 @@ const loginUser = async (req, res) => {
 
     console.log("✅ DB updated — is_logged_in=1, device:", cleanDeviceId);
 
-    // ── 6. Issue JWT ─────────────────────────────────────────────────────────
     const token = jwt.sign(
       {
         userId: user.uti,
+        userName: user.utnm,
         database: databaseName,
         utg: user.UTG || user.utg,
+        isAdmin: isAdmin,
       },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" },
+      {
+        expiresIn: "7d",
+      },
     );
 
     // ── 7. Respond ───────────────────────────────────────────────────────────
@@ -130,10 +135,12 @@ const loginUser = async (req, res) => {
       success: true,
       token,
       userId: user.uti || userId,
-      name: user.uti || userId,
+      userName: user.utnm,
+      name: user.utnm || user.uti,
       email: "",
       databaseName,
       utg: user.UTG || user.utg,
+      isAdmin,
       message: "Login Successful",
     });
   } catch (err) {

@@ -6,29 +6,35 @@ const jwt = require("jsonwebtoken");
 
 const verifyToken = (req, res, next) => {
   try {
-    const auth = req.headers.authorization;
+    const authHeader = req.headers.authorization;
 
-    if (!auth || !auth.startsWith("Bearer ")) {
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return res.status(401).json({
         success: false,
         message: "No token provided",
       });
     }
 
-    const token = auth.split(" ")[1];
+    const token = authHeader.split(" ")[1];
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // VERY IMPORTANT
-    req.user = decoded;
+    // Standardized user object available everywhere
+    req.user = {
+      userId: decoded.userId,
+      userName: decoded.userName,
+      database: decoded.database,
+      utg: decoded.utg,
+      isAdmin: decoded.isAdmin || false,
+    };
 
     next();
   } catch (err) {
-    console.log("TOKEN VERIFY ERROR:", err.message);
+    console.error("TOKEN VERIFY ERROR:", err.message);
 
     return res.status(401).json({
       success: false,
-      message: "Invalid token",
+      message: "Invalid or expired token",
     });
   }
 };
@@ -39,23 +45,62 @@ const verifyToken = (req, res, next) => {
 
 const decodeToken = (req) => {
   try {
-    const auth = req.headers.authorization;
+    const authHeader = req.headers.authorization;
 
-    if (!auth || !auth.startsWith("Bearer ")) {
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return null;
     }
 
-    const token = auth.split(" ")[1];
+    const token = authHeader.split(" ")[1];
 
-    return jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    return {
+      userId: decoded.userId,
+      userName: decoded.userName,
+      database: decoded.database,
+      utg: decoded.utg,
+      isAdmin: decoded.isAdmin || false,
+    };
   } catch (err) {
-    console.log("TOKEN DECODE ERROR:", err.message);
-
+    console.error("TOKEN DECODE ERROR:", err.message);
     return null;
+  }
+};
+
+// ─────────────────────────────────────
+// ADMIN ONLY MIDDLEWARE
+// ─────────────────────────────────────
+
+const verifyAdmin = (req, res, next) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    if (!req.user.isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: "Admin access only",
+      });
+    }
+
+    next();
+  } catch (err) {
+    console.error("ADMIN VERIFY ERROR:", err.message);
+
+    return res.status(500).json({
+      success: false,
+      message: "Authorization error",
+    });
   }
 };
 
 module.exports = {
   verifyToken,
   decodeToken,
+  verifyAdmin,
 };

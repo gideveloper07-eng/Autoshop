@@ -77,14 +77,21 @@ router.get("/retail-incentive", async (req, res) => {
     }
 
     // Get dateType from query parameter (default: 'challan')
-    const dateType = req.query.dateType || 'challan';
-    
+    const dateType = req.query.dateType || "challan";
+
     // Set prefix based on dateType
     // prefix='1' → IF condition → returns 'date' field (Challan Date)
     // prefix='' → ELSE condition → returns 'exdate' field (Expected Delivery Date)
-    const prefix = dateType === 'challan' ? '1' : '';
+    const prefix = dateType === "challan" ? "1" : "";
 
-    console.log("📋 CHALLAN — Retail Incentive — DB:", databaseName, "dateType:", dateType, "prefix:", prefix);
+    console.log(
+      "📋 CHALLAN — Retail Incentive — DB:",
+      databaseName,
+      "dateType:",
+      dateType,
+      "prefix:",
+      prefix,
+    );
 
     pool = await openPool(databaseName);
 
@@ -884,7 +891,9 @@ router.get("/dashboard-stats", async (req, res) => {
 
     const { database: databaseName } = decoded;
     if (!databaseName) {
-      return res.status(400).json({ success: false, message: "Database not found in token" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Database not found in token" });
     }
 
     console.log("📊 DASHBOARD STATS — DB:", databaseName);
@@ -912,7 +921,9 @@ router.get("/dashboard-stats", async (req, res) => {
     const todayBooking = bookingResult.recordset?.[0]?.todaybooking ?? 0;
     const todaySale = saleResult.recordset?.[0]?.todaydelivery ?? 0;
 
-    console.log(`✅ Dashboard stats — Booking: ${todayBooking}, Sale: ${todaySale}`);
+    console.log(
+      `✅ Dashboard stats — Booking: ${todayBooking}, Sale: ${todaySale}`,
+    );
 
     return res.json({
       success: true,
