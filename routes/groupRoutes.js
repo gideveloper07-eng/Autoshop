@@ -363,7 +363,7 @@ router.post("/add-member", async (req, res) => {
       .request()
       .input("GroupId", sql.NVarChar(50), groupId)
       .input("UserId", sql.NVarChar(100), userId).query(`
-        SELECT TOP 1 FROM MA_ChatGroupMembers
+        SELECT TOP 1 1 FROM MA_ChatGroupMembers
         WHERE GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId) AND UserId = @UserId
       `);
 
@@ -502,7 +502,7 @@ router.get("/members/:groupId", async (req, res) => {
         FROM MA_ChatGroupMembers gm
 
         LEFT JOIN rh_secut s
-            ON s.utg = gm.UserId
+ON CONVERT(VARCHAR(50), s.utg) = gm.UserId
 
         WHERE gm.GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId)
 
@@ -521,6 +521,8 @@ router.get("/members/:groupId", async (req, res) => {
     return res.status(500).json({
       success: false,
       message: err.message,
+      detail: err.originalError?.message,
+      stack: err.stack,
     });
   } finally {
     if (pool) {
