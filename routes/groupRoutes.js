@@ -46,7 +46,7 @@ router.get("/users", verifyToken, async (req, res) => {
     });
   } catch (err) {
     console.error("GET USERS ERROR:", err);
- 
+
     return res.status(500).json({
       success: false,
       message: err.message,
@@ -363,7 +363,7 @@ router.post("/add-member", async (req, res) => {
       .request()
       .input("GroupId", sql.NVarChar(50), groupId)
       .input("UserId", sql.NVarChar(100), userId).query(`
-        SELECT TOP 1 1 FROM MA_ChatGroupMembers
+        SELECT TOP 1 FROM MA_ChatGroupMembers
         WHERE GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId) AND UserId = @UserId
       `);
 
