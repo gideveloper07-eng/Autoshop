@@ -496,10 +496,10 @@ router.get("/members/:groupId", async (req, res) => {
       .input("GroupId", sql.NVarChar(50), groupId).query(`
         SELECT
             gm.MemberId,
-            (select  uti from rh_secut where utunqid=gm.UserId) as gm.UserId,
+             gm.UserId,
             gm.IsAdmin,
             gm.AddedDate,
-            ISNULL(s.utnm, gm.UserId) AS UserName
+          s.uti AS UserName
         FROM MA_ChatGroupMembers gm
 
         LEFT JOIN rh_secut s
