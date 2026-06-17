@@ -61,40 +61,105 @@ function getClientIp(req) {
 // - dateType='challan' → @prefix='1' → Returns date field (Challan Date - sp_467)
 // - dateType='expected' → @prefix='' → Returns exdate field (Expected Delivery Date - bo_32)
 // ─────────────────────────────────────────────────────────────────────────────
+// router.get("/retail-incentive", async (req, res) => {
+//   let pool;
+//   try {
+//     const decoded = decodeToken(req);
+//     if (!decoded) {
+//       return res.status(401).json({ success: false, message: "Unauthorized" });
+//     }
+
+//     const { database: databaseName } = decoded;
+//     if (!databaseName) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Database not found in token" });
+//     }
+
+//     // Get dateType from query parameter (default: 'challan')
+//     const dateType = req.query.dateType || "challan";
+
+//     // Set prefix based on dateType
+//     // prefix='1' → IF condition → returns 'date' field (Challan Date)
+//     // prefix='' → ELSE condition → returns 'exdate' field (Expected Delivery Date)
+//     const prefix = dateType === "challan" ? "1" : "";
+
+//     console.log(
+//       "📋 CHALLAN — Retail Incentive — DB:",
+//       databaseName,
+//       "dateType:",
+//       dateType,
+//       "prefix:",
+//       prefix,
+//     );
+
+//     pool = await openPool(databaseName);
+
+//     const result = await pool
+//       .request()
+//       .input("prefix", sql.NVarChar(50), prefix)
+//       .input("what", sql.NVarChar(50), "Retail_Incentive")
+//       .input("FromDate", sql.NVarChar(50), "")
+//       .input("ToDate", sql.NVarChar(50), "")
+//       .execute("A_SP_FOR_ApplicationChallangrid");
+
+//     console.log(`✅ Challan rows returned: ${result.recordset.length}`);
+
+//     return res.json({
+//       success: true,
+//       data: result.recordset,
+//     });
+//   } catch (err) {
+//     console.error("❌ CHALLAN ERROR:", err.message);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Server Error",
+//       error: err.message,
+//     });
+//   } finally {
+//     if (pool) await pool.close();
+//   }
+// });
 router.get("/retail-incentive", async (req, res) => {
   let pool;
+
   try {
     const decoded = decodeToken(req);
+
     if (!decoded) {
-      return res.status(401).json({ success: false, message: "Unauthorized" });
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
     }
 
-    const { database: databaseName } = decoded;
+    const { database: databaseName, userId, isAdmin = false } = decoded;
+
     if (!databaseName) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Database not found in token" });
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
     }
 
-    // Get dateType from query parameter (default: 'challan')
     const dateType = req.query.dateType || "challan";
-
-    // Set prefix based on dateType
-    // prefix='1' → IF condition → returns 'date' field (Challan Date)
-    // prefix='' → ELSE condition → returns 'exdate' field (Expected Delivery Date)
     const prefix = dateType === "challan" ? "1" : "";
 
     console.log(
-      "📋 CHALLAN — Retail Incentive — DB:",
+      "📋 CHALLAN — Retail Incentive",
+      "DB:",
       databaseName,
+      "User:",
+      userId,
+      "Admin:",
+      isAdmin,
       "dateType:",
       dateType,
-      "prefix:",
-      prefix,
     );
 
     pool = await openPool(databaseName);
 
+    // Get challans from SP
     const result = await pool
       .request()
       .input("prefix", sql.NVarChar(50), prefix)
@@ -103,24 +168,50 @@ router.get("/retail-incentive", async (req, res) => {
       .input("ToDate", sql.NVarChar(50), "")
       .execute("A_SP_FOR_ApplicationChallangrid");
 
-    console.log(`✅ Challan rows returned: ${result.recordset.length}`);
+    let challans = result.recordset || [];
+
+    console.log("TOTAL CHALLANS:", challans.length);
+
+    // Admin sees everything
+    if (!isAdmin) {
+      const memberResult = await pool
+        .request()
+        .input("userId", sql.NVarChar(100), userId).query(`
+          SELECT ChallanId
+          FROM MA_ChallanChatMembers
+          WHERE UserId = @userId
+            AND IsActive = 1
+        `);
+
+      const allowedChallans = new Set(
+        memberResult.recordset.map((x) => String(x.ChallanId).toUpperCase()),
+      );
+
+      challans = challans.filter((c) =>
+        allowedChallans.has(String(c.sp_462).toUpperCase()),
+      );
+
+      console.log(`FILTERED CHALLANS FOR ${userId}:`, challans.length);
+    }
 
     return res.json({
       success: true,
-      data: result.recordset,
+      data: challans,
     });
   } catch (err) {
     console.error("❌ CHALLAN ERROR:", err.message);
+
     return res.status(500).json({
       success: false,
       message: "Server Error",
       error: err.message,
     });
   } finally {
-    if (pool) await pool.close();
+    if (pool) {
+      await pool.close();
+    }
   }
 });
-
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/challan/edit/:sp_462
 // Calls A_SP_FOR_ApplicationChallangrid with @what = 'Edit' and @sp_462

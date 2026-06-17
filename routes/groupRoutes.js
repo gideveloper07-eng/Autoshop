@@ -46,7 +46,7 @@ router.get("/users", verifyToken, async (req, res) => {
     });
   } catch (err) {
     console.error("GET USERS ERROR:", err);
-
+ 
     return res.status(500).json({
       success: false,
       message: err.message,
