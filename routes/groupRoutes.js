@@ -33,7 +33,7 @@ router.get("/users", verifyToken, async (req, res) => {
 
     const result = await pool.request().query(`
       SELECT
-          CAST(utg AS NVARCHAR(50)) AS id,
+          CAST(utunqid AS NVARCHAR(50)) AS id,
           utnm AS name
       FROM rh_secut
       WHERE ISNULL(utnm,'') <> ''
