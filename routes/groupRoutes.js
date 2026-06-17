@@ -496,7 +496,7 @@ router.get("/members/:groupId", async (req, res) => {
       .input("GroupId", sql.NVarChar(50), groupId).query(`
         SELECT
             gm.MemberId,
-            (select  m1_7 from rh_m1 where m1_2 = gm.UserId) as gm.UserId,
+            (select  uti from rh_secut where utunqid=gm.UserId) as gm.UserId,
             gm.IsAdmin,
             gm.AddedDate,
             ISNULL(s.utnm, gm.UserId) AS UserName
