@@ -494,18 +494,18 @@ router.get("/members/:groupId", async (req, res) => {
     const result = await pool
       .request()
       .input("GroupId", sql.NVarChar(50), groupId).query(`
-    SELECT
-    gm.MemberId,
-    gm.UserId,
-    gm.IsAdmin,
-    gm.AddedDate,
-    s.utg,
-    s.utnm,
-    ISNULL(s.utnm, gm.UserId) AS UserName
-FROM MA_ChatGroupMembers gm
-LEFT JOIN rh_secut s
-    ON CONVERT(VARCHAR(50), s.utg) = gm.UserId
-WHERE gm.GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId)
+        SELECT
+            gm.MemberId,
+            (select  m1_7 from rh_m1 where m1_2 = gm.UserId) as gm.UserId,
+            gm.IsAdmin,
+            gm.AddedDate,
+            ISNULL(s.utnm, gm.UserId) AS UserName
+        FROM MA_ChatGroupMembers gm
+
+        LEFT JOIN rh_secut s
+ON CONVERT(VARCHAR(50), s.utg) = gm.UserId
+
+        WHERE gm.GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId)
 
         ORDER BY
             gm.IsAdmin DESC,
