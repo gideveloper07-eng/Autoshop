@@ -503,7 +503,7 @@ router.get("/members/:groupId", async (req, res) => {
         FROM MA_ChatGroupMembers gm
 
         LEFT JOIN rh_secut s
-ON CONVERT(VARCHAR(50), s.utg) = gm.UserId
+ON CONVERT(VARCHAR(50), s.utunqid) = gm.UserId
 
         WHERE gm.GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId)
 
