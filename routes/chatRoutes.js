@@ -611,7 +611,7 @@ router.post("/create-task", async (req, res) => {
       .request()
       .input("challanId", sql.NVarChar(100), challanId)
       .input("userId", sql.NVarChar(100), userId).query(`
-      SELECT sp_462 
+      SELECT sp_462 AS UserId
       FROM rh_sp_46
       WHERE sp_462 = @challanId
      
