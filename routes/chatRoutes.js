@@ -609,11 +609,10 @@ router.post("/create-task", async (req, res) => {
     const taskId = crypto.randomUUID().toUpperCase();
     const memberResult = await pool
       .request()
-      .input("challanId", sql.NVarChar(100), challanId)
-      .input("userId", sql.NVarChar(100), userId).query(`
+      .input("challanId", sql.NVarChar(100), challanId).query(`
       SELECT sp_463 AS UserId
       FROM rh_sp_46
-      WHERE sp_462 = @challanId
+      WHERE sp_468 = @challanId
      
   `);
 
