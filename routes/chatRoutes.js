@@ -631,10 +631,11 @@ router.post("/create-task", async (req, res) => {
       });
     }
     // Create Task
+    await pool.request();
     await pool
       .request()
       .input("TaskId", sql.NVarChar(50), taskId)
-      .input("ChallanId", sql.NVarChar(50), challanId)
+      .input("ChallanId", sql.Int, challanNo)
       .input("TaskTitle", sql.NVarChar(200), taskTitle)
       .input("TaskDescription", sql.NVarChar(sql.MAX), taskDescription || "")
       .input("AssignedBy", sql.NVarChar(100), userId)
@@ -673,10 +674,11 @@ router.post("/create-task", async (req, res) => {
       `);
 
     // Add Task Message To Chat
+    await pool.request();
     await pool
       .request()
       .input("TaskId", sql.NVarChar(50), taskId)
-      .input("ChallanId", sql.NVarChar(50), challanId)
+      .input("ChallanId", sql.Int, challanNo)
       .input("SenderUserId", sql.NVarChar(100), userId)
       .input("SenderName", sql.NVarChar(200), userName || userId)
       .input("MessageText", sql.NVarChar(sql.MAX), taskTitle).query(`
