@@ -611,11 +611,10 @@ router.post("/create-task", async (req, res) => {
       .request()
       .input("challanId", sql.NVarChar(100), challanId)
       .input("userId", sql.NVarChar(100), userId).query(`
-      SELECT TOP 1 UserId
-      FROM MA_ChallanChatMembers
-      WHERE ChallanId = @challanId
-      AND UserId <> @userId
-      AND IsActive = 1
+      SELECT sp_462 
+      FROM rh_sp_46
+      WHERE sp_462 = @challanId
+     
   `);
 
     const assignedTo = memberResult.recordset[0]?.UserId;
