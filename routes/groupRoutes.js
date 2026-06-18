@@ -915,7 +915,7 @@ router.get("/messages/:groupId", async (req, res) => {
   d.DocumentNo,
   d.DocumentType,
   d.FileName,
-  d.FilePath
+  d.FilePath,
     t.Status AS TaskStatus,
   t.Priority,
   t.AssignedTo,
