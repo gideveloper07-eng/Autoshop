@@ -870,6 +870,8 @@ router.post("/create-task", async (req, res) => {
     if (pool) await pool.close();
   }
 });
+
+
 // ── GET /api/group/messages/:groupId ─────────────────────────────────────────
 router.get("/messages/:groupId", async (req, res) => {
   let pool;
@@ -901,7 +903,7 @@ router.get("/messages/:groupId", async (req, res) => {
     const result = await pool
       .request()
       .input("GroupId", sql.NVarChar(50), groupId).query(`
-       SELECT
+  SELECT
   m.ChatId,
   m.GroupId,
   m.SenderUserId,

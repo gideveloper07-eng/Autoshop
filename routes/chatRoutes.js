@@ -573,7 +573,135 @@ router.get("/debug/tokens", async (req, res) => {
     if (pool) await pool.close();
   }
 });
+router.post("/create-task", async (req, res) => {
+  let pool;
 
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { database: databaseName, userId, userName } = decoded;
+
+    const {
+      challanId,
+      taskTitle,
+      taskDescription,
+      assignedTo,
+      startDate,
+      dueDate,
+      priority,
+    } = req.body;
+
+    if (!challanId || !taskTitle || !assignedTo) {
+      return res.status(400).json({
+        success: false,
+        message: "challanId, taskTitle and assignedTo are required",
+      });
+    }
+
+    pool = await openPool(databaseName);
+
+    const taskId = crypto.randomUUID().toUpperCase();
+
+    // Create Task
+    await pool
+      .request()
+      .input("TaskId", sql.NVarChar(50), taskId)
+      .input("ChallanId", sql.NVarChar(50), challanId)
+      .input("TaskTitle", sql.NVarChar(200), taskTitle)
+      .input("TaskDescription", sql.NVarChar(sql.MAX), taskDescription || "")
+      .input("AssignedBy", sql.NVarChar(100), userId)
+      .input("AssignedTo", sql.NVarChar(100), assignedTo)
+      .input("StartDate", sql.DateTime, startDate || null)
+      .input("DueDate", sql.DateTime, dueDate || null)
+      .input("Priority", sql.NVarChar(20), priority || "Medium").query(`
+        INSERT INTO MA_ChatTasks
+        (
+          TaskId,
+          ChallanId,
+          TaskTitle,
+          TaskDescription,
+          AssignedBy,
+          AssignedTo,
+          StartDate,
+          DueDate,
+          Priority,
+          Status,
+          CreatedDate
+        )
+        VALUES
+        (
+          CONVERT(UNIQUEIDENTIFIER,@TaskId),
+          @ChallanId,
+          @TaskTitle,
+          @TaskDescription,
+          @AssignedBy,
+          @AssignedTo,
+          @StartDate,
+          @DueDate,
+          @Priority,
+          'Pending',
+          GETDATE()
+        )
+      `);
+
+    // Add Task Message To Chat
+    await pool
+      .request()
+      .input("TaskId", sql.NVarChar(50), taskId)
+      .input("ChallanId", sql.NVarChar(50), challanId)
+      .input("SenderUserId", sql.NVarChar(100), userId)
+      .input("SenderName", sql.NVarChar(200), userName || userId)
+      .input("MessageText", sql.NVarChar(sql.MAX), taskTitle).query(`
+        INSERT INTO MA_ChallanChat
+        (
+          ChatId,
+          ChallanId,
+          SenderUserId,
+          SenderName,
+          MessageText,
+          MessageType,
+          TaskId,
+          MessageTime
+        )
+        VALUES
+        (
+          NEWID(),
+          @ChallanId,
+          @SenderUserId,
+          @SenderName,
+          @MessageText,
+          'TASK',
+          CONVERT(UNIQUEIDENTIFIER,@TaskId),
+          GETDATE()
+        )
+      `);
+
+    return res.json({
+      success: true,
+      taskId,
+      message: "Task created successfully",
+    });
+  } catch (err) {
+    console.error("CREATE CHAT TASK ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+      detail: err.originalError?.message,
+    });
+  } finally {
+    if (pool) {
+      await pool.close();
+    }
+  }
+});
 // ── GET /api/chat/members/:challanId ─────────────────────────────────────────
 // Returns all active members of a challan chat group
 router.get("/members/:challanId", async (req, res) => {
