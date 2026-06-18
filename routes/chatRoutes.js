@@ -607,18 +607,20 @@ router.post("/create-task", async (req, res) => {
     pool = await openPool(databaseName);
 
     const taskId = crypto.randomUUID().toUpperCase();
-    const memberResult = await pool
+    const challanResult = await pool
       .request()
       .input("challanId", sql.NVarChar(100), challanId).query(`
-      SELECT sp_463 AS UserId
+      SELECT
+          sp_463 AS UserId,
+          sp_468 AS ChallanNo
       FROM rh_sp_46
-      WHERE sp_468 = @challanId
-     
+      WHERE sp_462 = @challanId
   `);
 
-    const assignedTo = memberResult.recordset[0]?.UserId;
+    const assignedTo = challanResult.recordset[0]?.UserId;
+    const challanNo = challanResult.recordset[0]?.ChallanNo;
 
-    if (!assignedTo) {
+    if (!assignedTo || !challanNo) {
       console.log("NO MEMBER FOUND");
       console.log("challanId:", challanId);
       console.log("userId:", userId);
@@ -632,7 +634,7 @@ router.post("/create-task", async (req, res) => {
     await pool
       .request()
       .input("TaskId", sql.NVarChar(50), taskId)
-      .input("ChallanId", sql.NVarChar(50), challanId)
+      .input("ChallanId", sql.Int, challanNo)
       .input("TaskTitle", sql.NVarChar(200), taskTitle)
       .input("TaskDescription", sql.NVarChar(sql.MAX), taskDescription || "")
       .input("AssignedBy", sql.NVarChar(100), userId)
