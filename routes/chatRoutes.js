@@ -592,23 +592,40 @@ router.post("/create-task", async (req, res) => {
       challanId,
       taskTitle,
       taskDescription,
-      assignedTo,
       startDate,
       dueDate,
       priority,
     } = req.body;
 
-    if (!challanId || !taskTitle || !assignedTo) {
+    if (!challanId || !taskTitle) {
       return res.status(400).json({
         success: false,
-        message: "challanId, taskTitle and assignedTo are required",
+        message: "challanId and taskTitle are required",
       });
     }
 
     pool = await openPool(databaseName);
 
     const taskId = crypto.randomUUID().toUpperCase();
+    const memberResult = await pool
+      .request()
+      .input("challanId", sql.NVarChar(100), challanId)
+      .input("userId", sql.NVarChar(100), userId).query(`
+      SELECT TOP 1 UserId
+      FROM MA_ChallanChatMembers
+      WHERE ChallanId = @challanId
+      AND UserId <> @userId
+      AND IsActive = 1
+  `);
 
+    const assignedTo = memberResult.recordset[0]?.UserId;
+
+    if (!assignedTo) {
+      return res.status(400).json({
+        success: false,
+        message: "No member found to assign task",
+      });
+    }
     // Create Task
     await pool
       .request()
