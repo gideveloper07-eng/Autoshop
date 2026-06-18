@@ -531,7 +531,49 @@ ON CONVERT(VARCHAR(50), s.utunqid) = gm.UserId
     }
   }
 });
+router.post("/update-task-status", async (req, res) => {
+  let pool;
 
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { database: databaseName, userId } = decoded;
+
+    const { taskId, status } = req.body;
+
+    pool = await openPool(databaseName);
+
+    await pool
+      .request()
+      .input("TaskId", sql.NVarChar(50), taskId)
+      .input("Status", sql.NVarChar(50), status).query(`
+        UPDATE MA_ChatTasks
+        SET Status = @Status
+        WHERE TaskId = CONVERT(UNIQUEIDENTIFIER,@TaskId)
+      `);
+
+    return res.json({
+      success: true,
+      message: "Task status updated",
+    });
+  } catch (err) {
+    console.error(err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  } finally {
+    if (pool) await pool.close();
+  }
+});
 // ── POST /api/group/send-message ──────────────────────────────────────────────
 router.post("/send-message", async (req, res) => {
   let pool;
@@ -693,7 +735,141 @@ router.post("/send-message", async (req, res) => {
     }
   }
 });
+router.post("/create-task", async (req, res) => {
+  let pool;
 
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { database: databaseName, userId, userName } = decoded;
+
+    const {
+      groupId,
+      taskTitle,
+      taskDescription,
+      assignedTo,
+      startDate,
+      dueDate,
+      priority,
+    } = req.body;
+
+    pool = await openPool(databaseName);
+
+    // Verify member
+    const memberCheck = await pool
+      .request()
+      .input("GroupId", sql.NVarChar(50), groupId)
+      .input("UserId", sql.NVarChar(100), userId).query(`
+        SELECT TOP 1 1
+        FROM MA_ChatGroupMembers
+        WHERE GroupId = CONVERT(UNIQUEIDENTIFIER,@GroupId)
+          AND UserId=@UserId
+      `);
+
+    if (memberCheck.recordset.length === 0) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied",
+      });
+    }
+
+    const taskId = crypto.randomUUID().toUpperCase();
+
+    await pool
+      .request()
+      .input("TaskId", sql.NVarChar(50), taskId)
+      .input("GroupId", sql.NVarChar(50), groupId)
+      .input("TaskTitle", sql.NVarChar(200), taskTitle)
+      .input("TaskDescription", sql.NVarChar(sql.MAX), taskDescription || "")
+      .input("AssignedBy", sql.NVarChar(100), userId)
+      .input("AssignedTo", sql.NVarChar(100), assignedTo)
+      .input("StartDate", sql.DateTime, startDate || null)
+      .input("DueDate", sql.DateTime, dueDate || null)
+      .input("Priority", sql.NVarChar(20), priority || "Medium").query(`
+        INSERT INTO MA_ChatTasks
+        (
+          TaskId,
+          GroupId,
+          TaskTitle,
+          TaskDescription,
+          AssignedBy,
+          AssignedTo,
+          StartDate,
+          DueDate,
+          Priority,
+          Status,
+          CreatedDate
+        )
+        VALUES
+        (
+          CONVERT(UNIQUEIDENTIFIER,@TaskId),
+          CONVERT(UNIQUEIDENTIFIER,@GroupId),
+          @TaskTitle,
+          @TaskDescription,
+          @AssignedBy,
+          @AssignedTo,
+          @StartDate,
+          @DueDate,
+          @Priority,
+          'Pending',
+          GETDATE()
+        )
+      `);
+
+    // Add task card into chat
+    await pool
+      .request()
+      .input("GroupId", sql.NVarChar(50), groupId)
+      .input("TaskId", sql.NVarChar(50), taskId)
+      .input("SenderUserId", sql.NVarChar(100), userId)
+      .input("SenderName", sql.NVarChar(200), userName || userId)
+      .input("MessageText", sql.NVarChar(sql.MAX), taskTitle).query(`
+        INSERT INTO MA_GroupChatMessages
+        (
+          ChatId,
+          GroupId,
+          SenderUserId,
+          SenderName,
+          MessageText,
+          MessageType,
+          TaskId,
+          MessageTime
+        )
+        VALUES
+        (
+          NEWID(),
+          CONVERT(UNIQUEIDENTIFIER,@GroupId),
+          @SenderUserId,
+          @SenderName,
+          @MessageText,
+          'TASK',
+          CONVERT(UNIQUEIDENTIFIER,@TaskId),
+          GETDATE()
+        )
+      `);
+
+    res.json({
+      success: true,
+      taskId,
+    });
+  } catch (err) {
+    console.error(err);
+
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  } finally {
+    if (pool) await pool.close();
+  }
+});
 // ── GET /api/group/messages/:groupId ─────────────────────────────────────────
 router.get("/messages/:groupId", async (req, res) => {
   let pool;
@@ -725,13 +901,33 @@ router.get("/messages/:groupId", async (req, res) => {
     const result = await pool
       .request()
       .input("GroupId", sql.NVarChar(50), groupId).query(`
-        SELECT
-          m.ChatId, m.GroupId, m.SenderUserId, m.SenderName,
-          m.MessageText, m.MessageType, m.DocumentId, m.MessageTime,
-          d.DocumentNo, d.DocumentType, d.FileName, d.FilePath
-        FROM MA_GroupChatMessages m
-        LEFT JOIN MA_ChatDocuments d
-          ON m.DocumentId = d.DocumentId
+       SELECT
+  m.ChatId,
+  m.GroupId,
+  m.SenderUserId,
+  m.SenderName,
+  m.MessageText,
+  m.MessageType,
+  m.TaskId,
+  m.DocumentId,
+  m.MessageTime,
+
+  d.DocumentNo,
+  d.DocumentType,
+  d.FileName,
+  d.FilePath
+    t.Status AS TaskStatus,
+  t.Priority,
+  t.AssignedTo,
+  t.TaskDescription,
+  t.DueDate
+      FROM MA_GroupChatMessages m
+
+LEFT JOIN MA_ChatDocuments d
+  ON m.DocumentId = d.DocumentId
+
+LEFT JOIN MA_ChatTasks t
+  ON m.TaskId = t.TaskId
         WHERE m.GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId)
         ORDER BY m.MessageTime ASC
       `);
@@ -744,5 +940,53 @@ router.get("/messages/:groupId", async (req, res) => {
     if (pool) await pool.close();
   }
 });
+router.get("/tasks", async (req, res) => {
+  let pool;
 
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { database: databaseName } = decoded;
+
+    pool = await openPool(databaseName);
+
+    const result = await pool.request().query(`
+      SELECT
+        TaskId,
+        GroupId,
+        TaskTitle,
+        TaskDescription,
+        AssignedBy,
+        AssignedTo,
+        Priority,
+        Status,
+        StartDate,
+        DueDate,
+        CreatedDate
+      FROM MA_ChatTasks
+      ORDER BY CreatedDate DESC
+    `);
+
+    return res.json({
+      success: true,
+      data: result.recordset,
+    });
+  } catch (err) {
+    console.error(err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  } finally {
+    if (pool) await pool.close();
+  }
+});
 module.exports = router;
