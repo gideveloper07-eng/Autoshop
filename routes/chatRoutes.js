@@ -621,6 +621,10 @@ router.post("/create-task", async (req, res) => {
     const assignedTo = memberResult.recordset[0]?.UserId;
 
     if (!assignedTo) {
+      console.log("NO MEMBER FOUND");
+      console.log("challanId:", challanId);
+      console.log("userId:", userId);
+
       return res.status(400).json({
         success: false,
         message: "No member found to assign task",
