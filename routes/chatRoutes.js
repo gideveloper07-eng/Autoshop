@@ -641,6 +641,7 @@ router.post("/create-task", async (req, res) => {
       WHERE sp_462 = @challanId
   `);
 
+    console.log("RUNNING QUERY 3");
     const assignedTo = challanResult.recordset[0]?.UserId;
     const challanNo = challanResult.recordset[0]?.ChallanNo;
 
