@@ -403,7 +403,8 @@ router.get("/:challanId", async (req, res) => {
 
     // Open DB connection first
     pool = await openPool(databaseName);
-
+    console.log("CHALLAN ID:", req.params.challanId);
+    console.log("RUNNING QUERY 1");
     // Non-admin users must be chat members
     if (!isAdmin) {
       const access = await pool
@@ -425,6 +426,7 @@ router.get("/:challanId", async (req, res) => {
       }
     }
 
+    console.log("RUNNING QUERY 2");
     // Load chat messages
     const result = await pool
       .request()
@@ -491,6 +493,7 @@ ORDER BY MessageTime
     }
   }
 });
+
 router.get("/document/:documentId", async (req, res) => {
   let pool;
 
