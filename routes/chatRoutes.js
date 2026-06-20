@@ -689,8 +689,7 @@ router.post("/create-task", async (req, res) => {
         )
         VALUES
         (
-            @TaskId,
-          
+            @TaskId,          
             @ChallanId,
             @TaskTitle,
             @TaskDescription,
