@@ -658,6 +658,7 @@ router.post("/create-task", async (req, res) => {
     await pool
       .request()
       .input("TaskId", sql.NVarChar(50), taskId)
+      .input("GroupId", sql.NVarChar(16), challanId.substring(0, 16))
       .input("ChallanId", sql.NVarChar(100), challanId)
       .input("TaskTitle", sql.NVarChar(200), taskTitle)
       .input("TaskDescription", sql.NVarChar(sql.MAX), taskDescription || "")
@@ -669,7 +670,8 @@ router.post("/create-task", async (req, res) => {
         INSERT INTO MA_ChatTasks
         (
           TaskId,
-          ChallanId,       
+          GroupId,
+          ChallanId,
           TaskTitle,
           TaskDescription,
           AssignedBy,
@@ -683,7 +685,8 @@ router.post("/create-task", async (req, res) => {
         VALUES
         (
           CONVERT(UNIQUEIDENTIFIER,@TaskId),
-          @ChallanId,      
+          @GroupId,
+          @ChallanId,
           @TaskTitle,
           @TaskDescription,
           @AssignedBy,
