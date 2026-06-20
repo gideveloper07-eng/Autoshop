@@ -629,39 +629,44 @@ router.post("/create-task", async (req, res) => {
     }
 
     pool = await openPool(databaseName);
-    console.log("RUNNING QUERY 3");
-    const taskId = randomUUID().toUpperCase();
+
+    const taskId = randomUUID();
+
+    console.log("================================");
+    console.log("CREATE TASK");
+    console.log("TaskId:", taskId);
+    console.log("ChallanId:", challanId);
+    console.log("================================");
+
+    // Find challan owner
     const challanResult = await pool
       .request()
       .input("challanId", sql.NVarChar(100), challanId).query(`
-      SELECT
-          sp_463 AS UserId,
-          sp_468 AS ChallanNo
-      FROM rh_sp_46
-      WHERE sp_462 = @challanId
-  `);
+        SELECT
+            sp_463 AS UserId,
+            sp_468 AS ChallanNo
+        FROM rh_sp_46
+        WHERE sp_462 = @challanId
+      `);
 
-    const assignedTo = challanResult.recordset[0]?.UserId;
-    const challanNo = challanResult.recordset[0]?.ChallanNo;
-
-    if (!assignedTo) {
-      console.log("NO MEMBER FOUND");
-      console.log("challanId:", challanId);
-      console.log("userId:", userId);
-
+    if (challanResult.recordset.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "No member found to assign task",
+        message: "Invalid challan",
       });
     }
-    // Create Task
-    console.log("INSERT MA_ChatTasks — taskId:", taskId, "challanId:", challanId, "assignedTo:", assignedTo);
+
+    const assignedTo = challanResult.recordset[0].UserId;
+
+    // ==================================================
+    // INSERT TASK
+    // ==================================================
     await pool
       .request()
       .input("TaskId", sql.UniqueIdentifier, taskId)
-      .input("GroupId", sql.NVarChar(16), challanId.substring(0, 16))
+      .input("GroupId", sql.UniqueIdentifier, null)
       .input("ChallanId", sql.NVarChar(100), challanId)
-      .input("TaskTitle", sql.NVarChar(100), taskTitle)
+      .input("TaskTitle", sql.NVarChar(400), taskTitle)
       .input("TaskDescription", sql.NVarChar(sql.MAX), taskDescription || "")
       .input("AssignedBy", sql.NVarChar(200), userId)
       .input("AssignedTo", sql.NVarChar(200), assignedTo)
@@ -670,70 +675,75 @@ router.post("/create-task", async (req, res) => {
       .input("Priority", sql.NVarChar(40), priority || "Medium").query(`
         INSERT INTO MA_ChatTasks
         (
-          TaskId,
-          GroupId,
-          ChallanId,
-          TaskTitle,
-          TaskDescription,
-          AssignedBy,
-          AssignedTo,
-          StartDate,
-          DueDate,
-          Priority,
-          Status,
-          CreatedDate
+            TaskId,
+            GroupId,
+            ChallanId,
+            TaskTitle,
+            TaskDescription,
+            AssignedBy,
+            AssignedTo,
+            StartDate,
+            DueDate,
+            Priority,
+            Status,
+            CreatedDate
         )
         VALUES
         (
-          @TaskId,
-          @GroupId,
-          @ChallanId,
-          @TaskTitle,
-          @TaskDescription,
-          @AssignedBy,
-          @AssignedTo,
-          @StartDate,
-          @DueDate,
-          @Priority,
-          'Pending',
-          GETDATE()
+            @TaskId,
+            @GroupId,
+            @ChallanId,
+            @TaskTitle,
+            @TaskDescription,
+            @AssignedBy,
+            @AssignedTo,
+            @StartDate,
+            @DueDate,
+            @Priority,
+            'Pending',
+            GETDATE()
         )
       `);
-    console.log("MA_ChatTasks INSERT OK");
 
-    // Add Task Message To Chat
-    console.log("INSERT MA_ChallanChat TASK message — taskId:", taskId, "challanId:", challanId);
+    console.log("MA_ChatTasks INSERTED");
+
+    // ==================================================
+    // INSERT TASK MESSAGE INTO CHAT
+    // ==================================================
     await pool
       .request()
       .input("TaskId", sql.UniqueIdentifier, taskId)
-      .input("ChallanId", sql.NVarChar(100), challanId)
-      .input("SenderUserId", sql.NVarChar(100), userId)
-      .input("SenderName", sql.NVarChar(200), userName || userId)
+      .input("ChallanId", sql.NVarChar(200), challanId)
+      .input("SenderUserId", sql.NVarChar(200), userId)
+      .input("SenderName", sql.NVarChar(1000), userName || userId)
       .input("MessageText", sql.NVarChar(sql.MAX), taskTitle).query(`
         INSERT INTO MA_ChallanChat
         (
-          ChatId,
-          ChallanId,
-          SenderUserId,
-          SenderName,
-          MessageText,
-          MessageType,
-          TaskId,
-          MessageTime
+            ChatId,
+            ChallanId,
+            SenderUserId,
+            SenderName,
+            MessageText,
+            MessageTime,
+            IsRead,
+            MessageType,
+            TaskId
         )
         VALUES
         (
-          NEWID(),
-          @ChallanId,
-          @SenderUserId,
-          @SenderName,
-          @MessageText,
-          'TASK',
-          @TaskId,
-          GETDATE()
+            NEWID(),
+            @ChallanId,
+            @SenderUserId,
+            @SenderName,
+            @MessageText,
+            GETDATE(),
+            0,
+            'TASK',
+            @TaskId
         )
       `);
-    console.log("MA_ChallanChat TASK INSERT OK");
+
+    console.log("MA_ChallanChat INSERTED");
 
     return res.json({
       success: true,
@@ -741,7 +751,12 @@ router.post("/create-task", async (req, res) => {
       message: "Task created successfully",
     });
   } catch (err) {
-    console.error("CREATE CHAT TASK ERROR:", err);
+    console.error("================================");
+    console.error("CREATE TASK ERROR");
+    console.error("MESSAGE:", err.message);
+    console.error("DETAIL:", err.originalError?.message);
+    console.error(err);
+    console.error("================================");
 
     return res.status(500).json({
       success: false,
