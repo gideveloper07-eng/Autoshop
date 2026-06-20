@@ -702,7 +702,7 @@ router.post("/create-task", async (req, res) => {
     await pool
       .request()
       .input("TaskId", sql.NVarChar(50), taskId)
-      .input("ChallanId", sql.Int, challanNo)
+      .input("ChallanId", sql.NVarChar(100), challanId)
       .input("SenderUserId", sql.NVarChar(100), userId)
       .input("SenderName", sql.NVarChar(200), userName || userId)
       .input("MessageText", sql.NVarChar(sql.MAX), taskTitle).query(`
