@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const sql = require("mssql");
+const { randomUUID } = require("crypto");
 
 const { decodeToken } = require("../middleware/authMiddleware");
 const { sendPushNotification } = require("../utils/pushNotificationHelper");
@@ -629,7 +630,7 @@ router.post("/create-task", async (req, res) => {
 
     pool = await openPool(databaseName);
     console.log("RUNNING QUERY 3");
-    const taskId = crypto.randomUUID().toUpperCase();
+    const taskId = randomUUID().toUpperCase();
     const challanResult = await pool
       .request()
       .input("challanId", sql.NVarChar(100), challanId).query(`
@@ -657,7 +658,7 @@ router.post("/create-task", async (req, res) => {
     await pool.request();
     await pool
       .request()
-      .input("TaskId", sql.NVarChar(50), taskId)
+      .input("TaskId", sql.UniqueIdentifier, taskId)
       .input("GroupId", sql.NVarChar(16), challanId.substring(0, 16))
       .input("ChallanId", sql.NVarChar(100), challanId)
       .input("TaskTitle", sql.NVarChar(200), taskTitle)
@@ -684,7 +685,7 @@ router.post("/create-task", async (req, res) => {
         )
         VALUES
         (
-          CONVERT(UNIQUEIDENTIFIER,@TaskId),
+          @TaskId,
           @GroupId,
           @ChallanId,
           @TaskTitle,
@@ -703,7 +704,7 @@ router.post("/create-task", async (req, res) => {
     await pool.request();
     await pool
       .request()
-      .input("TaskId", sql.NVarChar(50), taskId)
+      .input("TaskId", sql.UniqueIdentifier, taskId)
       .input("ChallanId", sql.NVarChar(100), challanId)
       .input("SenderUserId", sql.NVarChar(100), userId)
       .input("SenderName", sql.NVarChar(200), userName || userId)
@@ -727,7 +728,7 @@ router.post("/create-task", async (req, res) => {
           @SenderName,
           @MessageText,
           'TASK',
-          CONVERT(UNIQUEIDENTIFIER,@TaskId),
+          @TaskId,
           GETDATE()
         )
       `);
