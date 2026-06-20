@@ -451,7 +451,7 @@ router.get("/:challanId", async (req, res) => {
 FROM MA_ChallanChat c
 LEFT JOIN MA_ChatDocuments d
     ON c.DocumentId = d.DocumentId
-WHERE c.ChallanId = @challanId
+WHERE c.ChallanId = @challanId and c.MESSAGETYPE <> 'TASK'
    UNION ALL
 
      SELECT
@@ -676,7 +676,7 @@ router.post("/create-task", async (req, res) => {
         INSERT INTO MA_ChatTasks
         (
             TaskId,
-            GroupId,
+           ,
             ChallanId,
             TaskTitle,
             TaskDescription,
@@ -691,7 +691,7 @@ router.post("/create-task", async (req, res) => {
         VALUES
         (
             @TaskId,
-            @GroupId,
+          
             @ChallanId,
             @TaskTitle,
             @TaskDescription,
