@@ -655,19 +655,19 @@ router.post("/create-task", async (req, res) => {
       });
     }
     // Create Task
-    await pool.request();
+    console.log("INSERT MA_ChatTasks — taskId:", taskId, "challanId:", challanId, "assignedTo:", assignedTo);
     await pool
       .request()
       .input("TaskId", sql.UniqueIdentifier, taskId)
       .input("GroupId", sql.NVarChar(16), challanId.substring(0, 16))
       .input("ChallanId", sql.NVarChar(100), challanId)
-      .input("TaskTitle", sql.NVarChar(200), taskTitle)
+      .input("TaskTitle", sql.NVarChar(100), taskTitle)
       .input("TaskDescription", sql.NVarChar(sql.MAX), taskDescription || "")
-      .input("AssignedBy", sql.NVarChar(100), userId)
-      .input("AssignedTo", sql.NVarChar(100), assignedTo)
+      .input("AssignedBy", sql.NVarChar(200), userId)
+      .input("AssignedTo", sql.NVarChar(200), assignedTo)
       .input("StartDate", sql.DateTime, startDate || null)
       .input("DueDate", sql.DateTime, dueDate || null)
-      .input("Priority", sql.NVarChar(20), priority || "Medium").query(`
+      .input("Priority", sql.NVarChar(40), priority || "Medium").query(`
         INSERT INTO MA_ChatTasks
         (
           TaskId,
@@ -699,9 +699,10 @@ router.post("/create-task", async (req, res) => {
           GETDATE()
         )
       `);
+    console.log("MA_ChatTasks INSERT OK");
 
     // Add Task Message To Chat
-    await pool.request();
+    console.log("INSERT MA_ChallanChat TASK message — taskId:", taskId, "challanId:", challanId);
     await pool
       .request()
       .input("TaskId", sql.UniqueIdentifier, taskId)
@@ -732,6 +733,7 @@ router.post("/create-task", async (req, res) => {
           GETDATE()
         )
       `);
+    console.log("MA_ChallanChat TASK INSERT OK");
 
     return res.json({
       success: true,
