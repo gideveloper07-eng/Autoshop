@@ -429,28 +429,49 @@ router.get("/:challanId", async (req, res) => {
     const result = await pool
       .request()
       .input("challanId", sql.NVarChar(100), req.params.challanId).query(`
-        SELECT
-            c.ChatId,
-            c.SenderUserId,
-            c.SenderName,
-            c.MessageText,
-            c.MessageType,
-            c.DocumentId,
-            c.MessageTime,
-            c.IsRead,
+ SELECT
+    CAST(c.ChatId AS NVARCHAR(50)) AS ChatId,
+    c.SenderUserId,
+    c.SenderName,
+    c.MessageText,
+    c.MessageType,
+    c.DocumentId,
+    c.MessageTime,
+    c.IsRead,
+    d.DocumentNo,
+    d.DocumentType,
+    d.FileName,
+    NULL AS TaskId,
+    NULL AS AssignedTo,
+    NULL AS Priority,
+    NULL AS TaskStatus
+FROM MA_ChallanChat c
+LEFT JOIN MA_ChatDocuments d
+    ON c.DocumentId = d.DocumentId
+WHERE c.ChallanId = @challanId
 
-            d.DocumentNo,
-            d.DocumentType,
-            d.FileName
+UNION ALL
 
-        FROM MA_ChallanChat c
+SELECT
+    CAST(t.TaskId AS NVARCHAR(50)) AS ChatId,
+    t.AssignedBy AS SenderUserId,
+    t.AssignedBy AS SenderName,
+    t.TaskTitle AS MessageText,
+    'TASK' AS MessageType,
+    NULL AS DocumentId,
+    t.CreatedDate AS MessageTime,
+    1 AS IsRead,
+    NULL AS DocumentNo,
+    NULL AS DocumentType,
+    NULL AS FileName,
+    CAST(t.TaskId AS NVARCHAR(50)) AS TaskId,
+    t.AssignedTo,
+    t.Priority,
+    t.Status AS TaskStatus
+FROM MA_ChatTasks t
+WHERE t.ChallanId = @challanId
 
-        LEFT JOIN MA_ChatDocuments d
-            ON c.DocumentId = d.DocumentId
-
-        WHERE c.ChallanId = @challanId
-
-        ORDER BY c.MessageTime
+ORDER BY MessageTime
       `);
 
     return res.json({
@@ -635,7 +656,7 @@ router.post("/create-task", async (req, res) => {
     await pool
       .request()
       .input("TaskId", sql.NVarChar(50), taskId)
-      .input("ChallanId", sql.Int, challanNo)
+      .input("ChallanId", sql.nvarchar(100), challanId)
       .input("TaskTitle", sql.NVarChar(200), taskTitle)
       .input("TaskDescription", sql.NVarChar(sql.MAX), taskDescription || "")
       .input("AssignedBy", sql.NVarChar(100), userId)
@@ -647,6 +668,7 @@ router.post("/create-task", async (req, res) => {
         (
           TaskId,
           ChallanId,
+          GroupId,
           TaskTitle,
           TaskDescription,
           AssignedBy,
