@@ -658,7 +658,7 @@ router.post("/create-task", async (req, res) => {
     await pool
       .request()
       .input("TaskId", sql.NVarChar(50), taskId)
-      .input("ChallanId", sql.nvarchar(100), challanId)
+      .input("ChallanId", sql.NVarChar(100), challanId)
       .input("TaskTitle", sql.NVarChar(200), taskTitle)
       .input("TaskDescription", sql.NVarChar(sql.MAX), taskDescription || "")
       .input("AssignedBy", sql.NVarChar(100), userId)
