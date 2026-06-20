@@ -676,7 +676,6 @@ router.post("/create-task", async (req, res) => {
         INSERT INTO MA_ChatTasks
         (
             TaskId,
-           ,
             ChallanId,
             TaskTitle,
             TaskDescription,
