@@ -452,30 +452,30 @@ LEFT JOIN MA_ChatDocuments d
     ON c.DocumentId = d.DocumentId
 WHERE c.ChallanId = @challanId
 
-UNION ALL
 
-SELECT
-    CAST(t.TaskId AS NVARCHAR(50)) AS ChatId,
-    t.AssignedBy AS SenderUserId,
-    t.AssignedBy AS SenderName,
-    t.TaskTitle AS MessageText,
-    'TASK' AS MessageType,
-    NULL AS DocumentId,
-    t.CreatedDate AS MessageTime,
-    1 AS IsRead,
-    NULL AS DocumentNo,
-    NULL AS DocumentType,
-    NULL AS FileName,
-    CAST(t.TaskId AS NVARCHAR(50)) AS TaskId,
-    t.AssignedTo,
-    t.Priority,
-    t.Status AS TaskStatus
-FROM MA_ChatTasks t
-WHERE t.ChallanId = @challanId
-
-ORDER BY MessageTime
       `);
+    // /*UNION ALL
 
+    // SELECT
+    //     CAST(t.TaskId AS NVARCHAR(50)) AS ChatId,
+    //     t.AssignedBy AS SenderUserId,
+    //     t.AssignedBy AS SenderName,
+    //     t.TaskTitle AS MessageText,
+    //     'TASK' AS MessageType,
+    //     NULL AS DocumentId,
+    //     t.CreatedDate AS MessageTime,
+    //     1 AS IsRead,
+    //     NULL AS DocumentNo,
+    //     NULL AS DocumentType,
+    //     NULL AS FileName,
+    //     CAST(t.TaskId AS NVARCHAR(50)) AS TaskId,
+    //     t.AssignedTo,
+    //     t.Priority,
+    //     t.Status AS TaskStatus
+    // FROM MA_ChatTasks t
+    // WHERE t.ChallanId = @challanId
+
+    // ORDER BY MessageTime*/
     return res.json({
       success: true,
       data: result.recordset,
@@ -629,7 +629,7 @@ router.post("/create-task", async (req, res) => {
     }
 
     pool = await openPool(databaseName);
-
+    console.log("RUNNING QUERY 3");
     const taskId = crypto.randomUUID().toUpperCase();
     const challanResult = await pool
       .request()
@@ -641,7 +641,6 @@ router.post("/create-task", async (req, res) => {
       WHERE sp_462 = @challanId
   `);
 
-  
     const assignedTo = challanResult.recordset[0]?.UserId;
     const challanNo = challanResult.recordset[0]?.ChallanNo;
 
