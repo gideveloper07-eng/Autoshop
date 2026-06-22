@@ -283,9 +283,15 @@ router.get("/my-groups", async (req, res) => {
             SELECT COUNT(*)
             FROM MA_ChatGroupMembers gm2
             WHERE gm2.GroupId = g.GroupId
-          ) AS MemberCount
+          ) AS MemberCount,
+          (
+            SELECT TOP 1 m.MessageText
+            FROM MA_GroupChatMessages m
+            WHERE m.GroupId = g.GroupId
+            ORDER BY m.MessageTime DESC
+          ) AS LastMessage
         FROM MA_ChatGroups g
-        ORDER BY g.CreatedDate DESC
+        ORDER BY COALESCE(g.LastMessageTime, g.CreatedDate) DESC
       `);
     }
 
@@ -304,12 +310,18 @@ router.get("/my-groups", async (req, res) => {
               SELECT COUNT(*)
               FROM MA_ChatGroupMembers gm2
               WHERE gm2.GroupId = g.GroupId
-            ) AS MemberCount
+            ) AS MemberCount,
+            (
+              SELECT TOP 1 m.MessageText
+              FROM MA_GroupChatMessages m
+              WHERE m.GroupId = g.GroupId
+              ORDER BY m.MessageTime DESC
+            ) AS LastMessage
           FROM MA_ChatGroups g
           INNER JOIN MA_ChatGroupMembers gm
             ON g.GroupId = gm.GroupId
           WHERE gm.UserId = @UserId
-          ORDER BY g.CreatedDate DESC
+          ORDER BY COALESCE(g.LastMessageTime, g.CreatedDate) DESC
         `);
     }
 
