@@ -24,7 +24,14 @@ const chatRoutes = require("./routes/chatRoutes");
 const app = express();
 
 // ── MIDDLEWARE ───────────────────────────────────────
-app.use(cors());
+const _corsOptions = {
+  origin: true,           // reflect the request origin (allows any origin)
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  optionsSuccessStatus: 200,
+};
+app.use(cors(_corsOptions));
 app.use(express.json());
 app.use("/uploads", express.static("uploads"));
 
