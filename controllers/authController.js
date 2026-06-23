@@ -99,12 +99,12 @@ const loginUser = async (req, res) => {
     const clientResult = await masterPool
       .request()
       .input("db", sql.NVarChar, databaseName).query(`
-      SELECT uniqid
+      SELECT unqid
       FROM MA_ClientMaster
       WHERE propertydb = @db
   `);
 
-    const clientId = clientResult.recordset[0]?.uniqid;
+    const clientId = clientResult.recordset[0]?.unqid;
     if (!clientId) {
       return res.status(400).json({
         success: false,
@@ -132,13 +132,13 @@ const loginUser = async (req, res) => {
       .request()
       .input("userGuid", sql.UniqueIdentifier, userGuid).query(`
       SELECT
-          CM.uniqid,
+          CM.unqid,
           CM.propertycode,
           CM.propertyname,
           CM.propertydb
       FROM MA_UserDatabaseAccess UA
       INNER JOIN MA_ClientMaster CM
-          ON UA.ClientId = CM.uniqid
+          ON UA.ClientId = CM.unqid
       WHERE UA.UserGuid = @userGuid
   `);
 
@@ -243,13 +243,13 @@ const switchDatabase = async (req, res) => {
       .input("userGuid", sql.UniqueIdentifier, decoded.userGuid)
       .input("clientId", sql.UniqueIdentifier, clientId).query(`
           SELECT
-              CM.uniqid,
+              CM.unqid,
               CM.propertycode,
               CM.propertyname,
               CM.propertydb
           FROM MA_UserDatabaseAccess UA
           INNER JOIN MA_ClientMaster CM
-              ON UA.ClientId = CM.uniqid
+              ON UA.ClientId = CM.unqid
           WHERE UA.UserGuid = @userGuid
           AND UA.ClientId = @clientId
       `);
@@ -268,7 +268,7 @@ const switchDatabase = async (req, res) => {
         userId: decoded.userId,
         userName: decoded.userName,
         database: db.propertydb,
-        clientId: db.uniqid,
+        clientId: db.unqid,
         userGuid: decoded.userGuid,
         utg: decoded.utg,
         isAdmin: decoded.isAdmin,
