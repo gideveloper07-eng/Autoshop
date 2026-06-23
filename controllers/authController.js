@@ -94,55 +94,57 @@ const loginUser = async (req, res) => {
     }
 
     const user = userResult.recordset[0];
-    masterPool = await openMasterPool();
+    let clientId = null;
+    let userGuid = null;
+    let accessibleDatabases = [];
 
-    const clientResult = await masterPool
-      .request()
-      .input("db", sql.NVarChar, databaseName).query(`
+    try {
+      masterPool = await openMasterPool();
+
+      const clientResult = await masterPool
+        .request()
+        .input("db", sql.NVarChar, databaseName).query(`
       SELECT unqid
       FROM MA_ClientMaster
       WHERE propertydb = @db
-  `);
+    `);
 
-    const clientId = clientResult.recordset[0]?.unqid;
-    if (!clientId) {
-      return res.status(400).json({
-        success: false,
-        message: "Database not found in MA_ClientMaster",
-      });
+      clientId = clientResult.recordset[0]?.unqid ?? null;
+
+      if (clientId) {
+        const userGuidResult = await masterPool
+          .request()
+          .input("clientId", sql.UniqueIdentifier, clientId)
+          .input("loginId", sql.NVarChar, userId).query(`
+        SELECT UserGuid
+        FROM MA_MasterUsers
+        WHERE ClientId=@clientId
+        AND LoginId=@loginId
+      `);
+
+        userGuid = userGuidResult.recordset[0]?.UserGuid ?? null;
+
+        if (userGuid) {
+          const accessResult = await masterPool
+            .request()
+            .input("userGuid", sql.UniqueIdentifier, userGuid).query(`
+          SELECT
+              CM.unqid,
+              CM.propertycode,
+              CM.propertyname,
+              CM.propertydb
+          FROM MA_UserDatabaseAccess UA
+          INNER JOIN MA_ClientMaster CM
+              ON UA.ClientId = CM.unqid
+          WHERE UA.UserGuid = @userGuid
+        `);
+
+          accessibleDatabases = accessResult.recordset;
+        }
+      }
+    } catch (e) {
+      console.log("Master lookup skipped:", e.message);
     }
-    const userGuidResult = await masterPool
-      .request()
-      .input("clientId", sql.UniqueIdentifier, clientId)
-      .input("loginId", sql.NVarChar, userId).query(`
-      SELECT UserGuid
-      FROM MA_MasterUsers
-      WHERE ClientId=@clientId
-      AND LoginId=@loginId
-  `);
-
-    const userGuid = userGuidResult.recordset[0]?.UserGuid;
-    if (!userGuid) {
-      return res.status(400).json({
-        success: false,
-        message: "User not found in MA_MasterUsers",
-      });
-    }
-    const accessResult = await masterPool
-      .request()
-      .input("userGuid", sql.UniqueIdentifier, userGuid).query(`
-      SELECT
-          CM.unqid,
-          CM.propertycode,
-          CM.propertyname,
-          CM.propertydb
-      FROM MA_UserDatabaseAccess UA
-      INNER JOIN MA_ClientMaster CM
-          ON UA.ClientId = CM.unqid
-      WHERE UA.UserGuid = @userGuid
-  `);
-
-    const accessibleDatabases = accessResult.recordset;
     const isAdmin = String(user.uti).trim().toLowerCase() === "adm";
     console.log("✅ User found:", user.uti);
     console.log("   is_logged_in    :", user.is_logged_in);
