@@ -24,6 +24,8 @@ const verifyToken = (req, res, next) => {
       userId: decoded.userId,
       userName: decoded.userName,
       database: decoded.database,
+      clientId: decoded.clientId,
+      userGuid: decoded.userGuid,
       utg: decoded.utg,
       isAdmin: decoded.isAdmin || false,
     };
@@ -59,6 +61,8 @@ const decodeToken = (req) => {
       userId: decoded.userId,
       userName: decoded.userName,
       database: decoded.database,
+      clientId: decoded.clientId,
+      userGuid: decoded.userGuid,
       utg: decoded.utg,
       isAdmin: decoded.isAdmin || false,
     };

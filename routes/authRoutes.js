@@ -8,6 +8,7 @@ const {
   registerUser,
   loginUser,
   logoutUser,
+  switchDatabase,
 } = require("../controllers/authController");
 
 const { decodeToken, verifyToken } = require("../middleware/authMiddleware");
@@ -33,7 +34,7 @@ async function openPool(databaseName) {
 
   return pool;
 }
-
+router.post("/switch-database", verifyToken, switchDatabase);
 router.post("/register", registerUser);
 router.post("/login", loginUser);
 router.post("/logout", logoutUser);

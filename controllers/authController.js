@@ -1,6 +1,6 @@
 const jwt = require("jsonwebtoken");
 const { sql } = require("../config/db");
-
+const { decodeToken } = require("../middleware/authMiddleware");
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper: open a dynamic pool to a specific database
 // ─────────────────────────────────────────────────────────────────────────────
@@ -18,12 +18,27 @@ async function openPool(databaseName) {
   }).connect();
   return pool;
 }
+async function openMasterPool() {
+  const pool = await new sql.ConnectionPool({
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    server: process.env.DB_HOST,
+    port: parseInt(process.env.DB_PORT || "1433"),
+    database: "CMPY_AUTOSHOP",
+    options: {
+      encrypt: false,
+      trustServerCertificate: true,
+    },
+  }).connect();
 
+  return pool;
+}
 // ─────────────────────────────────────────────────────────────────────────────
 // LOGIN  POST /api/auth/login
 // ─────────────────────────────────────────────────────────────────────────────
 const loginUser = async (req, res) => {
   let pool;
+  let masterPool;
   try {
     const { databaseName, userId, password, deviceId } = req.body;
 
@@ -79,6 +94,55 @@ const loginUser = async (req, res) => {
     }
 
     const user = userResult.recordset[0];
+    masterPool = await openMasterPool();
+
+    const clientResult = await masterPool
+      .request()
+      .input("db", sql.NVarChar, databaseName).query(`
+      SELECT uniqid
+      FROM MA_ClientMaster
+      WHERE propertydb = @db
+  `);
+
+    const clientId = clientResult.recordset[0]?.uniqid;
+    if (!clientId) {
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in MA_ClientMaster",
+      });
+    }
+    const userGuidResult = await masterPool
+      .request()
+      .input("clientId", sql.UniqueIdentifier, clientId)
+      .input("loginId", sql.NVarChar, userId).query(`
+      SELECT UserGuid
+      FROM MA_MasterUsers
+      WHERE ClientId=@clientId
+      AND LoginId=@loginId
+  `);
+
+    const userGuid = userGuidResult.recordset[0]?.UserGuid;
+    if (!userGuid) {
+      return res.status(400).json({
+        success: false,
+        message: "User not found in MA_MasterUsers",
+      });
+    }
+    const accessResult = await masterPool
+      .request()
+      .input("userGuid", sql.UniqueIdentifier, userGuid).query(`
+      SELECT
+          CM.uniqid,
+          CM.propertycode,
+          CM.propertyname,
+          CM.propertydb
+      FROM MA_UserDatabaseAccess UA
+      INNER JOIN MA_ClientMaster CM
+          ON UA.ClientId = CM.uniqid
+      WHERE UA.UserGuid = @userGuid
+  `);
+
+    const accessibleDatabases = accessResult.recordset;
     const isAdmin = String(user.uti).trim().toLowerCase() === "adm";
     console.log("✅ User found:", user.uti);
     console.log("   is_logged_in    :", user.is_logged_in);
@@ -121,6 +185,8 @@ const loginUser = async (req, res) => {
         userId: user.uti,
         userName: user.utnm,
         database: databaseName,
+        clientId,
+        userGuid,
         utg: user.UTG || user.utg,
         isAdmin: isAdmin,
       },
@@ -134,11 +200,13 @@ const loginUser = async (req, res) => {
     return res.json({
       success: true,
       token,
-      userId: user.uti || userId,
+      userId: user.uti,
       userName: user.utnm,
-      name: user.utnm || user.uti,
-      email: "",
+      name: user.utnm,
       databaseName,
+      clientId,
+      userGuid,
+      accessibleDatabases,
       utg: user.UTG || user.utg,
       isAdmin,
       message: "Login Successful",
@@ -152,9 +220,79 @@ const loginUser = async (req, res) => {
     });
   } finally {
     if (pool) await pool.close();
+    if (masterPool) await masterPool.close();
   }
 };
+const switchDatabase = async (req, res) => {
+  try {
+    const decoded = decodeToken(req);
 
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { clientId } = req.body;
+
+    let masterPool = await openMasterPool();
+
+    const accessResult = await masterPool
+      .request()
+      .input("userGuid", sql.UniqueIdentifier, decoded.userGuid)
+      .input("clientId", sql.UniqueIdentifier, clientId).query(`
+          SELECT
+              CM.uniqid,
+              CM.propertycode,
+              CM.propertyname,
+              CM.propertydb
+          FROM MA_UserDatabaseAccess UA
+          INNER JOIN MA_ClientMaster CM
+              ON UA.ClientId = CM.uniqid
+          WHERE UA.UserGuid = @userGuid
+          AND UA.ClientId = @clientId
+      `);
+
+    if (accessResult.recordset.length === 0) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied",
+      });
+    }
+
+    const db = accessResult.recordset[0];
+
+    const token = jwt.sign(
+      {
+        userId: decoded.userId,
+        userName: decoded.userName,
+        database: db.propertydb,
+        clientId: db.uniqid,
+        userGuid: decoded.userGuid,
+        utg: decoded.utg,
+        isAdmin: decoded.isAdmin,
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" },
+    );
+
+    return res.json({
+      success: true,
+      token,
+      databaseName: db.propertydb,
+      propertyCode: db.propertycode,
+      propertyName: db.propertyname,
+    });
+  } catch (err) {
+    console.log(err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+};
 // ─────────────────────────────────────────────────────────────────────────────
 // LOGOUT  POST /api/auth/logout
 // ─────────────────────────────────────────────────────────────────────────────
@@ -207,4 +345,9 @@ const registerUser = async (req, res) => {
   return res.status(501).json({ message: "Registration not supported" });
 };
 
-module.exports = { registerUser, loginUser, logoutUser };
+module.exports = {
+  registerUser,
+  loginUser,
+  logoutUser,
+  switchDatabase,
+};
