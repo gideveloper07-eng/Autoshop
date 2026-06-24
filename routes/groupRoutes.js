@@ -57,6 +57,141 @@ router.get("/users", verifyToken, async (req, res) => {
   }
 });
 
+// ── GET /api/group/merged-users ───────────────────────────────────────────────
+// Returns users from ALL dealerships the current user has access to.
+// Each user entry includes { id, name, companyName, companyCode, database }.
+// Users with single-dealership access get only their own company's users.
+// Requires userGuid in JWT (set during login from MA_MasterUsers).
+router.get("/merged-users", verifyToken, async (req, res) => {
+  const { database: currentDb, userGuid } = req.user;
+  let masterPool;
+
+  try {
+    // If no userGuid, fall back to single-company user list
+    if (!userGuid) {
+      let pool;
+      try {
+        pool = await openPool(currentDb);
+        const result = await pool.request().query(`
+          SELECT
+              CAST(utunqid AS NVARCHAR(50)) AS id,
+              utnm AS name,
+              NULL AS companyName,
+              NULL AS companyCode,
+              NULL AS [database]
+          FROM rh_secut
+          WHERE ISNULL(utnm,'') <> ''
+            AND utg IS NOT NULL
+          ORDER BY utnm
+        `);
+        return res.json({ success: true, data: result.recordset, merged: false });
+      } finally {
+        if (pool) await pool.close();
+      }
+    }
+
+    // Look up all databases this user has access to
+    masterPool = await new sql.ConnectionPool({
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      server: process.env.DB_HOST,
+      port: parseInt(process.env.DB_PORT || "1433"),
+      database: "CMPY_AUTOSHOP",
+      options: { encrypt: false, trustServerCertificate: true },
+    }).connect();
+
+    const accessResult = await masterPool
+      .request()
+      .input("userGuid", sql.UniqueIdentifier, userGuid)
+      .query(`
+        SELECT
+            CM.unqid      AS clientId,
+            CM.propertycode AS companyCode,
+            CM.propertyname AS companyName,
+            CM.propertydb   AS [database]
+        FROM MA_UserDatabaseAccess UA
+        INNER JOIN MA_ClientMaster CM ON UA.ClientId = CM.unqid
+        WHERE UA.UserGuid = @userGuid
+      `);
+
+    const accessibleDbs = accessResult.recordset;
+
+    // If only one dealership (or none found), no need to merge
+    if (accessibleDbs.length <= 1) {
+      let pool;
+      const targetDb = accessibleDbs.length === 1 ? accessibleDbs[0].database : currentDb;
+      const companyName = accessibleDbs.length === 1 ? accessibleDbs[0].companyName : null;
+      const companyCode = accessibleDbs.length === 1 ? accessibleDbs[0].companyCode : null;
+      try {
+        pool = await openPool(targetDb);
+        const result = await pool.request().query(`
+          SELECT
+              CAST(utunqid AS NVARCHAR(50)) AS id,
+              utnm AS name,
+              NULL AS companyName,
+              NULL AS companyCode,
+              NULL AS [database]
+          FROM rh_secut
+          WHERE ISNULL(utnm,'') <> ''
+            AND utg IS NOT NULL
+          ORDER BY utnm
+        `);
+        return res.json({ success: true, data: result.recordset, merged: false });
+      } finally {
+        if (pool) await pool.close();
+      }
+    }
+
+    // Multiple dealerships — fetch users from each and merge
+    const allUsers = [];
+    const seenIds = new Set(); // deduplicate by "database:userId"
+
+    for (const db of accessibleDbs) {
+      let pool;
+      try {
+        pool = await openPool(db.database);
+        const result = await pool.request().query(`
+          SELECT
+              CAST(utunqid AS NVARCHAR(50)) AS id,
+              utnm AS name
+          FROM rh_secut
+          WHERE ISNULL(utnm,'') <> ''
+            AND utg IS NOT NULL
+          ORDER BY utnm
+        `);
+
+        for (const user of result.recordset) {
+          const key = `${db.database}:${user.id}`;
+          if (!seenIds.has(key) && user.id) {
+            seenIds.add(key);
+            allUsers.push({
+              id: user.id,
+              name: user.name,
+              companyName: db.companyName,
+              companyCode: db.companyCode,
+              database: db.database,
+            });
+          }
+        }
+      } catch (dbErr) {
+        console.error(`MERGED-USERS: failed to fetch from ${db.database}:`, dbErr.message);
+      } finally {
+        if (pool) await pool.close();
+      }
+    }
+
+    // Sort by name
+    allUsers.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+    return res.json({ success: true, data: allUsers, merged: true });
+  } catch (err) {
+    console.error("MERGED-USERS ERROR:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  } finally {
+    if (masterPool) await masterPool.close();
+  }
+});
+
 // ── POST /api/group/create ────────────────────────────────────────────────────
 router.post("/create", async (req, res) => {
   let pool;
