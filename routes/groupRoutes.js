@@ -84,7 +84,11 @@ router.get("/merged-users", verifyToken, async (req, res) => {
             AND utg IS NOT NULL
           ORDER BY utnm
         `);
-        return res.json({ success: true, data: result.recordset, merged: false });
+        return res.json({
+          success: true,
+          data: result.recordset,
+          merged: false,
+        });
       } finally {
         if (pool) await pool.close();
       }
@@ -102,8 +106,7 @@ router.get("/merged-users", verifyToken, async (req, res) => {
 
     const accessResult = await masterPool
       .request()
-      .input("userGuid", sql.UniqueIdentifier, userGuid)
-      .query(`
+      .input("userGuid", sql.UniqueIdentifier, userGuid).query(`
         SELECT
             CM.unqid      AS clientId,
             CM.propertycode AS companyCode,
@@ -119,9 +122,12 @@ router.get("/merged-users", verifyToken, async (req, res) => {
     // If only one dealership (or none found), no need to merge
     if (accessibleDbs.length <= 1) {
       let pool;
-      const targetDb = accessibleDbs.length === 1 ? accessibleDbs[0].database : currentDb;
-      const companyName = accessibleDbs.length === 1 ? accessibleDbs[0].companyName : null;
-      const companyCode = accessibleDbs.length === 1 ? accessibleDbs[0].companyCode : null;
+      const targetDb =
+        accessibleDbs.length === 1 ? accessibleDbs[0].database : currentDb;
+      const companyName =
+        accessibleDbs.length === 1 ? accessibleDbs[0].companyName : null;
+      const companyCode =
+        accessibleDbs.length === 1 ? accessibleDbs[0].companyCode : null;
       try {
         pool = await openPool(targetDb);
         const result = await pool.request().query(`
@@ -136,7 +142,11 @@ router.get("/merged-users", verifyToken, async (req, res) => {
             AND utg IS NOT NULL
           ORDER BY utnm
         `);
-        return res.json({ success: true, data: result.recordset, merged: false });
+        return res.json({
+          success: true,
+          data: result.recordset,
+          merged: false,
+        });
       } finally {
         if (pool) await pool.close();
       }
@@ -174,7 +184,10 @@ router.get("/merged-users", verifyToken, async (req, res) => {
           }
         }
       } catch (dbErr) {
-        console.error(`MERGED-USERS: failed to fetch from ${db.database}:`, dbErr.message);
+        console.error(
+          `MERGED-USERS: failed to fetch from ${db.database}:`,
+          dbErr.message,
+        );
       } finally {
         if (pool) await pool.close();
       }
@@ -1018,7 +1031,6 @@ router.post("/create-task", async (req, res) => {
   }
 });
 
-
 // ── GET /api/group/messages/:groupId ─────────────────────────────────────────
 router.get("/messages/:groupId", async (req, res) => {
   let pool;
@@ -1070,7 +1082,7 @@ router.get("/messages/:groupId", async (req, res) => {
   t.AssignedTo,
   t.TaskDescription,
   t.DueDate,
-  ISNULL(s.uti, t.AssignedTo) AS AssignedToName
+ISNULL(s.utnm, t.AssignedTo) AS AssignedToName
       FROM MA_GroupChatMessages m
 
 LEFT JOIN MA_ChatDocuments d
@@ -1119,7 +1131,7 @@ router.get("/tasks", async (req, res) => {
         t.TaskDescription,
         t.AssignedBy,
         t.AssignedTo,
-        ISNULL(s.uti, t.AssignedTo) AS AssignedToName,
+        ISNULL(s.utnm, t.AssignedTo) AS AssignedToName,
         t.Priority,
         t.Status,
         t.StartDate,
