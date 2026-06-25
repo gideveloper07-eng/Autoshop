@@ -704,19 +704,61 @@ router.post("/update-task-status", async (req, res) => {
       });
     }
 
-    const { database: databaseName, userId } = decoded;
+    const { database: databaseName, userId, isAdmin } = decoded;
 
     const { taskId, status } = req.body;
 
     pool = await openPool(databaseName);
 
+    // ─────────────────────────────────────────────────────────────────
+    // First, verify the user has permission to update this task
+    // ─────────────────────────────────────────────────────────────────
+    if (!isAdmin) {
+      const permissionCheck = await pool
+        .request()
+        .input("TaskId", sql.NVarChar(50), taskId)
+        .input("UserId", sql.NVarChar(100), userId).query(`
+        SELECT 1
+        FROM MA_ChatTasks t
+        WHERE TaskId = CONVERT(UNIQUEIDENTIFIER, @TaskId)
+          AND (
+            -- User is the assignee
+            t.AssignedTo = @UserId
+            -- OR user is the creator
+            OR t.AssignedBy = @UserId
+            -- OR task is in a group where user is a member
+            OR t.GroupId IN (
+              SELECT GroupId 
+              FROM MA_ChatGroupMembers 
+              WHERE UserId = @UserId AND IsActive = 1
+            )
+            -- OR task is in a challan where user is a chat member
+            OR t.ChallanId IN (
+              SELECT ChallanId 
+              FROM MA_ChallanChatMembers 
+              WHERE UserId = @UserId AND IsActive = 1
+            )
+          )
+      `);
+
+      if (permissionCheck.recordset.length === 0) {
+        return res.status(403).json({
+          success: false,
+          message: "You don't have permission to update this task",
+        });
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Update the task status
+    // ─────────────────────────────────────────────────────────────────
     await pool
       .request()
       .input("TaskId", sql.NVarChar(50), taskId)
       .input("Status", sql.NVarChar(50), status).query(`
         UPDATE MA_ChatTasks
         SET Status = @Status
-        WHERE TaskId = CONVERT(UNIQUEIDENTIFIER,@TaskId)
+        WHERE TaskId = CONVERT(UNIQUEIDENTIFIER, @TaskId)
       `);
 
     return res.json({
@@ -1119,29 +1161,78 @@ router.get("/tasks", async (req, res) => {
       });
     }
 
-    const { database: databaseName } = decoded;
+    const { database: databaseName, userId, isAdmin } = decoded;
 
     pool = await openPool(databaseName);
 
-    const result = await pool.request().query(`
-      SELECT
-        t.TaskId,
-        t.GroupId,
-        t.TaskTitle,
-        t.TaskDescription,
-        t.AssignedBy,
-        t.AssignedTo,
-        ISNULL(s.uti, t.AssignedTo) AS AssignedToName,
-        t.Priority,
-        t.Status,
-        t.StartDate,
-        t.DueDate,
-        t.CreatedDate
-      FROM MA_ChatTasks t
-      LEFT JOIN rh_secut s
-        ON CONVERT(VARCHAR(50), s.utunqid) = t.AssignedTo
-      ORDER BY t.CreatedDate DESC
-    `);
+    // ─────────────────────────────────────────────────────────────────
+    // ADMIN: See all tasks in the database
+    // USER:  See only tasks assigned to them OR tasks in their groups
+    // ─────────────────────────────────────────────────────────────────
+    let result;
+
+    if (isAdmin) {
+      // Admin sees everything
+      result = await pool.request().query(`
+        SELECT
+          t.TaskId,
+          t.GroupId,
+          t.ChallanId,
+          t.TaskTitle,
+          t.TaskDescription,
+          t.AssignedBy,
+          t.AssignedTo,
+          ISNULL(s.uti, t.AssignedTo) AS AssignedToName,
+          t.Priority,
+          t.Status,
+          t.StartDate,
+          t.DueDate,
+          t.CreatedDate
+        FROM MA_ChatTasks t
+        LEFT JOIN rh_secut s
+          ON CONVERT(VARCHAR(50), s.utunqid) = t.AssignedTo
+        ORDER BY t.CreatedDate DESC
+      `);
+    } else {
+      // Regular user: see tasks assigned to them OR tasks in groups they belong to
+      result = await pool
+        .request()
+        .input("userId", sql.NVarChar(100), userId).query(`
+        SELECT DISTINCT
+          t.TaskId,
+          t.GroupId,
+          t.ChallanId,
+          t.TaskTitle,
+          t.TaskDescription,
+          t.AssignedBy,
+          t.AssignedTo,
+          ISNULL(s.uti, t.AssignedTo) AS AssignedToName,
+          t.Priority,
+          t.Status,
+          t.StartDate,
+          t.DueDate,
+          t.CreatedDate
+        FROM MA_ChatTasks t
+        LEFT JOIN rh_secut s
+          ON CONVERT(VARCHAR(50), s.utunqid) = t.AssignedTo
+        WHERE 
+          -- Tasks assigned to this user
+          t.AssignedTo = @userId
+          -- OR tasks in groups where user is a member
+          OR t.GroupId IN (
+            SELECT GroupId 
+            FROM MA_ChatGroupMembers 
+            WHERE UserId = @userId AND IsActive = 1
+          )
+          -- OR challan tasks where user is a chat member
+          OR t.ChallanId IN (
+            SELECT ChallanId 
+            FROM MA_ChallanChatMembers 
+            WHERE UserId = @userId AND IsActive = 1
+          )
+        ORDER BY t.CreatedDate DESC
+      `);
+    }
 
     return res.json({
       success: true,
