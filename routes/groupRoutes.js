@@ -1070,7 +1070,7 @@ router.get("/messages/:groupId", async (req, res) => {
   t.AssignedTo,
   t.TaskDescription,
   t.DueDate,
-  ISNULL(s.uti, t.AssignedTo) AS AssignedToName
+  ISNULL(s.utnm, t.AssignedTo) AS AssignedToName
       FROM MA_GroupChatMessages m
 
 LEFT JOIN MA_ChatDocuments d
@@ -1119,7 +1119,7 @@ router.get("/tasks", async (req, res) => {
         t.TaskDescription,
         t.AssignedBy,
         t.AssignedTo,
-        ISNULL(s.uti, t.AssignedTo) AS AssignedToName,
+        ISNULL(s.utnm, t.AssignedTo) AS AssignedToName,
         t.Priority,
         t.Status,
         t.StartDate,

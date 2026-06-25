@@ -470,7 +470,7 @@ WHERE c.ChallanId = @challanId and c.MESSAGETYPE <> 'TASK'
         NULL AS FileName,
          CAST(t.TaskId AS NVARCHAR(50)) AS TaskId,
         t.AssignedTo,
-        ISNULL(s.uti, t.AssignedTo) AS AssignedToName,
+        ISNULL(s.utnm, t.AssignedTo) AS AssignedToName,
         t.Priority,
          t.Status AS TaskStatus,
         t.TaskDescription
