@@ -1069,7 +1069,8 @@ router.get("/messages/:groupId", async (req, res) => {
   t.Priority,
   t.AssignedTo,
   t.TaskDescription,
-  t.DueDate
+  t.DueDate,
+  ISNULL(s.uti, t.AssignedTo) AS AssignedToName
       FROM MA_GroupChatMessages m
 
 LEFT JOIN MA_ChatDocuments d
@@ -1077,6 +1078,10 @@ LEFT JOIN MA_ChatDocuments d
 
 LEFT JOIN MA_ChatTasks t
   ON m.TaskId = t.TaskId
+
+LEFT JOIN rh_secut s
+  ON CONVERT(VARCHAR(50), s.utunqid) = t.AssignedTo
+
         WHERE m.GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId)
         ORDER BY m.MessageTime ASC
       `);
@@ -1108,19 +1113,22 @@ router.get("/tasks", async (req, res) => {
 
     const result = await pool.request().query(`
       SELECT
-        TaskId,
-        GroupId,
-        TaskTitle,
-        TaskDescription,
-        AssignedBy,
-        AssignedTo,
-        Priority,
-        Status,
-        StartDate,
-        DueDate,
-        CreatedDate
-      FROM MA_ChatTasks
-      ORDER BY CreatedDate DESC
+        t.TaskId,
+        t.GroupId,
+        t.TaskTitle,
+        t.TaskDescription,
+        t.AssignedBy,
+        t.AssignedTo,
+        ISNULL(s.uti, t.AssignedTo) AS AssignedToName,
+        t.Priority,
+        t.Status,
+        t.StartDate,
+        t.DueDate,
+        t.CreatedDate
+      FROM MA_ChatTasks t
+      LEFT JOIN rh_secut s
+        ON CONVERT(VARCHAR(50), s.utunqid) = t.AssignedTo
+      ORDER BY t.CreatedDate DESC
     `);
 
     return res.json({
