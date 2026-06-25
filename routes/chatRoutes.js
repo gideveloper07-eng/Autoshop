@@ -470,13 +470,13 @@ WHERE c.ChallanId = @challanId and c.MESSAGETYPE <> 'TASK'
         NULL AS FileName,
          CAST(t.TaskId AS NVARCHAR(50)) AS TaskId,
         t.AssignedTo,
-        ISNULL(s.utnm, t.AssignedTo) AS AssignedToName,
+        ISNULL(s.uti, t.AssignedTo) AS AssignedToName,
         t.Priority,
          t.Status AS TaskStatus,
         t.TaskDescription
      FROM MA_ChatTasks t
      LEFT JOIN rh_secut s
-       ON UPPER(CONVERT(VARCHAR(50), s.utunqid)) = UPPER(t.AssignedTo)
+       ON CONVERT(VARCHAR(50), s.utunqid) = t.AssignedTo
     WHERE t.ChallanId = @challanId
 
       `);

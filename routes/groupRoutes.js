@@ -1070,7 +1070,7 @@ router.get("/messages/:groupId", async (req, res) => {
   t.AssignedTo,
   t.TaskDescription,
   t.DueDate,
-  ISNULL(s.utnm, t.AssignedTo) AS AssignedToName
+  ISNULL(s.uti, t.AssignedTo) AS AssignedToName
       FROM MA_GroupChatMessages m
 
 LEFT JOIN MA_ChatDocuments d
@@ -1080,7 +1080,7 @@ LEFT JOIN MA_ChatTasks t
   ON m.TaskId = t.TaskId
 
 LEFT JOIN rh_secut s
-  ON UPPER(CONVERT(VARCHAR(50), s.utunqid)) = UPPER(t.AssignedTo)
+  ON CONVERT(VARCHAR(50), s.utunqid) = t.AssignedTo
 
         WHERE m.GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId)
         ORDER BY m.MessageTime ASC
@@ -1119,7 +1119,7 @@ router.get("/tasks", async (req, res) => {
         t.TaskDescription,
         t.AssignedBy,
         t.AssignedTo,
-        ISNULL(s.utnm, t.AssignedTo) AS AssignedToName,
+        ISNULL(s.uti, t.AssignedTo) AS AssignedToName,
         t.Priority,
         t.Status,
         t.StartDate,
@@ -1127,7 +1127,7 @@ router.get("/tasks", async (req, res) => {
         t.CreatedDate
       FROM MA_ChatTasks t
       LEFT JOIN rh_secut s
-        ON UPPER(CONVERT(VARCHAR(50), s.utunqid)) = UPPER(t.AssignedTo)
+        ON CONVERT(VARCHAR(50), s.utunqid) = t.AssignedTo
       ORDER BY t.CreatedDate DESC
     `);
 
