@@ -476,7 +476,7 @@ WHERE c.ChallanId = @challanId and c.MESSAGETYPE <> 'TASK'
         t.TaskDescription
      FROM MA_ChatTasks t
      LEFT JOIN rh_secut s
-       ON CONVERT(VARCHAR(50), s.utunqid) = t.AssignedTo
+       ON UPPER(CONVERT(VARCHAR(50), s.utunqid)) = UPPER(t.AssignedTo)
     WHERE t.ChallanId = @challanId
 
       `);
