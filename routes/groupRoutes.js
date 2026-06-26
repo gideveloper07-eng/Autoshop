@@ -416,8 +416,6 @@ router.post("/create", async (req, res) => {
 
 // ── GET /api/group/my-groups ──────────────────────────────────────────────────
 router.get("/my-groups", async (req, res) => {
-  let pool;
-
   try {
     const decoded = decodeToken(req);
 
@@ -430,48 +428,32 @@ router.get("/my-groups", async (req, res) => {
 
     const { database: currentDb, userGuid, userId, isAdmin } = decoded;
 
+    // All dealerships user can access
     const databases = await getAccessibleDatabases(userGuid, currentDb);
 
     let allGroups = [];
-
-    // Ensure tables exist
-    await pool.request().query(`
-      IF NOT EXISTS (
-        SELECT 1
-        FROM INFORMATION_SCHEMA.TABLES
-        WHERE TABLE_NAME = 'MA_ChatGroups'
-      )
-      CREATE TABLE MA_ChatGroups (
-        GroupId UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID() PRIMARY KEY,
-        GroupName NVARCHAR(200) NOT NULL,
-        CreatedBy NVARCHAR(100) NOT NULL,
-        CreatedDate DATETIME NOT NULL DEFAULT GETDATE(),
-        IsActive BIT NOT NULL DEFAULT 1,
-        LastMessageTime DATETIME NULL
-      );
-    `);
-
-    await pool.request().query(`
-      IF NOT EXISTS (
-        SELECT 1
-        FROM INFORMATION_SCHEMA.TABLES
-        WHERE TABLE_NAME = 'MA_ChatGroupMembers'
-      )
-      CREATE TABLE MA_ChatGroupMembers (
-        MemberId UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID() PRIMARY KEY,
-        GroupId UNIQUEIDENTIFIER NOT NULL,
-        UserId NVARCHAR(100) NOT NULL,
-        IsAdmin BIT NOT NULL DEFAULT 0,
-        AddedBy NVARCHAR(100) NOT NULL,
-        AddedDate DATETIME NOT NULL DEFAULT GETDATE()
-      );
-    `);
 
     for (const db of databases) {
       let pool;
 
       try {
         pool = await openPool(db.database);
+
+        // Skip databases without chat tables
+        const tableCheck = await pool.request().query(`
+            SELECT COUNT(*) AS Total
+            FROM INFORMATION_SCHEMA.TABLES
+            WHERE TABLE_NAME IN
+            (
+                'MA_ChatGroups',
+                'MA_ChatGroupMembers',
+                'MA_GroupChatMessages'
+            )
+        `);
+
+        if (tableCheck.recordset[0].Total < 3) {
+          continue;
+        }
 
         let result;
 
@@ -483,67 +465,73 @@ router.get("/my-groups", async (req, res) => {
                     g.CreatedDate,
                     g.LastMessageTime,
                     '${db.database}' AS DatabaseName,
-                    '${db.companyName}' AS CompanyName,
+                    '${db.companyName ?? ""}' AS CompanyName,
+
                     (
                         SELECT COUNT(*)
                         FROM MA_ChatGroupMembers gm2
                         WHERE gm2.GroupId = g.GroupId
                     ) AS MemberCount,
+
                     (
                         SELECT TOP 1 MessageText
                         FROM MA_GroupChatMessages
-                        WHERE GroupId=g.GroupId
+                        WHERE GroupId = g.GroupId
                         ORDER BY MessageTime DESC
                     ) AS LastMessage
+
                 FROM MA_ChatGroups g
+                WHERE ISNULL(g.IsActive,1)=1
             `);
         } else {
           result = await pool
             .request()
             .input("UserId", sql.NVarChar(100), userId).query(`
-                    SELECT
-                        g.GroupId,
-                        g.GroupName,
-                        g.CreatedDate,
-                        g.LastMessageTime,
-                        '${db.database}' AS DatabaseName,
-                        '${db.companyName}' AS CompanyName,
-                        (
-                            SELECT COUNT(*)
-                            FROM MA_ChatGroupMembers gm2
-                            WHERE gm2.GroupId = g.GroupId
-                        ) AS MemberCount,
-                        (
-                            SELECT TOP 1 MessageText
-                            FROM MA_GroupChatMessages
-                            WHERE GroupId=g.GroupId
-                            ORDER BY MessageTime DESC
-                        ) AS LastMessage
-                    FROM MA_ChatGroups g
-                    INNER JOIN MA_ChatGroupMembers gm
-                        ON g.GroupId = gm.GroupId
-                    WHERE gm.UserId=@UserId
-                `);
+                SELECT
+                    g.GroupId,
+                    g.GroupName,
+                    g.CreatedDate,
+                    g.LastMessageTime,
+                    '${db.database}' AS DatabaseName,
+                    '${db.companyName ?? ""}' AS CompanyName,
+
+                    (
+                        SELECT COUNT(*)
+                        FROM MA_ChatGroupMembers gm2
+                        WHERE gm2.GroupId = g.GroupId
+                    ) AS MemberCount,
+
+                    (
+                        SELECT TOP 1 MessageText
+                        FROM MA_GroupChatMessages
+                        WHERE GroupId = g.GroupId
+                        ORDER BY MessageTime DESC
+                    ) AS LastMessage
+
+                FROM MA_ChatGroups g
+                INNER JOIN MA_ChatGroupMembers gm
+                    ON gm.GroupId = g.GroupId
+                WHERE gm.UserId=@UserId
+                  AND ISNULL(g.IsActive,1)=1
+            `);
         }
 
         allGroups.push(...result.recordset);
       } catch (err) {
-        console.log(`Failed ${db.database}`, err.message);
+        console.log(`Failed loading groups from ${db.database}:`, err.message);
       } finally {
         if (pool) await pool.close();
       }
     }
 
     allGroups.sort((a, b) => {
-      return (
-        new Date(b.LastMessageTime ?? b.CreatedDate) -
-        new Date(a.LastMessageTime ?? a.CreatedDate)
-      );
+      const t1 = new Date(a.LastMessageTime || a.CreatedDate);
+      const t2 = new Date(b.LastMessageTime || b.CreatedDate);
+      return t2 - t1;
     });
 
     return res.json({
       success: true,
-
       data: allGroups,
     });
   } catch (err) {
@@ -553,10 +541,6 @@ router.get("/my-groups", async (req, res) => {
       success: false,
       message: err.message,
     });
-  } finally {
-    if (pool) {
-      await pool.close();
-    }
   }
 });
 
