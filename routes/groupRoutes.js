@@ -3,7 +3,7 @@ const sql = require("mssql");
 const crypto = require("crypto");
 const { sendPushNotification } = require("../utils/pushNotificationHelper");
 const { decodeToken, verifyToken } = require("../middleware/authMiddleware");
-
+const { getAccessibleDatabases } = require("../utils/databaseAccessHelper");
 const router = express.Router();
 
 async function openPool(databaseName) {
@@ -244,7 +244,8 @@ router.post("/create", async (req, res) => {
     // databaseName in body = the dealership DB this group belongs to.
     // Falls back to the logged-in user's own DB when not supplied.
     const { groupName, members = [], databaseName: groupDb } = req.body;
-    const databaseName = groupDb && groupDb.trim() !== "" ? groupDb.trim() : currentDb;
+    const databaseName =
+      groupDb && groupDb.trim() !== "" ? groupDb.trim() : currentDb;
 
     if (!groupName || groupName.trim() === "") {
       return res
@@ -375,8 +376,11 @@ router.post("/create", async (req, res) => {
 
     // Add extra members — members can be plain userId strings OR {id, database} objects
     for (const member of members) {
-      const memberId = typeof member === 'string' ? member : member?.id;
-      const memberDb = typeof member === 'object' ? (member?.database || databaseName) : databaseName;
+      const memberId = typeof member === "string" ? member : member?.id;
+      const memberDb =
+        typeof member === "object"
+          ? member?.database || databaseName
+          : databaseName;
 
       if (!memberId || memberId.toLowerCase() === userId.toLowerCase())
         continue;
@@ -424,9 +428,11 @@ router.get("/my-groups", async (req, res) => {
       });
     }
 
-    const { database: databaseName, userId, isAdmin } = decoded;
+    const { database: currentDb, userGuid, userId, isAdmin } = decoded;
 
-    pool = await openPool(databaseName);
+    const databases = await getAccessibleDatabases(userGuid, currentDb);
+
+    let allGroups = [];
 
     // Ensure tables exist
     await pool.request().query(`
@@ -461,69 +467,84 @@ router.get("/my-groups", async (req, res) => {
       );
     `);
 
-    let result;
+    for (const db of databases) {
+      let pool;
 
-    // ───────────────────────────────
-    // ADMIN → ALL GROUPS
-    // ───────────────────────────────
-    if (isAdmin) {
-      result = await pool.request().query(`
-        SELECT
-          g.GroupId,
-          g.GroupName,
-          g.CreatedDate,
-          g.LastMessageTime,
-          g.DatabaseName,
-          (
-            SELECT COUNT(*)
-            FROM MA_ChatGroupMembers gm2
-            WHERE gm2.GroupId = g.GroupId
-          ) AS MemberCount,
-          (
-            SELECT TOP 1 m.MessageText
-            FROM MA_GroupChatMessages m
-            WHERE m.GroupId = g.GroupId
-            ORDER BY m.MessageTime DESC
-          ) AS LastMessage
-        FROM MA_ChatGroups g
-        ORDER BY COALESCE(g.LastMessageTime, g.CreatedDate) DESC
-      `);
+      try {
+        pool = await openPool(db.database);
+
+        let result;
+
+        if (isAdmin) {
+          result = await pool.request().query(`
+                SELECT
+                    g.GroupId,
+                    g.GroupName,
+                    g.CreatedDate,
+                    g.LastMessageTime,
+                    '${db.database}' AS DatabaseName,
+                    '${db.companyName}' AS CompanyName,
+                    (
+                        SELECT COUNT(*)
+                        FROM MA_ChatGroupMembers gm2
+                        WHERE gm2.GroupId = g.GroupId
+                    ) AS MemberCount,
+                    (
+                        SELECT TOP 1 MessageText
+                        FROM MA_GroupChatMessages
+                        WHERE GroupId=g.GroupId
+                        ORDER BY MessageTime DESC
+                    ) AS LastMessage
+                FROM MA_ChatGroups g
+            `);
+        } else {
+          result = await pool
+            .request()
+            .input("UserId", sql.NVarChar(100), userId).query(`
+                    SELECT
+                        g.GroupId,
+                        g.GroupName,
+                        g.CreatedDate,
+                        g.LastMessageTime,
+                        '${db.database}' AS DatabaseName,
+                        '${db.companyName}' AS CompanyName,
+                        (
+                            SELECT COUNT(*)
+                            FROM MA_ChatGroupMembers gm2
+                            WHERE gm2.GroupId = g.GroupId
+                        ) AS MemberCount,
+                        (
+                            SELECT TOP 1 MessageText
+                            FROM MA_GroupChatMessages
+                            WHERE GroupId=g.GroupId
+                            ORDER BY MessageTime DESC
+                        ) AS LastMessage
+                    FROM MA_ChatGroups g
+                    INNER JOIN MA_ChatGroupMembers gm
+                        ON g.GroupId = gm.GroupId
+                    WHERE gm.UserId=@UserId
+                `);
+        }
+
+        allGroups.push(...result.recordset);
+      } catch (err) {
+        console.log(`Failed ${db.database}`, err.message);
+      } finally {
+        if (pool) await pool.close();
+      }
     }
 
-    // ───────────────────────────────
-    // USER → ONLY OWN GROUPS
-    // ───────────────────────────────
-    else {
-      result = await pool.request().input("UserId", sql.NVarChar(100), userId)
-        .query(`
-          SELECT
-            g.GroupId,
-            g.GroupName,
-            g.CreatedDate,
-            g.LastMessageTime,
-            g.DatabaseName,
-            (
-              SELECT COUNT(*)
-              FROM MA_ChatGroupMembers gm2
-              WHERE gm2.GroupId = g.GroupId
-            ) AS MemberCount,
-            (
-              SELECT TOP 1 m.MessageText
-              FROM MA_GroupChatMessages m
-              WHERE m.GroupId = g.GroupId
-              ORDER BY m.MessageTime DESC
-            ) AS LastMessage
-          FROM MA_ChatGroups g
-          INNER JOIN MA_ChatGroupMembers gm
-            ON g.GroupId = gm.GroupId
-          WHERE gm.UserId = @UserId
-          ORDER BY COALESCE(g.LastMessageTime, g.CreatedDate) DESC
-        `);
-    }
+    allGroups.sort((a, b) => {
+      return (
+        new Date(b.LastMessageTime ?? b.CreatedDate) -
+        new Date(a.LastMessageTime ?? a.CreatedDate)
+      );
+    });
 
     return res.json({
       success: true,
-      data: result.recordset,
+
+      data: allGroups,
     });
   } catch (err) {
     console.error("MY GROUPS ERROR:", err);
@@ -985,16 +1006,17 @@ router.post("/create-task", async (req, res) => {
       startDate,
       dueDate,
       priority,
-      assignedToDatabase,   // the DB where the assigned user belongs
+      assignedToDatabase, // the DB where the assigned user belongs
     } = req.body;
 
     // The group's DB (for membership check and inserting the chat message)
     const groupDb = await getGroupDatabase(groupId, currentDb);
 
     // The task DB = assigned user's company DB if provided, otherwise group's DB
-    const taskDb = assignedToDatabase && assignedToDatabase.trim() !== ""
-      ? assignedToDatabase.trim()
-      : groupDb;
+    const taskDb =
+      assignedToDatabase && assignedToDatabase.trim() !== ""
+        ? assignedToDatabase.trim()
+        : groupDb;
 
     // Verify membership using the group's DB
     pool = await openPool(groupDb);
@@ -1242,7 +1264,11 @@ router.get("/tasks", async (req, res) => {
           `);
 
         if (accessResult.recordset.length > 0) {
-          databases = [...new Set(accessResult.recordset.map(r => r.database).filter(Boolean))];
+          databases = [
+            ...new Set(
+              accessResult.recordset.map((r) => r.database).filter(Boolean),
+            ),
+          ];
         }
       } catch (e) {
         console.error("TASKS: failed to fetch accessible DBs:", e.message);
