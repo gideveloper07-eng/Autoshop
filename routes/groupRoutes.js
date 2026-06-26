@@ -286,12 +286,13 @@ router.post("/create", async (req, res) => {
     await pool.request().query(`
       IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'MA_ChatGroupMembers')
         CREATE TABLE MA_ChatGroupMembers (
-          MemberId  UNIQUEIDENTIFIER  NOT NULL DEFAULT NEWID() PRIMARY KEY,
-          GroupId   UNIQUEIDENTIFIER  NOT NULL,
-          UserId    NVARCHAR(100)     NOT NULL,
-          IsAdmin   BIT               NOT NULL DEFAULT 0,
-          AddedBy   NVARCHAR(100)     NOT NULL,
-          AddedDate DATETIME          NOT NULL DEFAULT GETDATE()
+          MemberId     UNIQUEIDENTIFIER  NOT NULL DEFAULT NEWID() PRIMARY KEY,
+          GroupId      UNIQUEIDENTIFIER  NOT NULL,
+          UserId       NVARCHAR(100)     NOT NULL,
+          IsAdmin      BIT               NOT NULL DEFAULT 0,
+          AddedBy      NVARCHAR(100)     NOT NULL,
+          AddedDate    DATETIME          NOT NULL DEFAULT GETDATE(),
+          DatabaseName NVARCHAR(200)     NULL
         );
       IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='MA_ChatGroupMembers' AND COLUMN_NAME='IsAdmin')
         ALTER TABLE MA_ChatGroupMembers ADD IsAdmin BIT NOT NULL DEFAULT 0;
@@ -299,6 +300,8 @@ router.post("/create", async (req, res) => {
         ALTER TABLE MA_ChatGroupMembers ADD AddedBy NVARCHAR(100) NOT NULL DEFAULT '';
       IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='MA_ChatGroupMembers' AND COLUMN_NAME='AddedDate')
         ALTER TABLE MA_ChatGroupMembers ADD AddedDate DATETIME NOT NULL DEFAULT GETDATE();
+      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='MA_ChatGroupMembers' AND COLUMN_NAME='DatabaseName')
+        ALTER TABLE MA_ChatGroupMembers ADD DatabaseName NVARCHAR(200) NULL;
       -- Fix UserId if it was incorrectly created as UNIQUEIDENTIFIER
       IF EXISTS (
         SELECT 1 FROM sys.columns c INNER JOIN sys.types t ON c.user_type_id = t.user_type_id
@@ -323,6 +326,8 @@ router.post("/create", async (req, res) => {
           MessageText   NVARCHAR(MAX)     NOT NULL,
           MessageType   NVARCHAR(50)      NOT NULL DEFAULT 'TEXT',
           DocumentId    UNIQUEIDENTIFIER  NULL,
+          TaskId        UNIQUEIDENTIFIER  NULL,
+          TaskDatabase  NVARCHAR(200)     NULL,
           MessageTime   DATETIME          NOT NULL DEFAULT GETDATE()
         );
       IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='MA_GroupChatMessages' AND COLUMN_NAME='SenderName')
@@ -331,6 +336,10 @@ router.post("/create", async (req, res) => {
         ALTER TABLE MA_GroupChatMessages ADD MessageType NVARCHAR(50) NOT NULL DEFAULT 'TEXT';
       IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='MA_GroupChatMessages' AND COLUMN_NAME='DocumentId')
         ALTER TABLE MA_GroupChatMessages ADD DocumentId UNIQUEIDENTIFIER NULL;
+      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='MA_GroupChatMessages' AND COLUMN_NAME='TaskId')
+        ALTER TABLE MA_GroupChatMessages ADD TaskId UNIQUEIDENTIFIER NULL;
+      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='MA_GroupChatMessages' AND COLUMN_NAME='TaskDatabase')
+        ALTER TABLE MA_GroupChatMessages ADD TaskDatabase NVARCHAR(200) NULL;
       -- Fix SenderUserId if it was incorrectly created as UNIQUEIDENTIFIER
       IF EXISTS (
         SELECT 1 FROM sys.columns c INNER JOIN sys.types t ON c.user_type_id = t.user_type_id
@@ -353,18 +362,22 @@ router.post("/create", async (req, res) => {
         VALUES (CONVERT(UNIQUEIDENTIFIER, @GroupId), @GroupName, @CreatedBy, GETDATE(), 1, @DatabaseName)
       `);
 
-    // Creator is admin
+    // Creator is admin — DatabaseName for creator = the group's DB
     await pool
       .request()
       .input("GroupId", sql.NVarChar(50), groupId)
       .input("UserId", sql.NVarChar(100), userId)
-      .input("AddedBy", sql.NVarChar(100), userId).query(`
-        INSERT INTO MA_ChatGroupMembers (MemberId, GroupId, UserId, IsAdmin, AddedBy, AddedDate)
-        VALUES (NEWID(), CONVERT(UNIQUEIDENTIFIER, @GroupId), @UserId, 1, @AddedBy, GETDATE())
+      .input("AddedBy", sql.NVarChar(100), userId)
+      .input("DatabaseName", sql.NVarChar(200), databaseName).query(`
+        INSERT INTO MA_ChatGroupMembers (MemberId, GroupId, UserId, IsAdmin, AddedBy, AddedDate, DatabaseName)
+        VALUES (NEWID(), CONVERT(UNIQUEIDENTIFIER, @GroupId), @UserId, 1, @AddedBy, GETDATE(), @DatabaseName)
       `);
 
-    // Add extra members
-    for (const memberId of members) {
+    // Add extra members — members can be plain userId strings OR {id, database} objects
+    for (const member of members) {
+      const memberId = typeof member === 'string' ? member : member?.id;
+      const memberDb = typeof member === 'object' ? (member?.database || databaseName) : databaseName;
+
       if (!memberId || memberId.toLowerCase() === userId.toLowerCase())
         continue;
 
@@ -372,9 +385,10 @@ router.post("/create", async (req, res) => {
         .request()
         .input("GroupId", sql.NVarChar(50), groupId)
         .input("UserId", sql.NVarChar(100), memberId)
-        .input("AddedBy", sql.NVarChar(100), userId).query(`
-          INSERT INTO MA_ChatGroupMembers (MemberId, GroupId, UserId, IsAdmin, AddedBy, AddedDate)
-          VALUES (NEWID(), CONVERT(UNIQUEIDENTIFIER, @GroupId), @UserId, 0, @AddedBy, GETDATE())
+        .input("AddedBy", sql.NVarChar(100), userId)
+        .input("DatabaseName", sql.NVarChar(200), memberDb).query(`
+          INSERT INTO MA_ChatGroupMembers (MemberId, GroupId, UserId, IsAdmin, AddedBy, AddedDate, DatabaseName)
+          VALUES (NEWID(), CONVERT(UNIQUEIDENTIFIER, @GroupId), @UserId, 0, @AddedBy, GETDATE(), @DatabaseName)
         `);
     }
 
@@ -699,6 +713,7 @@ router.get("/members/:groupId", async (req, res) => {
              gm.UserId,
             gm.IsAdmin,
             gm.AddedDate,
+            gm.DatabaseName,
           s.uti AS UserName
         FROM MA_ChatGroupMembers gm
 
@@ -746,12 +761,18 @@ router.post("/update-task-status", async (req, res) => {
 
     const { database: currentDb, userId } = decoded;
 
-    const { taskId, status, groupId } = req.body;
+    const { taskId, status, groupId, taskDatabase } = req.body;
 
-    // Resolve which DB this group belongs to using groupId from body
-    const databaseName = groupId
-      ? await getGroupDatabase(groupId, currentDb)
-      : currentDb;
+    // taskDatabase = the DB where the task was inserted (assigned user's company DB).
+    // groupId fallback resolves the group's DB.
+    // Last fallback is the caller's own DB.
+    let databaseName = currentDb;
+    if (taskDatabase && taskDatabase.trim() !== "") {
+      databaseName = taskDatabase.trim();
+    } else if (groupId) {
+      databaseName = await getGroupDatabase(groupId, currentDb);
+    }
+
     pool = await openPool(databaseName);
 
     await pool
@@ -964,13 +985,19 @@ router.post("/create-task", async (req, res) => {
       startDate,
       dueDate,
       priority,
+      assignedToDatabase,   // the DB where the assigned user belongs
     } = req.body;
 
-    // Resolve which DB this group belongs to
-    const databaseName = await getGroupDatabase(groupId, currentDb);
-    pool = await openPool(databaseName);
+    // The group's DB (for membership check and inserting the chat message)
+    const groupDb = await getGroupDatabase(groupId, currentDb);
 
-    // Verify member
+    // The task DB = assigned user's company DB if provided, otherwise group's DB
+    const taskDb = assignedToDatabase && assignedToDatabase.trim() !== ""
+      ? assignedToDatabase.trim()
+      : groupDb;
+
+    // Verify membership using the group's DB
+    pool = await openPool(groupDb);
     const memberCheck = await pool
       .request()
       .input("GroupId", sql.NVarChar(50), groupId)
@@ -988,57 +1015,69 @@ router.post("/create-task", async (req, res) => {
       });
     }
 
+    // Close group pool before opening task pool (may be same or different DB)
+    await pool.close();
+    pool = null;
+
     const taskId = crypto.randomUUID().toUpperCase();
 
-    await pool
-      .request()
-      .input("TaskId", sql.NVarChar(50), taskId)
-      .input("GroupId", sql.NVarChar(50), groupId)
-      .input("TaskTitle", sql.NVarChar(200), taskTitle)
-      .input("TaskDescription", sql.NVarChar(sql.MAX), taskDescription || "")
-      .input("AssignedBy", sql.NVarChar(100), userId)
-      .input("AssignedTo", sql.NVarChar(100), assignedTo)
-      .input("StartDate", sql.DateTime, startDate || null)
-      .input("DueDate", sql.DateTime, dueDate || null)
-      .input("Priority", sql.NVarChar(20), priority || "Medium").query(`
-        INSERT INTO MA_ChatTasks
-        (
-          TaskId,
-          GroupId,
-          TaskTitle,
-          TaskDescription,
-          AssignedBy,
-          AssignedTo,
-          StartDate,
-          DueDate,
-          Priority,
-          Status,
-          CreatedDate
-        )
-        VALUES
-        (
-          CONVERT(UNIQUEIDENTIFIER,@TaskId),
-          CONVERT(UNIQUEIDENTIFIER,@GroupId),
-          @TaskTitle,
-          @TaskDescription,
-          @AssignedBy,
-          @AssignedTo,
-          @StartDate,
-          @DueDate,
-          @Priority,
-          'Pending',
-          GETDATE()
-        )
-      `);
+    // Open the task DB (assigned user's company DB)
+    const taskPool = await openPool(taskDb);
+    try {
+      await taskPool
+        .request()
+        .input("TaskId", sql.NVarChar(50), taskId)
+        .input("GroupId", sql.NVarChar(50), groupId)
+        .input("TaskTitle", sql.NVarChar(200), taskTitle)
+        .input("TaskDescription", sql.NVarChar(sql.MAX), taskDescription || "")
+        .input("AssignedBy", sql.NVarChar(100), userId)
+        .input("AssignedTo", sql.NVarChar(100), assignedTo)
+        .input("StartDate", sql.DateTime, startDate || null)
+        .input("DueDate", sql.DateTime, dueDate || null)
+        .input("Priority", sql.NVarChar(20), priority || "Medium").query(`
+          INSERT INTO MA_ChatTasks
+          (
+            TaskId,
+            GroupId,
+            TaskTitle,
+            TaskDescription,
+            AssignedBy,
+            AssignedTo,
+            StartDate,
+            DueDate,
+            Priority,
+            Status,
+            CreatedDate
+          )
+          VALUES
+          (
+            CONVERT(UNIQUEIDENTIFIER,@TaskId),
+            CONVERT(UNIQUEIDENTIFIER,@GroupId),
+            @TaskTitle,
+            @TaskDescription,
+            @AssignedBy,
+            @AssignedTo,
+            @StartDate,
+            @DueDate,
+            @Priority,
+            'Pending',
+            GETDATE()
+          )
+        `);
+    } finally {
+      await taskPool.close();
+    }
 
-    // Add task card into chat
+    // Insert the task card message into the GROUP chat (group's DB)
+    pool = await openPool(groupDb);
     await pool
       .request()
       .input("GroupId", sql.NVarChar(50), groupId)
       .input("TaskId", sql.NVarChar(50), taskId)
       .input("SenderUserId", sql.NVarChar(100), userId)
       .input("SenderName", sql.NVarChar(200), userName || userId)
-      .input("MessageText", sql.NVarChar(sql.MAX), taskTitle).query(`
+      .input("MessageText", sql.NVarChar(sql.MAX), taskTitle)
+      .input("TaskDatabase", sql.NVarChar(200), taskDb).query(`
         INSERT INTO MA_GroupChatMessages
         (
           ChatId,
@@ -1048,6 +1087,7 @@ router.post("/create-task", async (req, res) => {
           MessageText,
           MessageType,
           TaskId,
+          TaskDatabase,
           MessageTime
         )
         VALUES
@@ -1059,6 +1099,7 @@ router.post("/create-task", async (req, res) => {
           @MessageText,
           'TASK',
           CONVERT(UNIQUEIDENTIFIER,@TaskId),
+          @TaskDatabase,
           GETDATE()
         )
       `);
@@ -1112,37 +1153,42 @@ router.get("/messages/:groupId", async (req, res) => {
     const result = await pool
       .request()
       .input("GroupId", sql.NVarChar(50), groupId).query(`
-  SELECT
-  m.ChatId,
-  m.GroupId,
-  m.SenderUserId,
-  m.SenderName,
-  m.MessageText,
-  m.MessageType,
-  m.TaskId,
-  m.DocumentId,
-  m.MessageTime,
+        SELECT
+          m.ChatId,
+          m.GroupId,
+          m.SenderUserId,
+          m.SenderName,
+          m.MessageText,
+          m.MessageType,
+          m.TaskId,
+          m.TaskDatabase,
+          m.DocumentId,
+          m.MessageTime,
 
-  d.DocumentNo,
-  d.DocumentType,
-  d.FileName,
-  d.FilePath,
-    t.Status AS TaskStatus,
-  t.Priority,
-  t.AssignedTo,
-  t.TaskDescription,
-  t.DueDate,
-  ISNULL(s.uti, t.AssignedTo) AS AssignedToName
-      FROM MA_GroupChatMessages m
+          d.DocumentNo,
+          d.DocumentType,
+          d.FileName,
+          d.FilePath,
 
-LEFT JOIN MA_ChatDocuments d
-  ON m.DocumentId = d.DocumentId
+          -- Task fields: only populated when task lives in same DB as group
+          -- When TaskDatabase differs, the Flutter app uses TaskDatabase to fetch status
+          t.Status     AS TaskStatus,
+          t.Priority,
+          t.AssignedTo,
+          t.TaskDescription,
+          t.DueDate,
+          ISNULL(s.uti, t.AssignedTo) AS AssignedToName
 
-LEFT JOIN MA_ChatTasks t
-  ON m.TaskId = t.TaskId
+        FROM MA_GroupChatMessages m
 
-LEFT JOIN rh_secut s
-  ON CONVERT(VARCHAR(50), s.utunqid) = t.AssignedTo
+        LEFT JOIN MA_ChatDocuments d
+          ON m.DocumentId = d.DocumentId
+
+        LEFT JOIN MA_ChatTasks t
+          ON m.TaskId = t.TaskId
+
+        LEFT JOIN rh_secut s
+          ON CONVERT(VARCHAR(50), s.utunqid) = t.AssignedTo
 
         WHERE m.GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId)
         ORDER BY m.MessageTime ASC
@@ -1169,33 +1215,82 @@ router.get("/tasks", async (req, res) => {
       });
     }
 
-    const { database: databaseName } = decoded;
+    const { database: currentDb, userGuid } = decoded;
 
-    pool = await openPool(databaseName);
+    // Collect all DBs this user has access to
+    let databases = [currentDb];
 
-    const result = await pool.request().query(`
-      SELECT
-        t.TaskId,
-        t.GroupId,
-        t.TaskTitle,
-        t.TaskDescription,
-        t.AssignedBy,
-        t.AssignedTo,
-        ISNULL(s.uti, t.AssignedTo) AS AssignedToName,
-        t.Priority,
-        t.Status,
-        t.StartDate,
-        t.DueDate,
-        t.CreatedDate
-      FROM MA_ChatTasks t
-      LEFT JOIN rh_secut s
-        ON CONVERT(VARCHAR(50), s.utunqid) = t.AssignedTo
-      ORDER BY t.CreatedDate DESC
-    `);
+    if (userGuid) {
+      let masterPool;
+      try {
+        masterPool = await new sql.ConnectionPool({
+          user: process.env.DB_USER,
+          password: process.env.DB_PASSWORD,
+          server: process.env.DB_HOST,
+          port: parseInt(process.env.DB_PORT || "1433"),
+          database: "CMPY_AUTOSHOP",
+          options: { encrypt: false, trustServerCertificate: true },
+        }).connect();
+
+        const accessResult = await masterPool
+          .request()
+          .input("userGuid", sql.UniqueIdentifier, userGuid).query(`
+            SELECT CM.propertydb AS [database]
+            FROM MA_UserDatabaseAccess UA
+            INNER JOIN MA_ClientMaster CM ON UA.ClientId = CM.unqid
+            WHERE UA.UserGuid = @userGuid
+          `);
+
+        if (accessResult.recordset.length > 0) {
+          databases = [...new Set(accessResult.recordset.map(r => r.database).filter(Boolean))];
+        }
+      } catch (e) {
+        console.error("TASKS: failed to fetch accessible DBs:", e.message);
+      } finally {
+        if (masterPool) await masterPool.close();
+      }
+    }
+
+    // Query MA_ChatTasks from every accessible DB and merge
+    const allTasks = [];
+    for (const dbName of databases) {
+      let dbPool;
+      try {
+        dbPool = await openPool(dbName);
+        const result = await dbPool.request().query(`
+          SELECT
+            t.TaskId,
+            t.GroupId,
+            t.TaskTitle,
+            t.TaskDescription,
+            t.AssignedBy,
+            t.AssignedTo,
+            ISNULL(s.uti, t.AssignedTo) AS AssignedToName,
+            t.Priority,
+            t.Status,
+            t.StartDate,
+            t.DueDate,
+            t.CreatedDate,
+            '${dbName.replace(/'/g, "''")}' AS TaskDatabase
+          FROM MA_ChatTasks t
+          LEFT JOIN rh_secut s
+            ON CONVERT(VARCHAR(50), s.utunqid) = t.AssignedTo
+          ORDER BY t.CreatedDate DESC
+        `);
+        allTasks.push(...result.recordset);
+      } catch (dbErr) {
+        console.error(`TASKS: failed to query ${dbName}:`, dbErr.message);
+      } finally {
+        if (dbPool) await dbPool.close();
+      }
+    }
+
+    // Sort merged results by CreatedDate desc
+    allTasks.sort((a, b) => new Date(b.CreatedDate) - new Date(a.CreatedDate));
 
     return res.json({
       success: true,
-      data: result.recordset,
+      data: allTasks,
     });
   } catch (err) {
     console.error(err);
