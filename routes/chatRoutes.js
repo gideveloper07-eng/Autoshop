@@ -59,7 +59,9 @@ router.get("/my-chats", async (req, res) => {
 
     // Get all dealerships this user can access
     const databases = await getAccessibleDatabases(userGuid, currentDb);
+    console.log("USER GUID:", userGuid);
 
+    console.log(databases);
     let allChats = [];
 
     for (const db of databases) {
