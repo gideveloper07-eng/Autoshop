@@ -5,6 +5,7 @@ const { randomUUID } = require("crypto");
 
 const { decodeToken } = require("../middleware/authMiddleware");
 const { sendPushNotification } = require("../utils/pushNotificationHelper");
+const { getAccessibleDatabases } = require("../utils/databaseAccessHelper");
 
 async function openPool(databaseName) {
   return await new sql.ConnectionPool({
@@ -44,8 +45,6 @@ async function getChallanDatabase(challanId, fallbackDb) {
   }
 }
 router.get("/my-chats", async (req, res) => {
-  let pool;
-
   try {
     const decoded = decodeToken(req);
 
@@ -56,40 +55,68 @@ router.get("/my-chats", async (req, res) => {
       });
     }
 
-    const { database: databaseName, userId, isAdmin } = decoded;
+    const { database: currentDb, userGuid, userId, isAdmin } = decoded;
 
-    pool = await openPool(databaseName);
+    // Get all dealerships this user can access
+    const databases = await getAccessibleDatabases(userGuid, currentDb);
 
-    let result;
+    let allChats = [];
 
-    if (isAdmin) {
-      result = await pool.request().query(`
-        SELECT DISTINCT
-          c.ChallanId,
-          MAX(c.MessageTime) AS LastMessageTime
-        FROM MA_ChallanChat c
-        GROUP BY c.ChallanId
-        ORDER BY MAX(c.MessageTime) DESC
-      `);
-    } else {
-      result = await pool.request().input("userId", sql.NVarChar(100), userId)
-        .query(`
-          SELECT DISTINCT
-            c.ChallanId,
-            MAX(c.MessageTime) AS LastMessageTime
-          FROM MA_ChallanChat c
-          INNER JOIN MA_ChallanChatMembers m
-             ON c.ChallanId = m.ChallanId
-          WHERE m.UserId = @userId
-            AND m.IsActive = 1
-          GROUP BY c.ChallanId
-          ORDER BY MAX(c.MessageTime) DESC
-        `);
+    for (const db of databases) {
+      let pool;
+
+      try {
+        pool = await openPool(db.database);
+
+        let result;
+
+        if (isAdmin) {
+          result = await pool.request().query(`
+            SELECT
+                c.ChallanId,
+                MAX(c.MessageTime) AS LastMessageTime
+            FROM MA_ChallanChat c
+            GROUP BY c.ChallanId
+          `);
+        } else {
+          result = await pool
+            .request()
+            .input("userId", sql.NVarChar(100), userId).query(`
+              SELECT
+                  c.ChallanId,
+                  MAX(c.MessageTime) AS LastMessageTime
+              FROM MA_ChallanChat c
+              INNER JOIN MA_ChallanChatMembers m
+                  ON c.ChallanId = m.ChallanId
+              WHERE m.UserId = @userId
+                AND m.IsActive = 1
+              GROUP BY c.ChallanId
+            `);
+        }
+
+        for (const row of result.recordset) {
+          allChats.push({
+            ...row,
+            DatabaseName: db.database,
+            CompanyName: db.companyName,
+            CompanyCode: db.companyCode,
+          });
+        }
+      } catch (err) {
+        console.error(`Failed loading chats from ${db.database}:`, err.message);
+      } finally {
+        if (pool) await pool.close();
+      }
     }
+
+    // Sort newest first
+    allChats.sort((a, b) => {
+      return new Date(b.LastMessageTime) - new Date(a.LastMessageTime);
+    });
 
     return res.json({
       success: true,
-      data: result.recordset,
+      data: allChats,
     });
   } catch (err) {
     console.error("MY CHATS ERROR:", err);
@@ -98,8 +125,6 @@ router.get("/my-chats", async (req, res) => {
       success: false,
       message: err.message,
     });
-  } finally {
-    if (pool) await pool.close();
   }
 });
 // ── POST /api/chat/send ──────────────────────────────────────────────────────
@@ -137,9 +162,10 @@ router.post("/send", async (req, res) => {
     }
 
     // Resolve which DB this challan belongs to (employee's company DB)
-    const databaseName = bodyDb && bodyDb.trim() !== ""
-      ? bodyDb.trim()
-      : await getChallanDatabase(challanId, currentDb);
+    const databaseName =
+      bodyDb && bodyDb.trim() !== ""
+        ? bodyDb.trim()
+        : await getChallanDatabase(challanId, currentDb);
     pool = await openPool(databaseName);
 
     // ─────────────────────────────────────────────
@@ -440,7 +466,10 @@ router.get("/:challanId", async (req, res) => {
     const { database: currentDb, userId, isAdmin } = decoded;
 
     // Resolve which DB this challan belongs to
-    const databaseName = await getChallanDatabase(req.params.challanId, currentDb);
+    const databaseName = await getChallanDatabase(
+      req.params.challanId,
+      currentDb,
+    );
 
     // Open DB connection first
     pool = await openPool(databaseName);
@@ -676,9 +705,10 @@ router.post("/create-task", async (req, res) => {
     }
 
     // Resolve which DB this challan belongs to
-    const databaseName = bodyDb && bodyDb.trim() !== ""
-      ? bodyDb.trim()
-      : await getChallanDatabase(challanId, currentDb);
+    const databaseName =
+      bodyDb && bodyDb.trim() !== ""
+        ? bodyDb.trim()
+        : await getChallanDatabase(challanId, currentDb);
     pool = await openPool(databaseName);
 
     const taskId = randomUUID();
@@ -904,7 +934,8 @@ router.post("/members/add", async (req, res) => {
 
     // employeeDb = the DB where the challan/employee belongs (Raja's DB, Tata's DB, etc.)
     // We store it in MA_ChallanChatMembers so future reads can route to the right DB.
-    const chatDb = employeeDb && employeeDb.trim() !== "" ? employeeDb.trim() : databaseName;
+    const chatDb =
+      employeeDb && employeeDb.trim() !== "" ? employeeDb.trim() : databaseName;
 
     await pool
       .request()
