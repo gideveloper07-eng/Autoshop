@@ -19,6 +19,30 @@ async function openPool(databaseName) {
     },
   }).connect();
 }
+
+// ── Helper: resolve DB for a challan chat ─────────────────────────────────────
+// DatabaseName is stored in MA_ChallanChatMembers (set when member is added).
+// If not found there, fall back to the logged-in user's DB.
+async function getChallanDatabase(challanId, fallbackDb) {
+  let pool;
+  try {
+    pool = await openPool(fallbackDb);
+    const result = await pool
+      .request()
+      .input("challanId", sql.NVarChar(100), challanId).query(`
+        SELECT TOP 1 DatabaseName
+        FROM MA_ChallanChatMembers
+        WHERE ChallanId = @challanId
+          AND ISNULL(DatabaseName,'') <> ''
+      `);
+    const dbName = result.recordset[0]?.DatabaseName;
+    return dbName && dbName.trim() !== "" ? dbName.trim() : fallbackDb;
+  } catch {
+    return fallbackDb;
+  } finally {
+    if (pool) await pool.close();
+  }
+}
 router.get("/my-chats", async (req, res) => {
   let pool;
 
@@ -93,7 +117,7 @@ router.post("/send", async (req, res) => {
       });
     }
 
-    const { database: databaseName, userId, isAdmin } = decoded;
+    const { database: currentDb, userId, isAdmin } = decoded;
 
     const {
       challanId,
@@ -102,6 +126,7 @@ router.post("/send", async (req, res) => {
       challanNo,
       messageType,
       documentId,
+      databaseName: bodyDb,
     } = req.body;
 
     if (!challanId) {
@@ -111,6 +136,10 @@ router.post("/send", async (req, res) => {
       });
     }
 
+    // Resolve which DB this challan belongs to (employee's company DB)
+    const databaseName = bodyDb && bodyDb.trim() !== ""
+      ? bodyDb.trim()
+      : await getChallanDatabase(challanId, currentDb);
     pool = await openPool(databaseName);
 
     // ─────────────────────────────────────────────
@@ -236,9 +265,11 @@ router.post("/mark-read/:challanId", async (req, res) => {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
-    const { database: databaseName, userId } = decoded;
+    const { database: currentDb, userId } = decoded;
     const { challanId } = req.params;
 
+    // Resolve which DB this challan belongs to
+    const databaseName = await getChallanDatabase(challanId, currentDb);
     pool = await openPool(databaseName);
 
     await pool
@@ -274,9 +305,11 @@ router.get("/unread-count/:challanId", async (req, res) => {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
-    const { database: databaseName, userId } = decoded;
+    const { database: currentDb, userId } = decoded;
     const { challanId } = req.params;
 
+    // Resolve which DB this challan belongs to
+    const databaseName = await getChallanDatabase(challanId, currentDb);
     pool = await openPool(databaseName);
 
     const result = await pool
@@ -322,6 +355,10 @@ router.get("/documents", async (req, res) => {
       });
     }
 
+    // NOTE: Documents listing uses the logged-in user's DB as the routing DB.
+    // Each document row has a DatabaseName column pointing to its actual storage DB.
+    // For simple listing we query the current DB; the DatabaseName column is returned
+    // so the frontend can route document-specific calls to the right DB.
     pool = await openPool(databaseName);
 
     let result;
@@ -400,7 +437,10 @@ router.get("/:challanId", async (req, res) => {
       });
     }
 
-    const { database: databaseName, userId, isAdmin } = decoded;
+    const { database: currentDb, userId, isAdmin } = decoded;
+
+    // Resolve which DB this challan belongs to
+    const databaseName = await getChallanDatabase(req.params.challanId, currentDb);
 
     // Open DB connection first
     pool = await openPool(databaseName);
@@ -616,7 +656,7 @@ router.post("/create-task", async (req, res) => {
       });
     }
 
-    const { database: databaseName, userId, userName } = decoded;
+    const { database: currentDb, userId, userName } = decoded;
 
     const {
       challanId,
@@ -625,6 +665,7 @@ router.post("/create-task", async (req, res) => {
       startDate,
       dueDate,
       priority,
+      databaseName: bodyDb,
     } = req.body;
 
     if (!challanId || !taskTitle) {
@@ -634,6 +675,10 @@ router.post("/create-task", async (req, res) => {
       });
     }
 
+    // Resolve which DB this challan belongs to
+    const databaseName = bodyDb && bodyDb.trim() !== ""
+      ? bodyDb.trim()
+      : await getChallanDatabase(challanId, currentDb);
     pool = await openPool(databaseName);
 
     const taskId = randomUUID();
@@ -796,14 +841,17 @@ router.get("/members/:challanId", async (req, res) => {
         AddedBy   NVARCHAR(100)    NOT NULL,
         AddedOn   DATETIME         NOT NULL DEFAULT GETDATE(),
         IsActive  BIT              NOT NULL DEFAULT 1,
+        DatabaseName NVARCHAR(200) NULL,
         CONSTRAINT UQ_ChallanChatMember UNIQUE (ChallanId, UserId)
-      )
+      );
+      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='MA_ChallanChatMembers' AND COLUMN_NAME='DatabaseName')
+        ALTER TABLE MA_ChallanChatMembers ADD DatabaseName NVARCHAR(200) NULL;
     `);
 
     const result = await pool
       .request()
       .input("challanId", sql.NVarChar(100), challanId).query(`
-        SELECT MemberId, UserId, UserName, AddedBy, AddedOn
+        SELECT MemberId, UserId, UserName, AddedBy, AddedOn, DatabaseName
         FROM MA_ChallanChatMembers
         WHERE ChallanId = @challanId AND IsActive = 1
         ORDER BY AddedOn
@@ -843,7 +891,7 @@ router.post("/members/add", async (req, res) => {
 
     const { database: databaseName, userId: addedBy } = decoded;
 
-    const { challanId, userId, userName } = req.body;
+    const { challanId, userId, userName, databaseName: employeeDb } = req.body;
 
     if (!challanId || !userId || !userName) {
       return res.status(400).json({
@@ -854,12 +902,17 @@ router.post("/members/add", async (req, res) => {
 
     pool = await openPool(databaseName);
 
+    // employeeDb = the DB where the challan/employee belongs (Raja's DB, Tata's DB, etc.)
+    // We store it in MA_ChallanChatMembers so future reads can route to the right DB.
+    const chatDb = employeeDb && employeeDb.trim() !== "" ? employeeDb.trim() : databaseName;
+
     await pool
       .request()
       .input("challanId", sql.NVarChar(100), challanId)
       .input("userId", sql.NVarChar(100), userId)
       .input("userName", sql.NVarChar(500), userName)
-      .input("addedBy", sql.NVarChar(100), addedBy).query(`
+      .input("addedBy", sql.NVarChar(100), addedBy)
+      .input("chatDb", sql.NVarChar(200), chatDb).query(`
         IF EXISTS (
           SELECT 1
           FROM MA_ChallanChatMembers
@@ -871,7 +924,8 @@ router.post("/members/add", async (req, res) => {
           SET
             IsActive = 1,
             AddedBy = @addedBy,
-            AddedOn = GETDATE()
+            AddedOn = GETDATE(),
+            DatabaseName = @chatDb
           WHERE ChallanId = @challanId
             AND UserId = @userId
         END
@@ -882,14 +936,16 @@ router.post("/members/add", async (req, res) => {
             ChallanId,
             UserId,
             UserName,
-            AddedBy
+            AddedBy,
+            DatabaseName
           )
           VALUES
           (
             @challanId,
             @userId,
             @userName,
-            @addedBy
+            @addedBy,
+            @chatDb
           )
         END
       `);

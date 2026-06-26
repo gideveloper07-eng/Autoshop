@@ -24,6 +24,31 @@ async function openPool(databaseName) {
 // SQL Server will implicitly cast the string to UNIQUEIDENTIFIER in comparisons/inserts
 const asUid = (val) => ({ type: sql.NVarChar(50), value: val });
 
+// ── Helper: resolve the correct database for a group ─────────────────────────
+// Groups belong to a single dealership. DatabaseName is stored in MA_ChatGroups
+// (in the master/current DB). We look it up and return it so every group
+// operation writes to the EMPLOYEE's company DB, not the logged-in user's DB.
+async function getGroupDatabase(groupId, fallbackDb) {
+  let pool;
+  try {
+    // MA_ChatGroups is stored in the user's current DB (acts as a routing table)
+    pool = await openPool(fallbackDb);
+    const result = await pool
+      .request()
+      .input("GroupId", sql.NVarChar(50), groupId).query(`
+        SELECT DatabaseName
+        FROM MA_ChatGroups
+        WHERE GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId)
+      `);
+    const dbName = result.recordset[0]?.DatabaseName;
+    return dbName && dbName.trim() !== "" ? dbName.trim() : fallbackDb;
+  } catch {
+    return fallbackDb;
+  } finally {
+    if (pool) await pool.close();
+  }
+}
+
 // ── GET /api/group/users ──────────────────────────────────────────────────────
 router.get("/users", verifyToken, async (req, res) => {
   let pool;
@@ -215,8 +240,11 @@ router.post("/create", async (req, res) => {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
-    const { database: databaseName, userId } = decoded;
-    const { groupName, members = [] } = req.body;
+    const { database: currentDb, userId } = decoded;
+    // databaseName in body = the dealership DB this group belongs to.
+    // Falls back to the logged-in user's own DB when not supplied.
+    const { groupName, members = [], databaseName: groupDb } = req.body;
+    const databaseName = groupDb && groupDb.trim() !== "" ? groupDb.trim() : currentDb;
 
     if (!groupName || groupName.trim() === "") {
       return res
@@ -235,12 +263,15 @@ router.post("/create", async (req, res) => {
           CreatedBy       NVARCHAR(100)     NOT NULL,
           CreatedDate     DATETIME          NOT NULL DEFAULT GETDATE(),
           IsActive        BIT               NOT NULL DEFAULT 1,
-          LastMessageTime DATETIME          NULL
+          LastMessageTime DATETIME          NULL,
+          DatabaseName    NVARCHAR(200)     NULL
         );
       IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='MA_ChatGroups' AND COLUMN_NAME='LastMessageTime')
         ALTER TABLE MA_ChatGroups ADD LastMessageTime DATETIME NULL;
       IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='MA_ChatGroups' AND COLUMN_NAME='IsActive')
         ALTER TABLE MA_ChatGroups ADD IsActive BIT NOT NULL DEFAULT 1;
+      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='MA_ChatGroups' AND COLUMN_NAME='DatabaseName')
+        ALTER TABLE MA_ChatGroups ADD DatabaseName NVARCHAR(200) NULL;
       -- Fix CreatedBy if it was incorrectly created as UNIQUEIDENTIFIER
       IF EXISTS (
         SELECT 1 FROM sys.columns c
@@ -316,9 +347,10 @@ router.post("/create", async (req, res) => {
       .request()
       .input("GroupId", sql.NVarChar(50), groupId)
       .input("GroupName", sql.NVarChar(200), groupName.trim())
-      .input("CreatedBy", sql.NVarChar(100), userId).query(`
-        INSERT INTO MA_ChatGroups (GroupId, GroupName, CreatedBy, CreatedDate, IsActive)
-        VALUES (CONVERT(UNIQUEIDENTIFIER, @GroupId), @GroupName, @CreatedBy, GETDATE(), 1)
+      .input("CreatedBy", sql.NVarChar(100), userId)
+      .input("DatabaseName", sql.NVarChar(200), databaseName).query(`
+        INSERT INTO MA_ChatGroups (GroupId, GroupName, CreatedBy, CreatedDate, IsActive, DatabaseName)
+        VALUES (CONVERT(UNIQUEIDENTIFIER, @GroupId), @GroupName, @CreatedBy, GETDATE(), 1, @DatabaseName)
       `);
 
     // Creator is admin
@@ -427,6 +459,7 @@ router.get("/my-groups", async (req, res) => {
           g.GroupName,
           g.CreatedDate,
           g.LastMessageTime,
+          g.DatabaseName,
           (
             SELECT COUNT(*)
             FROM MA_ChatGroupMembers gm2
@@ -454,6 +487,7 @@ router.get("/my-groups", async (req, res) => {
             g.GroupName,
             g.CreatedDate,
             g.LastMessageTime,
+            g.DatabaseName,
             (
               SELECT COUNT(*)
               FROM MA_ChatGroupMembers gm2
@@ -501,9 +535,11 @@ router.post("/add-member", async (req, res) => {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
-    const { database: databaseName, userId: currentUserId } = decoded;
+    const { database: currentDb, userId: currentUserId } = decoded;
     const { groupId, userId } = req.body;
 
+    // Resolve which DB this group belongs to
+    const databaseName = await getGroupDatabase(groupId, currentDb);
     pool = await openPool(databaseName);
 
     const adminCheck = await pool
@@ -563,9 +599,11 @@ router.post("/remove-member", async (req, res) => {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
-    const { database: databaseName, userId: currentUserId } = decoded;
+    const { database: currentDb, userId: currentUserId } = decoded;
     const { groupId, userId } = req.body;
 
+    // Resolve which DB this group belongs to
+    const databaseName = await getGroupDatabase(groupId, currentDb);
     pool = await openPool(databaseName);
 
     const adminCheck = await pool
@@ -620,10 +658,12 @@ router.get("/members/:groupId", async (req, res) => {
       });
     }
 
-    const { database: databaseName, userId, isAdmin } = decoded;
+    const { database: currentDb, userId, isAdmin } = decoded;
 
     const { groupId } = req.params;
 
+    // Resolve which DB this group belongs to
+    const databaseName = await getGroupDatabase(groupId, currentDb);
     pool = await openPool(databaseName);
 
     // ───────────────────────────────
@@ -704,10 +744,14 @@ router.post("/update-task-status", async (req, res) => {
       });
     }
 
-    const { database: databaseName, userId } = decoded;
+    const { database: currentDb, userId } = decoded;
 
-    const { taskId, status } = req.body;
+    const { taskId, status, groupId } = req.body;
 
+    // Resolve which DB this group belongs to using groupId from body
+    const databaseName = groupId
+      ? await getGroupDatabase(groupId, currentDb)
+      : currentDb;
     pool = await openPool(databaseName);
 
     await pool
@@ -748,7 +792,7 @@ router.post("/send-message", async (req, res) => {
       });
     }
 
-    const { database: databaseName, userId, userName } = decoded;
+    const { database: currentDb, userId, userName } = decoded;
 
     const {
       groupId,
@@ -757,6 +801,8 @@ router.post("/send-message", async (req, res) => {
       documentId = null,
     } = req.body;
 
+    // Resolve which DB this group belongs to
+    const databaseName = await getGroupDatabase(groupId, currentDb);
     pool = await openPool(databaseName);
 
     // ─────────────────────────────────────────────
@@ -908,7 +954,7 @@ router.post("/create-task", async (req, res) => {
       });
     }
 
-    const { database: databaseName, userId, userName } = decoded;
+    const { database: currentDb, userId, userName } = decoded;
 
     const {
       groupId,
@@ -920,6 +966,8 @@ router.post("/create-task", async (req, res) => {
       priority,
     } = req.body;
 
+    // Resolve which DB this group belongs to
+    const databaseName = await getGroupDatabase(groupId, currentDb);
     pool = await openPool(databaseName);
 
     // Verify member
@@ -1041,9 +1089,11 @@ router.get("/messages/:groupId", async (req, res) => {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
-    const { database: databaseName, userId } = decoded;
+    const { database: currentDb, userId } = decoded;
     const { groupId } = req.params;
 
+    // Resolve which DB this group belongs to
+    const databaseName = await getGroupDatabase(groupId, currentDb);
     pool = await openPool(databaseName);
 
     // Verify membership
