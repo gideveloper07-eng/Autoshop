@@ -24,7 +24,7 @@ async function openPool(databaseName) {
 // ── Helper: resolve DB for a challan chat ─────────────────────────────────────
 // DatabaseName is stored in MA_ChallanChatMembers (set when member is added).
 // If not found there, fall back to the logged-in user's DB.
-async function getChallanDatabase(challanId, fallbackDb) {
+async function getChallanDatabase(challanId, userGuid, fallbackDb) {
   let pool;
   try {
     pool = await openPool(fallbackDb);
@@ -165,7 +165,7 @@ router.post("/send", async (req, res) => {
     const databaseName =
       bodyDb && bodyDb.trim() !== ""
         ? bodyDb.trim()
-        : await getChallanDatabase(challanId, currentDb);
+        : await getChallanDatabase(challanId, decoded.userGuid, currentDb);
     pool = await openPool(databaseName);
 
     // ─────────────────────────────────────────────
@@ -295,7 +295,11 @@ router.post("/mark-read/:challanId", async (req, res) => {
     const { challanId } = req.params;
 
     // Resolve which DB this challan belongs to
-    const databaseName = await getChallanDatabase(challanId, currentDb);
+    const databaseName = await getChallanDatabase(
+      challanId,
+      decoded.userGuid,
+      currentDb,
+    );
     pool = await openPool(databaseName);
 
     await pool
@@ -335,7 +339,11 @@ router.get("/unread-count/:challanId", async (req, res) => {
     const { challanId } = req.params;
 
     // Resolve which DB this challan belongs to
-    const databaseName = await getChallanDatabase(challanId, currentDb);
+    const databaseName = await getChallanDatabase(
+      challanId,
+      decoded.userGuid,
+      currentDb,
+    );
     pool = await openPool(databaseName);
 
     const result = await pool
@@ -468,6 +476,7 @@ router.get("/:challanId", async (req, res) => {
     // Resolve which DB this challan belongs to
     const databaseName = await getChallanDatabase(
       req.params.challanId,
+      decoded.userGuid,
       currentDb,
     );
 
@@ -708,7 +717,7 @@ router.post("/create-task", async (req, res) => {
     const databaseName =
       bodyDb && bodyDb.trim() !== ""
         ? bodyDb.trim()
-        : await getChallanDatabase(challanId, currentDb);
+        : await getChallanDatabase(challanId, decoded.userGuid, currentDb);
     pool = await openPool(databaseName);
 
     const taskId = randomUUID();
