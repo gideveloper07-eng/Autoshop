@@ -35,7 +35,7 @@ async function getAccessibleDatabases(userGuid, currentDb) {
             CM.unqid AS clientId,
             CM.propertycode AS companyCode,
             CM.propertyname AS companyName,
-            CM.propertydb AS database
+            CM.propertydb AS databaseName
         FROM MA_UserDatabaseAccess UA
         INNER JOIN MA_ClientMaster CM
             ON UA.ClientId = CM.unqid
