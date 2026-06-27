@@ -216,11 +216,14 @@ BEGIN
     )
 END
 `);
-
+    console.log("receiverUserId:", receiverUserId);
+    console.log("receiverName:", receiverName);
+    console.log("receiverDatabase:", receiverDatabase);
     //
     // Ensure receiver exists
     //
     if (receiverUserId) {
+      console.log("Inserting receiver:", receiverUserId);
       await pool
         .request()
         .input("challanId", sql.NVarChar(100), challanId)
