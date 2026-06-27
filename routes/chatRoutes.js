@@ -305,11 +305,11 @@ AND IsActive=1
       .input("challanId", sql.NVarChar(100), challanId)
       .input("userId", sql.NVarChar(100), userId)
       .input("senderName", sql.NVarChar(500), senderName || userId)
-      .input("messageText", sql.NVarChar(sql.MAX), messageText)
-      .input("messageType", sql.VarChar(20), messageType)
-      .input("documentId", sql.UniqueIdentifier, documentId)
-      .input("databaseName", sql.NVarChar(100), databaseName)
-      .input("receiverId", sql.NVarChar(100), receiverUserId || null).query(`
+      .input("messageText", sql.NVarChar(sql.MAX), messageText || "")
+      .input("messageType", sql.VarChar(20), messageType || "TEXT")
+      .input("documentId", sql.UniqueIdentifier, documentId || null)
+      .input("dbname", sql.NVarChar(100), databaseName)
+      .input("recid", sql.NVarChar(100), receiverUserId || null).query(`
 INSERT INTO MA_ChallanChat
 (
     ChatId,
@@ -335,11 +335,10 @@ VALUES
     @documentId,
     GETDATE(),
     0,
-    @databaseName,
-    @receiverId
+    @dbname,
+    @recid
 )
 `);
-
     //-------------------------------------------------
     // Get Notification Receivers
     //-------------------------------------------------
