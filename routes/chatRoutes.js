@@ -664,11 +664,10 @@ WHERE  c.MESSAGETYPE <> 'TASK'
      FROM MA_ChatTasks t
      LEFT JOIN rh_secut s
        ON CONVERT(VARCHAR(50), s.utunqid) = t.AssignedTo
-   
-
       `);
 
     // ORDER BY MessageTime*/
+    console.log(result.recordset);
     return res.json({
       success: true,
       data: result.recordset,
