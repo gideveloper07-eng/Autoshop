@@ -308,7 +308,7 @@ AND IsActive=1
       .input("messageType", sql.VarChar(20), messageType || "TEXT")
       .input("documentId", sql.UniqueIdentifier, documentId || null)
       .input("dbname", sql.NVarChar(100), databaseName)
-      .input("receiveruserid", sql.NVarChar(100), receiverUserId).query(`
+      .input("recid", sql.NVarChar(100), "123").query(`
 INSERT INTO MA_ChallanChat
 (
     ChatId,
@@ -335,7 +335,7 @@ VALUES
     GETDATE(),
     0,
     @dbname,
-    @receiveruserid
+    @recid
 )
 `);
 
