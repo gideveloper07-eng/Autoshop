@@ -433,64 +433,82 @@ router.get("/my-direct-chats", async (req, res) => {
 
     const result = await pool
       .request()
-      .input("userId", sql.NVarChar(100), userId)
-      .query(`
+      .input("userId", sql.NVarChar(100), userId).query(`
+;WITH ChatList AS
+(
+    SELECT
+        CASE
+            WHEN SenderUserId = @userId THEN ReceiverId
+            ELSE SenderUserId
+        END AS OtherUserId,
+
+        MessageText,
+        MessageTime,
+        MessageType,
+        SenderUserId,
+        ReceiverId,
+
+        ROW_NUMBER() OVER
+        (
+            PARTITION BY
+            CASE
+                WHEN SenderUserId = @userId THEN ReceiverId
+                ELSE SenderUserId
+            END
+            ORDER BY MessageTime DESC
+        ) AS rn
+
+    FROM MA_ChallanChat
+
+    WHERE SenderUserId=@userId
+       OR ReceiverId=@userId
+)
+
 SELECT
 
-    me.ChallanId,
+    c.OtherUserId AS UserId,
+    m.UserName,
+    m.DatabaseName,
 
-    other.UserId,
-    other.UserName,
-    other.DatabaseName,
-
-    lastmsg.MessageText     AS LastMessage,
-    lastmsg.MessageTime     AS LastMessageTime,
-    lastmsg.MessageType,
-    lastmsg.SenderUserId,
+    c.MessageText AS LastMessage,
+    c.MessageTime AS LastMessageTime,
+    c.MessageType,
+    c.SenderUserId,
 
     (
         SELECT COUNT(*)
         FROM MA_ChallanChat x
-        WHERE x.ChallanId=me.ChallanId
-        AND x.IsRead=0
-        AND x.SenderUserId<>@userId
+        WHERE
+            x.SenderUserId = c.OtherUserId
+            AND x.ReceiverId = @userId
+            AND x.IsRead = 0
     ) AS UnreadCount
 
-FROM MA_ChallanChatMembers me
+FROM ChatList c
 
-INNER JOIN MA_ChallanChatMembers other
-ON other.ChallanId=me.ChallanId
-AND other.UserId<>@userId
+LEFT JOIN MA_ChallanChatMembers m
+    ON m.UserId = c.OtherUserId
 
-OUTER APPLY
-(
-    SELECT TOP 1 *
-    FROM MA_ChallanChat c
-    WHERE c.ChallanId=me.ChallanId
-    ORDER BY c.MessageTime DESC
-) lastmsg
+WHERE c.rn = 1
 
-WHERE me.UserId=@userId
-AND me.IsActive=1
-
-ORDER BY lastmsg.MessageTime DESC
+ORDER BY c.MessageTime DESC
 `);
 
-    res.json({
+    return res.json({
       success: true,
       data: result.recordset,
     });
-
   } catch (err) {
-    console.log(err);
+    console.error(err);
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: err.message,
     });
-
   } finally {
-    if (pool) await pool.close();
+    if (pool) {
+      await pool.close();
+    }
   }
 });
 
