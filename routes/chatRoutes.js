@@ -305,7 +305,8 @@ AND IsActive=1
       .input("senderName", sql.NVarChar(500), senderName || userId)
       .input("messageText", sql.NVarChar(sql.MAX), messageText || "")
       .input("messageType", sql.VarChar(20), messageType || "TEXT")
-      .input("documentId", sql.UniqueIdentifier, documentId || null).query(`
+      .input("documentId", sql.UniqueIdentifier, documentId || null)
+      .input("dbname", sql.NVarChar(100), databaseName).query(`
 INSERT INTO MA_ChallanChat
 (
     ChatId,
@@ -316,7 +317,8 @@ INSERT INTO MA_ChallanChat
     MessageType,
     DocumentId,
     MessageTime,
-    IsRead
+    IsRead,
+    DatabaseName
 )
 VALUES
 (
@@ -328,7 +330,8 @@ VALUES
     @messageType,
     @documentId,
     GETDATE(),
-    0
+    0,
+    @dbname
 )
 `);
 
