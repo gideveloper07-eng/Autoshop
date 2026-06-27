@@ -129,11 +129,12 @@ router.get("/my-chats", async (req, res) => {
     });
   }
 });
+
 // ── POST /api/chat/send ──────────────────────────────────────────────────────
 // ── POST /api/chat/send ─────────────────────────────────────────────
 router.post("/send", async (req, res) => {
   let pool;
-  console.log("calling send api");
+
   try {
     const decoded = decodeToken(req);
 
@@ -148,15 +149,18 @@ router.post("/send", async (req, res) => {
 
     const {
       challanId,
+      challanNo,
       messageText,
       senderName,
-      challanNo,
       messageType,
       documentId,
       databaseName: bodyDb,
-    } = req.body;
 
-    console.log(challanId);
+      // NEW
+      receiverUserId,
+      receiverName,
+      receiverDatabase,
+    } = req.body;
 
     if (!challanId) {
       return res.status(400).json({
@@ -165,27 +169,120 @@ router.post("/send", async (req, res) => {
       });
     }
 
-    // Resolve which DB this challan belongs to (employee's company DB)
     const databaseName =
       bodyDb && bodyDb.trim() !== ""
         ? bodyDb.trim()
         : await getChallanDatabase(challanId, decoded.userGuid, currentDb);
+
     pool = await openPool(databaseName);
 
-    // ─────────────────────────────────────────────
-    // SECURITY CHECK
-    // ─────────────────────────────────────────────
+    //
+    // Ensure sender exists
+    //
+    await pool
+      .request()
+      .input("challanId", sql.NVarChar(100), challanId)
+      .input("userId", sql.NVarChar(100), userId)
+      .input("userName", sql.NVarChar(200), senderName || userId)
+      .input("db", sql.NVarChar(200), databaseName).query(`
+IF NOT EXISTS(
+    SELECT 1
+    FROM MA_ChallanChatMembers
+    WHERE ChallanId=@challanId
+      AND UserId=@userId
+)
+BEGIN
+    INSERT INTO MA_ChallanChatMembers
+    (
+        MemberId,
+        ChallanId,
+        UserId,
+        UserName,
+        AddedBy,
+        AddedOn,
+        IsActive,
+        DatabaseName
+    )
+    VALUES
+    (
+        NEWID(),
+        @challanId,
+        @userId,
+        @userName,
+        @userId,
+        GETDATE(),
+        1,
+        @db
+    )
+END
+`);
+
+    //
+    // Ensure receiver exists
+    //
+    if (receiverUserId) {
+      await pool
+        .request()
+        .input("challanId", sql.NVarChar(100), challanId)
+        .input("receiverId", sql.NVarChar(100), receiverUserId)
+        .input(
+          "receiverName",
+          sql.NVarChar(200),
+          receiverName || receiverUserId,
+        )
+        .input(
+          "receiverDb",
+          sql.NVarChar(200),
+          receiverDatabase || databaseName,
+        )
+        .input("addedBy", sql.NVarChar(100), userId).query(`
+IF NOT EXISTS(
+    SELECT 1
+    FROM MA_ChallanChatMembers
+    WHERE ChallanId=@challanId
+      AND UserId=@receiverId
+)
+BEGIN
+    INSERT INTO MA_ChallanChatMembers
+    (
+        MemberId,
+        ChallanId,
+        UserId,
+        UserName,
+        AddedBy,
+        AddedOn,
+        IsActive,
+        DatabaseName
+    )
+    VALUES
+    (
+        NEWID(),
+        @challanId,
+        @receiverId,
+        @receiverName,
+        @addedBy,
+        GETDATE(),
+        1,
+        @receiverDb
+    )
+END
+`);
+    }
+
+    //
+    // Security
+    //
     if (!isAdmin) {
       const access = await pool
         .request()
         .input("challanId", sql.NVarChar(100), challanId)
         .input("userId", sql.NVarChar(100), userId).query(`
-          SELECT 1
-          FROM MA_ChallanChatMembers
-          WHERE ChallanId = @challanId
-            AND UserId = @userId
-            AND IsActive = 1
-        `);
+SELECT 1
+FROM MA_ChallanChatMembers
+WHERE ChallanId=@challanId
+AND UserId=@userId
+AND IsActive=1
+`);
 
       if (access.recordset.length === 0) {
         return res.status(403).json({
@@ -195,9 +292,9 @@ router.post("/send", async (req, res) => {
       }
     }
 
-    // ─────────────────────────────────────────────
-    // INSERT MESSAGE
-    // ─────────────────────────────────────────────
+    //
+    // Insert message
+    //
     await pool
       .request()
       .input("challanId", sql.NVarChar(100), challanId)
@@ -206,45 +303,45 @@ router.post("/send", async (req, res) => {
       .input("messageText", sql.NVarChar(sql.MAX), messageText || "")
       .input("messageType", sql.VarChar(20), messageType || "TEXT")
       .input("documentId", sql.UniqueIdentifier, documentId || null).query(`
-        INSERT INTO MA_ChallanChat
-        (
-          ChatId,
-          ChallanId,
-          SenderUserId,
-          SenderName,
-          MessageText,
-          MessageType,
-          DocumentId,
-          MessageTime,
-          IsRead
-        )
-        VALUES
-        (
-          NEWID(),
-          @challanId,
-          @userId,
-          @senderName,
-          @messageText,
-          @messageType,
-          @documentId,
-          GETDATE(),
-          0
-        )
-      `);
+INSERT INTO MA_ChallanChat
+(
+    ChatId,
+    ChallanId,
+    SenderUserId,
+    SenderName,
+    MessageText,
+    MessageType,
+    DocumentId,
+    MessageTime,
+    IsRead
+)
+VALUES
+(
+    NEWID(),
+    @challanId,
+    @userId,
+    @senderName,
+    @messageText,
+    @messageType,
+    @documentId,
+    GETDATE(),
+    0
+)
+`);
 
-    // ─────────────────────────────────────────────
-    // SEND PUSH TO CHAT MEMBERS
-    // ─────────────────────────────────────────────
+    //
+    // Push notifications
+    //
     const members = await pool
       .request()
       .input("challanId", sql.NVarChar(100), challanId)
       .input("senderId", sql.NVarChar(100), userId).query(`
-        SELECT UserId
-        FROM MA_ChallanChatMembers
-        WHERE ChallanId = @challanId
-          AND IsActive = 1
-          AND UserId <> @senderId
-      `);
+SELECT UserId
+FROM MA_ChallanChatMembers
+WHERE ChallanId=@challanId
+AND IsActive=1
+AND UserId<>@senderId
+`);
 
     for (const member of members.recordset) {
       try {
@@ -260,8 +357,8 @@ router.post("/send", async (req, res) => {
             senderId: userId,
           },
         );
-      } catch (pushErr) {
-        console.error(`PUSH ERROR FOR USER ${member.UserId}:`, pushErr.message);
+      } catch (e) {
+        console.error(e);
       }
     }
 
@@ -269,7 +366,7 @@ router.post("/send", async (req, res) => {
       success: true,
     });
   } catch (err) {
-    console.error("SEND CHAT ERROR:", err);
+    console.error(err);
 
     return res.status(500).json({
       success: false,
