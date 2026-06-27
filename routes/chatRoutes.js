@@ -266,7 +266,7 @@ BEGIN
         @addedBy,
         GETDATE(),
         1,
-        @receiverDb,
+        @receiverDb
 
     )
 END
