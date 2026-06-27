@@ -415,6 +415,8 @@ router.post("/create", async (req, res) => {
 });
 
 router.get("/my-direct-chats", async (req, res) => {
+  let pool;
+
   try {
     const decoded = decodeToken(req);
 
@@ -425,158 +427,70 @@ router.get("/my-direct-chats", async (req, res) => {
       });
     }
 
-    const { database: currentDb, userGuid, userId } = decoded;
+    const { database, userId } = decoded;
 
-    const databases = await getAccessibleDatabases(userGuid, currentDb);
+    pool = await openPool(database);
 
-    let allChats = [];
-
-    for (const db of databases) {
-      let pool;
-
-      try {
-        pool = await openPool(db.database);
-
-        const tableCheck = await pool.request().query(`
-          SELECT COUNT(*) AS Total
-          FROM INFORMATION_SCHEMA.TABLES
-          WHERE TABLE_NAME IN
-          (
-            'MA_ChallanChat',
-            'MA_ChallanChatMembers'
-          )
-        `);
-
-        if (tableCheck.recordset[0].Total < 2) continue;
-
-        const result = await pool
-          .request()
-          .input("userId", sql.NVarChar(100), userId)
-          .query(`
-;WITH MyChats AS
-(
-    SELECT DISTINCT ChallanId
-    FROM MA_ChallanChatMembers
-    WHERE UserId=@userId
-      AND IsActive=1
-),
-
-OtherUsers AS
-(
-    SELECT DISTINCT
-        m.UserId,
-        m.UserName,
-        m.DatabaseName
-    FROM MA_ChallanChatMembers m
-    INNER JOIN MyChats mc
-        ON mc.ChallanId=m.ChallanId
-    WHERE m.UserId<>@userId
-      AND m.IsActive=1
-)
-
+    const result = await pool
+      .request()
+      .input("userId", sql.NVarChar(100), userId)
+      .query(`
 SELECT
-    ou.UserId,
-    ou.UserName,
-    ou.DatabaseName,
 
-    '${db.companyName ?? ""}' AS CompanyName,
+    me.ChallanId,
 
-    (
-        SELECT TOP 1 c.ChallanId
-        FROM MA_ChallanChat c
-        INNER JOIN MA_ChallanChatMembers cm
-            ON cm.ChallanId=c.ChallanId
-           AND cm.UserId=ou.UserId
-        ORDER BY c.MessageTime DESC
-    ) AS LastChallanId,
+    other.UserId,
+    other.UserName,
+    other.DatabaseName,
 
-    (
-        SELECT TOP 1 c.MessageText
-        FROM MA_ChallanChat c
-        INNER JOIN MA_ChallanChatMembers cm
-            ON cm.ChallanId=c.ChallanId
-           AND cm.UserId=ou.UserId
-        ORDER BY c.MessageTime DESC
-    ) AS LastMessage,
-
-    (
-        SELECT TOP 1 c.MessageType
-        FROM MA_ChallanChat c
-        INNER JOIN MA_ChallanChatMembers cm
-            ON cm.ChallanId=c.ChallanId
-           AND cm.UserId=ou.UserId
-        ORDER BY c.MessageTime DESC
-    ) AS LastMessageType,
-
-    (
-        SELECT TOP 1 c.MessageTime
-        FROM MA_ChallanChat c
-        INNER JOIN MA_ChallanChatMembers cm
-            ON cm.ChallanId=c.ChallanId
-           AND cm.UserId=ou.UserId
-        ORDER BY c.MessageTime DESC
-    ) AS LastMessageTime,
+    lastmsg.MessageText     AS LastMessage,
+    lastmsg.MessageTime     AS LastMessageTime,
+    lastmsg.MessageType,
+    lastmsg.SenderUserId,
 
     (
         SELECT COUNT(*)
-        FROM MA_ChallanChat c
-        INNER JOIN MA_ChallanChatMembers cm
-            ON cm.ChallanId=c.ChallanId
-           AND cm.UserId=ou.UserId
-        WHERE c.IsRead=0
-          AND c.SenderUserId<>@userId
+        FROM MA_ChallanChat x
+        WHERE x.ChallanId=me.ChallanId
+        AND x.IsRead=0
+        AND x.SenderUserId<>@userId
     ) AS UnreadCount
 
-FROM OtherUsers ou
-        `);
+FROM MA_ChallanChatMembers me
 
-        allChats.push(...result.recordset);
-      } catch (err) {
-        console.log(`Failed loading ${db.database}:`, err.message);
-      } finally {
-        if (pool) await pool.close();
-      }
-    }
+INNER JOIN MA_ChallanChatMembers other
+ON other.ChallanId=me.ChallanId
+AND other.UserId<>@userId
 
-    // Merge duplicate users across databases (keep latest message)
-    const map = new Map();
+OUTER APPLY
+(
+    SELECT TOP 1 *
+    FROM MA_ChallanChat c
+    WHERE c.ChallanId=me.ChallanId
+    ORDER BY c.MessageTime DESC
+) lastmsg
 
-    for (const chat of allChats) {
-      const existing = map.get(chat.UserId);
+WHERE me.UserId=@userId
+AND me.IsActive=1
 
-      if (!existing) {
-        map.set(chat.UserId, chat);
-        continue;
-      }
+ORDER BY lastmsg.MessageTime DESC
+`);
 
-      const t1 = new Date(existing.LastMessageTime || 0);
-      const t2 = new Date(chat.LastMessageTime || 0);
-
-      if (t2 > t1) {
-        map.set(chat.UserId, chat);
-      }
-    }
-
-    const chats = [...map.values()];
-
-    chats.sort((a, b) => {
-      return (
-        new Date(b.LastMessageTime || 0) -
-        new Date(a.LastMessageTime || 0)
-      );
-    });
-
-    return res.json({
+    res.json({
       success: true,
-      data: chats,
+      data: result.recordset,
     });
-  } catch (err) {
-    console.error("MY DIRECT CHATS ERROR:", err);
 
-    return res.status(500).json({
+  } catch (err) {
+    console.log(err);
+
+    res.status(500).json({
       success: false,
       message: err.message,
     });
+
+  } finally {
+    if (pool) await pool.close();
   }
 });
 
