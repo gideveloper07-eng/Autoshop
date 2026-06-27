@@ -133,7 +133,7 @@ router.get("/my-chats", async (req, res) => {
 // ── POST /api/chat/send ─────────────────────────────────────────────
 router.post("/send", async (req, res) => {
   let pool;
-
+  console.log("calling send api");
   try {
     const decoded = decodeToken(req);
 
@@ -155,6 +155,8 @@ router.post("/send", async (req, res) => {
       documentId,
       databaseName: bodyDb,
     } = req.body;
+
+    console.log(challanId);
 
     if (!challanId) {
       return res.status(400).json({
