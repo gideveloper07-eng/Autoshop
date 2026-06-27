@@ -173,7 +173,7 @@ router.post("/send", async (req, res) => {
     // ─────────────────────────────────────────────
     // SECURITY CHECK
     // ─────────────────────────────────────────────
-    if (!isAdmin) {
+    /*if (!isAdmin) {
       const access = await pool
         .request()
         .input("challanId", sql.NVarChar(100), challanId)
@@ -191,7 +191,7 @@ router.post("/send", async (req, res) => {
           message: "You are not a member of this chat",
         });
       }
-    }
+    }*/
 
     // ─────────────────────────────────────────────
     // INSERT MESSAGE
