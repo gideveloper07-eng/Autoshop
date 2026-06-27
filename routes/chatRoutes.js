@@ -255,7 +255,7 @@ BEGIN
         AddedBy,
         AddedOn,
         IsActive,
-        DatabaseName
+        DatabaseName 
     )
     VALUES
     (
@@ -266,7 +266,8 @@ BEGIN
         @addedBy,
         GETDATE(),
         1,
-        @receiverDb
+        @receiverDb,
+
     )
 END
 `);
@@ -306,7 +307,8 @@ AND IsActive=1
       .input("messageText", sql.NVarChar(sql.MAX), messageText || "")
       .input("messageType", sql.VarChar(20), messageType || "TEXT")
       .input("documentId", sql.UniqueIdentifier, documentId || null)
-      .input("dbname", sql.NVarChar(100), databaseName).query(`
+      .input("dbname", sql.NVarChar(100), databaseName)
+      .input("receiverid", sql.NVarChar(100), receiverUserId).query(`
 INSERT INTO MA_ChallanChat
 (
     ChatId,
@@ -318,7 +320,8 @@ INSERT INTO MA_ChallanChat
     DocumentId,
     MessageTime,
     IsRead,
-    DatabaseName
+    DatabaseName,
+    receiverid
 )
 VALUES
 (
@@ -331,7 +334,8 @@ VALUES
     @documentId,
     GETDATE(),
     0,
-    @dbname
+    @dbname,
+    @receiverid
 )
 `);
 
