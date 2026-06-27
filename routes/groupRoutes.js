@@ -414,6 +414,172 @@ router.post("/create", async (req, res) => {
   }
 });
 
+router.get("/my-direct-chats", async (req, res) => {
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { database: currentDb, userGuid, userId } = decoded;
+
+    const databases = await getAccessibleDatabases(userGuid, currentDb);
+
+    let allChats = [];
+
+    for (const db of databases) {
+      let pool;
+
+      try {
+        pool = await openPool(db.database);
+
+        const tableCheck = await pool.request().query(`
+          SELECT COUNT(*) AS Total
+          FROM INFORMATION_SCHEMA.TABLES
+          WHERE TABLE_NAME IN
+          (
+            'MA_ChallanChat',
+            'MA_ChallanChatMembers'
+          )
+        `);
+
+        if (tableCheck.recordset[0].Total < 2) continue;
+
+        const result = await pool
+          .request()
+          .input("userId", sql.NVarChar(100), userId)
+          .query(`
+;WITH MyChats AS
+(
+    SELECT DISTINCT ChallanId
+    FROM MA_ChallanChatMembers
+    WHERE UserId=@userId
+      AND IsActive=1
+),
+
+OtherUsers AS
+(
+    SELECT DISTINCT
+        m.UserId,
+        m.UserName,
+        m.DatabaseName
+    FROM MA_ChallanChatMembers m
+    INNER JOIN MyChats mc
+        ON mc.ChallanId=m.ChallanId
+    WHERE m.UserId<>@userId
+      AND m.IsActive=1
+)
+
+SELECT
+    ou.UserId,
+    ou.UserName,
+    ou.DatabaseName,
+
+    '${db.companyName ?? ""}' AS CompanyName,
+
+    (
+        SELECT TOP 1 c.ChallanId
+        FROM MA_ChallanChat c
+        INNER JOIN MA_ChallanChatMembers cm
+            ON cm.ChallanId=c.ChallanId
+           AND cm.UserId=ou.UserId
+        ORDER BY c.MessageTime DESC
+    ) AS LastChallanId,
+
+    (
+        SELECT TOP 1 c.MessageText
+        FROM MA_ChallanChat c
+        INNER JOIN MA_ChallanChatMembers cm
+            ON cm.ChallanId=c.ChallanId
+           AND cm.UserId=ou.UserId
+        ORDER BY c.MessageTime DESC
+    ) AS LastMessage,
+
+    (
+        SELECT TOP 1 c.MessageType
+        FROM MA_ChallanChat c
+        INNER JOIN MA_ChallanChatMembers cm
+            ON cm.ChallanId=c.ChallanId
+           AND cm.UserId=ou.UserId
+        ORDER BY c.MessageTime DESC
+    ) AS LastMessageType,
+
+    (
+        SELECT TOP 1 c.MessageTime
+        FROM MA_ChallanChat c
+        INNER JOIN MA_ChallanChatMembers cm
+            ON cm.ChallanId=c.ChallanId
+           AND cm.UserId=ou.UserId
+        ORDER BY c.MessageTime DESC
+    ) AS LastMessageTime,
+
+    (
+        SELECT COUNT(*)
+        FROM MA_ChallanChat c
+        INNER JOIN MA_ChallanChatMembers cm
+            ON cm.ChallanId=c.ChallanId
+           AND cm.UserId=ou.UserId
+        WHERE c.IsRead=0
+          AND c.SenderUserId<>@userId
+    ) AS UnreadCount
+
+FROM OtherUsers ou
+        `);
+
+        allChats.push(...result.recordset);
+      } catch (err) {
+        console.log(`Failed loading ${db.database}:`, err.message);
+      } finally {
+        if (pool) await pool.close();
+      }
+    }
+
+    // Merge duplicate users across databases (keep latest message)
+    const map = new Map();
+
+    for (const chat of allChats) {
+      const existing = map.get(chat.UserId);
+
+      if (!existing) {
+        map.set(chat.UserId, chat);
+        continue;
+      }
+
+      const t1 = new Date(existing.LastMessageTime || 0);
+      const t2 = new Date(chat.LastMessageTime || 0);
+
+      if (t2 > t1) {
+        map.set(chat.UserId, chat);
+      }
+    }
+
+    const chats = [...map.values()];
+
+    chats.sort((a, b) => {
+      return (
+        new Date(b.LastMessageTime || 0) -
+        new Date(a.LastMessageTime || 0)
+      );
+    });
+
+    return res.json({
+      success: true,
+      data: chats,
+    });
+  } catch (err) {
+    console.error("MY DIRECT CHATS ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+});
+
 // ── GET /api/group/my-groups ──────────────────────────────────────────────────
 router.get("/my-groups", async (req, res) => {
   try {
