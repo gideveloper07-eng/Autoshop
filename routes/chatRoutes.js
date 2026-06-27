@@ -474,6 +474,7 @@ router.get("/unread-count/:challanId", async (req, res) => {
     if (pool) await pool.close();
   }
 });
+
 router.get("/documents", async (req, res) => {
   let pool;
 
@@ -563,6 +564,7 @@ router.get("/documents", async (req, res) => {
     if (pool) await pool.close();
   }
 });
+
 // ── GET /api/chat/:challanId ─────────────────────────────────────────────────
 // Fetch all messages for a challan (wildcard — must be LAST)
 router.get("/:challanId", async (req, res) => {
@@ -638,7 +640,7 @@ router.get("/:challanId", async (req, res) => {
 FROM MA_ChallanChat c
 LEFT JOIN MA_ChatDocuments d
     ON c.DocumentId = d.DocumentId
-WHERE c.ChallanId = @challanId and c.MESSAGETYPE <> 'TASK'
+WHERE  c.MESSAGETYPE <> 'TASK'
    UNION ALL
 
      SELECT
@@ -662,7 +664,7 @@ WHERE c.ChallanId = @challanId and c.MESSAGETYPE <> 'TASK'
      FROM MA_ChatTasks t
      LEFT JOIN rh_secut s
        ON CONVERT(VARCHAR(50), s.utunqid) = t.AssignedTo
-    WHERE t.ChallanId = @challanId
+   
 
       `);
 

@@ -31,6 +31,7 @@ const _corsOptions = {
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   optionsSuccessStatus: 200,
 };
+
 app.use(cors(_corsOptions));
 app.use(express.json());
 app.use("/uploads", express.static("uploads"));
