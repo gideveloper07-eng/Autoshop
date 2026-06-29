@@ -781,6 +781,77 @@ router.post("/remove-member", async (req, res) => {
 
 // ── GET /api/group/members/:groupId ──────────────────────────────────────────
 // ── GET /api/group/members/:groupId ──────────────────────────
+// -- POST /api/group/delete-group -----------------------------------------
+router.post("/delete-group", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const { database: currentDb, userId: currentUserId } = decoded;
+    const { groupId, databaseName: bodyDatabaseName } = req.body;
+
+    if (!groupId) {
+      return res.status(400).json({ success: false, message: "GroupId is required" });
+    }
+
+    const databaseName =
+      bodyDatabaseName && bodyDatabaseName.trim() !== ""
+        ? bodyDatabaseName.trim()
+        : await getGroupDatabase(groupId, currentDb);
+
+    pool = await openPool(databaseName);
+
+    const adminCheck = await pool
+      .request()
+      .input("GroupId", sql.NVarChar(50), groupId)
+      .input("UserId", sql.NVarChar(100), currentUserId).query(`
+        SELECT TOP 1
+          g.CreatedBy,
+          ISNULL(gm.IsAdmin, 0) AS IsAdmin
+        FROM MA_ChatGroups g
+        LEFT JOIN MA_ChatGroupMembers gm
+          ON gm.GroupId = g.GroupId
+         AND LOWER(gm.UserId) = LOWER(@UserId)
+        WHERE g.GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId)
+      `);
+
+    if (adminCheck.recordset.length === 0) {
+      return res.status(404).json({ success: false, message: "Group not found" });
+    }
+
+    const group = adminCheck.recordset[0];
+    const isCreator =
+      (group.CreatedBy || "").toLowerCase() === currentUserId.toLowerCase();
+
+    if (!isCreator && !group.IsAdmin) {
+      return res.status(403).json({ success: false, message: "Only group admin can delete this group" });
+    }
+
+    await pool
+      .request()
+      .input("GroupId", sql.NVarChar(50), groupId).query(`
+        DELETE FROM MA_GroupChatMessages
+        WHERE GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId);
+
+        DELETE FROM MA_ChatGroupMembers
+        WHERE GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId);
+
+        DELETE FROM MA_ChatGroups
+        WHERE GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId);
+      `);
+
+    return res.json({ success: true, message: "Group deleted successfully" });
+  } catch (err) {
+    console.error("DELETE GROUP ERROR:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  } finally {
+    if (pool) await pool.close();
+  }
+});
 router.get("/members/:groupId", async (req, res) => {
   let pool;
 
