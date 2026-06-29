@@ -623,10 +623,13 @@ router.get("/my-groups", async (req, res) => {
                     ) AS LastMessage
 
                 FROM MA_ChatGroups g
-                INNER JOIN MA_ChatGroupMembers gm
+                LEFT JOIN MA_ChatGroupMembers gm
                     ON gm.GroupId = g.GroupId
-                WHERE gm.UserId=@UserId
-                  AND ISNULL(g.IsActive,1)=1
+                WHERE ISNULL(g.IsActive,1)=1
+                  AND (
+                    LOWER(ISNULL(gm.UserId,'')) = LOWER(@UserId)
+                    OR LOWER(ISNULL(g.CreatedBy,'')) = LOWER(@UserId)
+                  )
             `);
         }
 
