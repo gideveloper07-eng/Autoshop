@@ -526,8 +526,24 @@ router.get("/my-groups", async (req, res) => {
 
     const { database: currentDb, userGuid, userId, isAdmin } = decoded;
 
-    // All dealerships user can access
-    const databases = await getAccessibleDatabases(userGuid, currentDb);
+    // All dealerships user can access. The helper may return either
+    // database (single DB users) or databaseName (multi DB users).
+    const accessibleDatabases = await getAccessibleDatabases(userGuid, currentDb);
+    const databases = accessibleDatabases
+      .map((db) => ({
+        ...db,
+        database: db.database || db.databaseName,
+      }))
+      .filter((db) => db.database);
+
+    if (!databases.some((db) => db.database === currentDb)) {
+      databases.unshift({
+        database: currentDb,
+        companyName: null,
+        companyCode: null,
+        clientId: null,
+      });
+    }
 
     let allGroups = [];
 
