@@ -453,6 +453,69 @@ router.post("/mark-read/:challanId", async (req, res) => {
 });
 
 // ── GET /api/chat/unread-count/:challanId ────────────────────────────────────
+// -- GET /api/chat/direct-messages/:receiverId -----------------------------
+// Loads direct chat history from MA_ChallanChat for the current user and receiver.
+router.get("/direct-messages/:receiverId", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const { database, userId } = decoded;
+    const { receiverId } = req.params;
+
+    pool = await openPool(database);
+
+    const result = await pool
+      .request()
+      .input("userId", sql.NVarChar(100), userId)
+      .input("receiverId", sql.NVarChar(100), receiverId).query(`
+        SELECT
+          CAST(c.ChatId AS NVARCHAR(50)) AS ChatId,
+          c.SenderUserId,
+          c.SenderName,
+          c.MessageText,
+          c.MessageType,
+          c.DocumentId,
+          c.MessageTime,
+          c.IsRead,
+          d.DocumentNo,
+          d.DocumentType,
+          d.FileName,
+          NULL AS TaskId,
+          NULL AS AssignedTo,
+          NULL AS AssignedToName,
+          NULL AS Priority,
+          NULL AS TaskStatus,
+          NULL AS TaskDescription
+        FROM MA_ChallanChat c
+        LEFT JOIN MA_ChatDocuments d
+          ON c.DocumentId = d.DocumentId
+        WHERE
+          (
+            c.SenderUserId = @userId
+            AND c.ReceiverId = @receiverId
+          )
+          OR
+          (
+            c.SenderUserId = @receiverId
+            AND c.ReceiverId = @userId
+          )
+        ORDER BY c.MessageTime ASC
+      `);
+
+    return res.json({ success: true, data: result.recordset });
+  } catch (err) {
+    console.error("GET DIRECT MESSAGES ERROR:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  } finally {
+    if (pool) await pool.close();
+  }
+});
 // IMPORTANT: This must be declared BEFORE GET /:challanId to avoid conflict.
 // Returns the count of unread messages sent by others for a given challan.
 router.get("/unread-count/:challanId", async (req, res) => {
