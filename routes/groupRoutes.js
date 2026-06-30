@@ -427,48 +427,83 @@ router.get("/my-direct-chats", async (req, res) => {
       });
     }
 
-    const { database, userId } = decoded;
+    const { userId, propertyCode } = decoded;
 
-    pool = await openPool(database);
+    pool = await openCommunicationPool();
 
     const result = await pool
       .request()
-      .input("userId", sql.NVarChar(100), userId).query(`
+      .input("userId", sql.NVarChar(100), userId)
+      .input("propertyCode", sql.NVarChar(50), propertyCode).query(`
 ;WITH ChatList AS
 (
     SELECT
+
         CASE
-            WHEN SenderUserId = @userId THEN ReceiverId
+            WHEN SenderUserId = @userId
+             AND SenderPropertyCode = @propertyCode
+            THEN ReceiverId
             ELSE SenderUserId
         END AS OtherUserId,
+
+        CASE
+            WHEN SenderUserId = @userId
+             AND SenderPropertyCode = @propertyCode
+            THEN ReceiverPropertyCode
+            ELSE SenderPropertyCode
+        END AS OtherPropertyCode,
 
         MessageText,
         MessageTime,
         MessageType,
         SenderUserId,
         ReceiverId,
+        SenderPropertyCode,
+        ReceiverPropertyCode,
 
         ROW_NUMBER() OVER
         (
             PARTITION BY
-            CASE
-                WHEN SenderUserId = @userId THEN ReceiverId
-                ELSE SenderUserId
-            END
+
+                CASE
+                    WHEN SenderUserId = @userId
+                     AND SenderPropertyCode = @propertyCode
+                    THEN ReceiverId
+                    ELSE SenderUserId
+                END,
+
+                CASE
+                    WHEN SenderUserId = @userId
+                     AND SenderPropertyCode = @propertyCode
+                    THEN ReceiverPropertyCode
+                    ELSE SenderPropertyCode
+                END
+
             ORDER BY MessageTime DESC
         ) AS rn
 
     FROM MA_ChallanChat
 
-    WHERE SenderUserId=@userId
-       OR ReceiverId=@userId
+    WHERE
+    (
+        SenderUserId = @userId
+        AND SenderPropertyCode = @propertyCode
+    )
+    OR
+    (
+        ReceiverId = @userId
+        AND ReceiverPropertyCode = @propertyCode
+    )
 )
 
 SELECT
 
     c.OtherUserId AS UserId,
     m.UserName,
+
+    m.PropertyCode,
     m.DatabaseName,
+    m.CompanyName,
 
     c.MessageText AS LastMessage,
     c.MessageTime AS LastMessageTime,
@@ -480,18 +515,21 @@ SELECT
         FROM MA_ChallanChat x
         WHERE
             x.SenderUserId = c.OtherUserId
+            AND x.SenderPropertyCode = c.OtherPropertyCode
             AND x.ReceiverId = @userId
+            AND x.ReceiverPropertyCode = @propertyCode
             AND x.IsRead = 0
     ) AS UnreadCount
 
 FROM ChatList c
 
 LEFT JOIN MA_ChallanChatMembers m
-    ON m.UserId = c.OtherUserId
+ON  m.UserId = c.OtherUserId
+AND m.PropertyCode = c.OtherPropertyCode
 
 WHERE c.rn = 1
 
-ORDER BY c.MessageTime DESC
+ORDER BY c.MessageTime DESC;
 `);
 
     return res.json({
@@ -528,7 +566,10 @@ router.get("/my-groups", async (req, res) => {
 
     // All dealerships user can access. The helper may return either
     // database (single DB users) or databaseName (multi DB users).
-    const accessibleDatabases = await getAccessibleDatabases(userGuid, currentDb);
+    const accessibleDatabases = await getAccessibleDatabases(
+      userGuid,
+      currentDb,
+    );
     const databases = accessibleDatabases
       .map((db) => ({
         ...db,
@@ -795,7 +836,9 @@ router.post("/delete-group", async (req, res) => {
     const { groupId, databaseName: bodyDatabaseName } = req.body;
 
     if (!groupId) {
-      return res.status(400).json({ success: false, message: "GroupId is required" });
+      return res
+        .status(400)
+        .json({ success: false, message: "GroupId is required" });
     }
 
     const databaseName =
@@ -820,7 +863,9 @@ router.post("/delete-group", async (req, res) => {
       `);
 
     if (adminCheck.recordset.length === 0) {
-      return res.status(404).json({ success: false, message: "Group not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Group not found" });
     }
 
     const group = adminCheck.recordset[0];
@@ -828,12 +873,15 @@ router.post("/delete-group", async (req, res) => {
       (group.CreatedBy || "").toLowerCase() === currentUserId.toLowerCase();
 
     if (!isCreator && !group.IsAdmin) {
-      return res.status(403).json({ success: false, message: "Only group admin can delete this group" });
+      return res
+        .status(403)
+        .json({
+          success: false,
+          message: "Only group admin can delete this group",
+        });
     }
 
-    await pool
-      .request()
-      .input("GroupId", sql.NVarChar(50), groupId).query(`
+    await pool.request().input("GroupId", sql.NVarChar(50), groupId).query(`
         DELETE FROM MA_GroupChatMessages
         WHERE GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId);
 
