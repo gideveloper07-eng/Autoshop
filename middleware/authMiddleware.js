@@ -24,6 +24,10 @@ const verifyToken = (req, res, next) => {
       userId: decoded.userId,
       userName: decoded.userName,
       database: decoded.database,
+
+      propertyCode: decoded.propertyCode,
+      propertyName: decoded.propertyName,
+
       clientId: decoded.clientId,
       userGuid: decoded.userGuid,
       utg: decoded.utg,
@@ -61,6 +65,10 @@ const decodeToken = (req) => {
       userId: decoded.userId,
       userName: decoded.userName,
       database: decoded.database,
+
+      propertyCode: decoded.propertyCode,
+      propertyName: decoded.propertyName,
+
       clientId: decoded.clientId,
       userGuid: decoded.userGuid,
       utg: decoded.utg,
