@@ -223,7 +223,7 @@ INSERT INTO MA_ChallanChatMembers
         GETDATE(),
         1,
         @propertyCode,
-        @clientid
+        @clientId
     )
 END
 `);
@@ -268,7 +268,7 @@ BEGIN
         AddedOn,
         IsActive,
         PropertyCode,
-        clientId
+        ClientId
     )
     VALUES
     (
