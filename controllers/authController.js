@@ -97,6 +97,8 @@ const loginUser = async (req, res) => {
     let clientId = null;
     let userGuid = null;
     let accessibleDatabases = [];
+    let propertyCode = null;
+    let propertyName = null;
 
     try {
       masterPool = await openMasterPool();
@@ -104,12 +106,17 @@ const loginUser = async (req, res) => {
       const clientResult = await masterPool
         .request()
         .input("db", sql.NVarChar, databaseName).query(`
-      SELECT unqid
-      FROM MA_ClientMaster
-      WHERE propertydb = @db
+   SELECT
+    unqid,
+    propertycode,
+    propertyname
+FROM MA_ClientMaster
+WHERE propertydb = @db
     `);
 
       clientId = clientResult.recordset[0]?.unqid ?? null;
+      propertyCode = clientResult.recordset[0]?.propertycode ?? null;
+      propertyName = clientResult.recordset[0]?.propertyname ?? null;
 
       if (clientId) {
         const userGuidResult = await masterPool
@@ -187,6 +194,8 @@ const loginUser = async (req, res) => {
         userId: user.uti,
         userName: user.utnm,
         database: databaseName,
+        propertyCode,
+        propertyName,
         clientId,
         userGuid,
         utg: user.UTG || user.utg,
@@ -206,6 +215,8 @@ const loginUser = async (req, res) => {
       userName: user.utnm,
       name: user.utnm,
       databaseName,
+      propertyCode,
+      propertyName,
       clientId,
       userGuid,
       accessibleDatabases,
@@ -270,6 +281,8 @@ const switchDatabase = async (req, res) => {
         userId: decoded.userId,
         userName: decoded.userName,
         database: db.propertydb,
+        propertyCode: db.propertycode,
+        propertyName: db.propertyname,
         clientId: db.unqid,
         userGuid: decoded.userGuid,
         utg: decoded.utg,

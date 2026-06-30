@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const sql = require("mssql");
+const openCommunicationPool = require("../utils/communicationPool");
 const { randomUUID } = require("crypto");
 
 const { decodeToken } = require("../middleware/authMiddleware");
@@ -145,7 +146,7 @@ router.post("/send", async (req, res) => {
       });
     }
 
-    const { database: currentDb, userId, userGuid, isAdmin } = decoded;
+    const { propertyCode, userId, userGuid, isAdmin } = decoded;
 
     const {
       challanId,
@@ -158,7 +159,7 @@ router.post("/send", async (req, res) => {
 
       receiverUserId,
       receiverName,
-      receiverDatabase,
+      receiverPropertyCode,
     } = req.body;
 
     if (!challanId) {
@@ -168,41 +169,42 @@ router.post("/send", async (req, res) => {
       });
     }
 
-    const databaseName =
+    /* const databaseName =
       bodyDb && bodyDb.trim() !== ""
         ? bodyDb.trim()
         : await getChallanDatabase(challanId, userGuid, currentDb);
 
-    pool = await openPool(databaseName);
+    pool = await openPool(databaseName);*/
 
     //-------------------------------------------------
     // Ensure Sender Exists
     //-------------------------------------------------
-
+    pool = await openCommunicationPool();
     await pool
       .request()
       .input("challanId", sql.NVarChar(100), challanId)
       .input("userId", sql.NVarChar(100), userId)
       .input("userName", sql.NVarChar(200), senderName || userId)
-      .input("db", sql.NVarChar(200), databaseName).query(`
+      .input("propertyCode", sql.NVarChar(20), propertyCode).query(`
 IF NOT EXISTS(
     SELECT 1
     FROM MA_ChallanChatMembers
     WHERE ChallanId=@challanId
       AND UserId=@userId
+      AND PropertyCode=@propertyCode
 )
 BEGIN
-    INSERT INTO MA_ChallanChatMembers
-    (
-        MemberId,
-        ChallanId,
-        UserId,
-        UserName,
-        AddedBy,
-        AddedOn,
-        IsActive,
-        DatabaseName
-    )
+INSERT INTO MA_ChallanChatMembers
+(
+    MemberId,
+    ChallanId,
+    UserId,
+    UserName,
+    AddedBy,
+    AddedOn,
+    IsActive,
+    PropertyCode
+)
     VALUES
     (
         NEWID(),
@@ -212,7 +214,7 @@ BEGIN
         @userId,
         GETDATE(),
         1,
-        @db
+        @propertyCode
     )
 END
 `);
@@ -234,9 +236,9 @@ END
           receiverName || receiverUserId,
         )
         .input(
-          "receiverDb",
+          "receiverpropertycode",
           sql.NVarChar(200),
-          receiverDatabase || databaseName,
+          receiverPropertyCode || propertyCode,
         )
         .input("addedBy", sql.NVarChar(100), userId).query(`
 IF NOT EXISTS(
@@ -244,6 +246,7 @@ IF NOT EXISTS(
     FROM MA_ChallanChatMembers
     WHERE ChallanId=@challanId
       AND UserId=@receiverId
+      AND PropertyCode=@receiverpropertycode
 )
 BEGIN
     INSERT INTO MA_ChallanChatMembers
@@ -255,7 +258,7 @@ BEGIN
         AddedBy,
         AddedOn,
         IsActive,
-        DatabaseName
+        PropertyCode
     )
     VALUES
     (
@@ -266,7 +269,7 @@ BEGIN
         @addedBy,
         GETDATE(),
         1,
-        @receiverDb
+        @receiverpropertycode
     )
 END
 `);
@@ -280,11 +283,13 @@ END
       const access = await pool
         .request()
         .input("challanId", sql.NVarChar(100), challanId)
+        .input("propertyCode", sql.NVarChar(100), propertyCode)
         .input("userId", sql.NVarChar(100), userId).query(`
 SELECT 1
 FROM MA_ChallanChatMembers
 WHERE ChallanId=@challanId
 AND UserId=@userId
+AND PropertyCode=@propertyCode
 AND IsActive=1
 `);
 
@@ -304,16 +309,18 @@ AND IsActive=1
       .request()
       .input("challanId", sql.NVarChar(100), challanId)
       .input("userId", sql.NVarChar(100), userId)
+      .input("propertyCode", sql.NVarChar(20), propertyCode)
       .input("senderName", sql.NVarChar(500), senderName || userId)
       .input("messageText", sql.NVarChar(sql.MAX), messageText || "")
       .input("messageType", sql.VarChar(20), messageType || "TEXT")
       .input("documentId", sql.UniqueIdentifier, documentId || null)
-      .input("dbname", sql.NVarChar(100), databaseName)
+      .input("dbname", sql.NVarChar(100), bodyDb || "")
       .input("recid", sql.NVarChar(100), receiverUserId || null).query(`
 INSERT INTO MA_ChallanChat
 (
     ChatId,
     ChallanId,
+    PropertyCode,
     SenderUserId,
     SenderName,
     MessageText,
@@ -328,6 +335,7 @@ VALUES
 (
     NEWID(),
     @challanId,
+    @propertyCode, 
     @userId,
     @senderName,
     @messageText,
@@ -348,10 +356,12 @@ VALUES
     if (receiverUserId) {
       members = await pool
         .request()
+        .input("receiverPropertyCode", sql.NVarChar(100), receiverPropertyCode)
         .input("receiverId", sql.NVarChar(100), receiverUserId).query(`
 SELECT UserId
 FROM MA_ChallanChatMembers
 WHERE UserId=@receiverId
+AND PropertyCode=@receiverPropertyCode
 AND IsActive=1
 `);
     } else {

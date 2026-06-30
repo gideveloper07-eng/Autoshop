@@ -34,10 +34,26 @@ async function openPool(databaseName) {
 
   return pool;
 }
+
+async function openCommunicationPool() {
+  return await new sql.ConnectionPool({
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    server: process.env.DB_HOST,
+    port: parseInt(process.env.DB_PORT || "1433"),
+    database: "AUTOSHOP_COMMUNICATION",
+    options: {
+      encrypt: false,
+      trustServerCertificate: true,
+    },
+  }).connect();
+}
+
 router.post("/switch-database", verifyToken, switchDatabase);
 router.post("/register", registerUser);
 router.post("/login", loginUser);
 router.post("/logout", logoutUser);
+
 router.post("/save-fcm-token", async (req, res) => {
   let pool;
 
