@@ -137,7 +137,7 @@ router.post("/send", async (req, res) => {
 
   try {
     const decoded = decodeToken(req);
-
+    console.log("Decoded Token:", decoded);
     if (!decoded) {
       return res.status(401).json({
         success: false,
