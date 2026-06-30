@@ -505,7 +505,7 @@ SELECT
 
     m.PropertyCode,
     m.DatabaseName,
-    m.CompanyName,
+   
 
     c.MessageText AS LastMessage,
     c.MessageTime AS LastMessageTime,
