@@ -430,7 +430,7 @@ router.get("/my-direct-chats", async (req, res) => {
 
     const { userId, propertyCode } = decoded;
 
-    pool = await openCommunicationPool();
+    pool = await openCommunicationPooltionPool();
 
     const result = await pool
       .request()
