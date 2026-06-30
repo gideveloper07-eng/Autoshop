@@ -146,7 +146,8 @@ router.post("/send", async (req, res) => {
       });
     }
 
-    const { propertyCode, userId, userGuid, isAdmin } = decoded;
+    const { database, propertyCode, clientId, userId, userGuid, isAdmin } =
+      decoded;
 
     const {
       challanId,
@@ -190,7 +191,8 @@ router.post("/send", async (req, res) => {
       .input("challanId", sql.NVarChar(100), challanId)
       .input("userId", sql.NVarChar(100), userId)
       .input("userName", sql.NVarChar(200), senderName || userId)
-      .input("propertyCode", sql.NVarChar(20), propertyCode).query(`
+      .input("propertyCode", sql.NVarChar(20), propertyCode)
+      .input("clientId", sql.UniqueIdentifier, clientId).query(`
 IF NOT EXISTS(
     SELECT 1
     FROM MA_ChallanChatMembers
@@ -208,7 +210,8 @@ INSERT INTO MA_ChallanChatMembers
     AddedBy,
     AddedOn,
     IsActive,
-    PropertyCode
+    PropertyCode,
+    ClientId
 )
     VALUES
     (
@@ -219,7 +222,8 @@ INSERT INTO MA_ChallanChatMembers
         @userId,
         GETDATE(),
         1,
-        @propertyCode
+        @propertyCode,
+        @clientid
     )
 END
 `);
@@ -263,7 +267,8 @@ BEGIN
         AddedBy,
         AddedOn,
         IsActive,
-        PropertyCode
+        PropertyCode,
+        clientId
     )
     VALUES
     (
@@ -274,7 +279,8 @@ BEGIN
         @addedBy,
         GETDATE(),
         1,
-        @receiverpropertycode
+        @receiverpropertycode,
+        @clientId
     )
 END
 `);
@@ -315,17 +321,27 @@ AND IsActive=1
       .input("challanId", sql.NVarChar(100), challanId)
       .input("userId", sql.NVarChar(100), userId)
       .input("propertyCode", sql.NVarChar(20), propertyCode)
+      .input("senderPropertyCode", sql.NVarChar(20), propertyCode)
+      .input(
+        "receiverPropertyCode",
+        sql.NVarChar(20),
+        receiverPropertyCode || propertyCode,
+      )
+      .input("clientId", sql.UniqueIdentifier, clientId)
       .input("senderName", sql.NVarChar(500), senderName || userId)
       .input("messageText", sql.NVarChar(sql.MAX), messageText || "")
       .input("messageType", sql.VarChar(20), messageType || "TEXT")
       .input("documentId", sql.UniqueIdentifier, documentId || null)
-      .input("dbname", sql.NVarChar(100), bodyDb || "")
+      .input("dbname", sql.NVarChar(100), bodyDb || database)
       .input("recid", sql.NVarChar(100), receiverUserId || null).query(`
 INSERT INTO MA_ChallanChat
 (
     ChatId,
     ChallanId,
     PropertyCode,
+    SenderPropertyCode,
+    ReceiverPropertyCode,
+    ClientId,
     SenderUserId,
     SenderName,
     MessageText,
@@ -340,7 +356,10 @@ VALUES
 (
     NEWID(),
     @challanId,
-    @propertyCode, 
+    @propertyCode,
+    @senderPropertyCode,
+    @receiverPropertyCode,
+    @clientId,
     @userId,
     @senderName,
     @messageText,
