@@ -132,7 +132,7 @@ router.get("/my-chats", async (req, res) => {
 });
 
 // ── POST /api/chat/send ──────────────────────────────────────────────────────
-// ── POST /api/chat/send ─────────────────────────────────────────────
+
 router.post("/send", async (req, res) => {
   let pool;
 
@@ -249,7 +249,8 @@ END
           sql.NVarChar(200),
           receiverPropertyCode || propertyCode,
         )
-        .input("addedBy", sql.NVarChar(100), userId).query(`
+        .input("addedBy", sql.NVarChar(100), userId)
+        .input("clientId", sql.UniqueIdentifier, clientId).query(`
 IF NOT EXISTS(
     SELECT 1
     FROM MA_ChallanChatMembers
