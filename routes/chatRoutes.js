@@ -235,7 +235,11 @@ END
           sql.NVarChar(200),
           receiverName || receiverUserId,
         )
-        .input("receiverPropertyCode", sql.NVarChar(20), receiverPropertyCode)
+        .input(
+          "receiverPropertyCode",
+          sql.NVarChar(20),
+          receiverPropertyCode || propertyCode,
+        )
         .input("databaseName", sql.NVarChar(100), database)
         .input("clientId", sql.UniqueIdentifier, clientId || null)
         .input("addedBy", sql.NVarChar(100), userId).query(`
@@ -321,7 +325,11 @@ AND IsActive=1
       .input("databaseName", sql.NVarChar(100), database)
       .input("propertyCode", sql.NVarChar(20), propertyCode)
       .input("senderPropertyCode", sql.NVarChar(20), propertyCode)
-      .input("receiverPropertyCode", sql.NVarChar(20), receiverPropertyCode)
+      .input(
+        "receiverPropertyCode",
+        sql.NVarChar(20),
+        receiverPropertyCode || propertyCode,
+      )
       .input("clientId", sql.UniqueIdentifier, clientId || null)
       .input("receiverId", sql.NVarChar(100), receiverUserId).query(`
 INSERT INTO MA_ChallanChat
