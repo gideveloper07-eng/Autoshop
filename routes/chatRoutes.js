@@ -488,14 +488,16 @@ router.get("/direct-messages/:receiverId", async (req, res) => {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
-    const { database, userId } = decoded;
     const { receiverId } = req.params;
 
-    pool = await openPool(database);
+    const { userId, propertyCode } = decoded;
+
+    pool = await openCommunicationPool();
 
     const result = await pool
       .request()
       .input("userId", sql.NVarChar(100), userId)
+      .input("propertyCode", sql.NVarChar(50), propertyCode)
       .input("receiverId", sql.NVarChar(100), receiverId).query(`
         SELECT
           CAST(c.ChatId AS NVARCHAR(50)) AS ChatId,
@@ -518,16 +520,18 @@ router.get("/direct-messages/:receiverId", async (req, res) => {
         FROM MA_ChallanChat c
         LEFT JOIN MA_ChatDocuments d
           ON c.DocumentId = d.DocumentId
-        WHERE
-          (
-            c.SenderUserId = @userId
-            AND c.ReceiverId = @receiverId
-          )
-          OR
-          (
-            c.SenderUserId = @receiverId
-            AND c.ReceiverId = @userId
-          )
+       WHERE
+(
+    c.SenderUserId = @userId
+    AND c.SenderPropertyCode = @propertyCode
+    AND c.ReceiverId = @receiverId
+)
+OR
+(
+    c.SenderUserId = @receiverId
+    AND c.ReceiverId = @userId
+    AND c.ReceiverPropertyCode = @propertyCode
+)
         ORDER BY c.MessageTime ASC
       `);
 
