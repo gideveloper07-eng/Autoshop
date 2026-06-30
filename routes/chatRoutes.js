@@ -138,7 +138,7 @@ router.post("/send", async (req, res) => {
 
   try {
     const decoded = decodeToken(req);
-
+    console.log(decoded);
     if (!decoded) {
       return res.status(401).json({
         success: false,
@@ -180,6 +180,11 @@ router.post("/send", async (req, res) => {
     // Ensure Sender Exists
     //-------------------------------------------------
     pool = await openCommunicationPool();
+    const dbInfo = await pool.request().query(`
+    SELECT DB_NAME() AS DatabaseName
+`);
+
+    console.log("Connected Chat DB:", dbInfo.recordset[0].DatabaseName);
     await pool
       .request()
       .input("challanId", sql.NVarChar(100), challanId)
