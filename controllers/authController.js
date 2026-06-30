@@ -118,6 +118,11 @@ WHERE propertydb = @db
       propertyCode = clientResult.recordset[0]?.propertycode ?? null;
       propertyName = clientResult.recordset[0]?.propertyname ?? null;
 
+      console.log("Client Result:", clientResult.recordset);
+      console.log("ClientId:", clientId);
+      console.log("PropertyCode:", propertyCode);
+      console.log("PropertyName:", propertyName);
+
       if (clientId) {
         const userGuidResult = await masterPool
           .request()
