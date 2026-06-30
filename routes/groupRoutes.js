@@ -3,8 +3,9 @@ const sql = require("mssql");
 const crypto = require("crypto");
 const { sendPushNotification } = require("../utils/pushNotificationHelper");
 const { decodeToken, verifyToken } = require("../middleware/authMiddleware");
-const { getAccessibleDatabases } = require("../utils/databaseAccessHelper");
 const openCommunicationPool = require("../utils/communicationPool");
+const { getAccessibleDatabases } = require("../utils/databaseAccessHelper");
+
 const router = express.Router();
 
 async function openPool(databaseName) {
@@ -430,7 +431,7 @@ router.get("/my-direct-chats", async (req, res) => {
 
     const { userId, propertyCode } = decoded;
 
-    pool = await openCommunicationPooltionPool();
+    pool = await openCommunicationPool();
 
     const result = await pool
       .request()
