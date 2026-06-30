@@ -4,6 +4,7 @@ const crypto = require("crypto");
 const { sendPushNotification } = require("../utils/pushNotificationHelper");
 const { decodeToken, verifyToken } = require("../middleware/authMiddleware");
 const { getAccessibleDatabases } = require("../utils/databaseAccessHelper");
+const openCommunicationPool = require("../utils/communicationPool");
 const router = express.Router();
 
 async function openPool(databaseName) {
@@ -873,12 +874,10 @@ router.post("/delete-group", async (req, res) => {
       (group.CreatedBy || "").toLowerCase() === currentUserId.toLowerCase();
 
     if (!isCreator && !group.IsAdmin) {
-      return res
-        .status(403)
-        .json({
-          success: false,
-          message: "Only group admin can delete this group",
-        });
+      return res.status(403).json({
+        success: false,
+        message: "Only group admin can delete this group",
+      });
     }
 
     await pool.request().input("GroupId", sql.NVarChar(50), groupId).query(`
