@@ -41,8 +41,6 @@ async function getChallanDatabase(challanId, userGuid, fallbackDb) {
     return dbName && dbName.trim() !== "" ? dbName.trim() : fallbackDb;
   } catch {
     return fallbackDb;
-  } finally {
-    if (pool) await pool.close();
   }
 }
 router.get("/my-chats", async (req, res) => {
@@ -116,8 +114,6 @@ ORDER BY LastMessageTime DESC
       success: false,
       message: err.message,
     });
-  } finally {
-    if (pool) await pool.close();
   }
 });
 // ── POST /api/chat/send ──────────────────────────────────────────────────────
@@ -416,8 +412,6 @@ AND IsActive=1
       success: false,
       message: err.message,
     });
-  } finally {
-    if (pool) await pool.close();
   }
 });
 // ── POST /api/chat/mark-read/:challanId ──────────────────────────────────────
@@ -487,8 +481,6 @@ WHERE ChallanId = @challanId
       success: false,
       message: err.message,
     });
-  } finally {
-    if (pool) await pool.close();
   }
 });
 
@@ -599,10 +591,6 @@ router.get(
         success: false,
         message: err.message,
       });
-    } finally {
-      if (pool) {
-        await pool.close();
-      }
     }
   },
 );
@@ -679,10 +667,6 @@ WHERE ChallanId=@challanId
       success: false,
       message: err.message,
     });
-  } finally {
-    if (pool) {
-      await pool.close();
-    }
   }
 });
 
@@ -774,10 +758,6 @@ ORDER BY d.CreatedDate DESC
       success: false,
       message: err.message,
     });
-  } finally {
-    if (pool) {
-      await pool.close();
-    }
   }
 });
 
@@ -929,10 +909,6 @@ ORDER BY MessageTime;
       success: false,
       message: err.message,
     });
-  } finally {
-    if (pool) {
-      await pool.close();
-    }
   }
 });
 
@@ -1015,10 +991,6 @@ WHERE ChallanId=@challanId
       success: false,
       message: err.message,
     });
-  } finally {
-    if (pool) {
-      await pool.close();
-    }
   }
 });
 
@@ -1050,8 +1022,6 @@ router.get("/debug/tokens", async (req, res) => {
     });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
-  } finally {
-    if (pool) await pool.close();
   }
 });
 
@@ -1350,10 +1320,6 @@ ORDER BY AddedOn
       success: false,
       message: err.message,
     });
-  } finally {
-    if (pool) {
-      await pool.close();
-    }
   }
 });
 
@@ -1540,10 +1506,6 @@ VALUES
       success: false,
       message: err.message,
     });
-  } finally {
-    if (pool) {
-      await pool.close();
-    }
   }
 });
 
@@ -1681,10 +1643,6 @@ VALUES
       success: false,
       message: err.message,
     });
-  } finally {
-    if (pool) {
-      await pool.close();
-    }
   }
 });
 module.exports = router;
