@@ -438,7 +438,7 @@ router.get("/my-direct-chats", async (req, res) => {
 
     const result = await pool
       .request()
-      .input("userId", sql.NVarChar(100), userGuid)
+      .input("userId", sql.NVarChar(100), userId)
       .input("propertyCode", sql.NVarChar(50), propertyCode)
       .input("scope", sql.NVarChar(20), scope).query(`
 ;WITH BaseChat AS
