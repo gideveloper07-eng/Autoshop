@@ -429,7 +429,7 @@ router.get("/my-direct-chats", async (req, res) => {
       });
     }
 
-    const { userId, propertyCode } = decoded;
+    const { userId, propertyCode, userGuid } = decoded;
 
     const scope = (req.query.scope || "property").toLowerCase();
 
@@ -440,18 +440,18 @@ router.get("/my-direct-chats", async (req, res) => {
       .input("userId", sql.NVarChar(100), userId)
       .input("propertyCode", sql.NVarChar(50), propertyCode)
       .input("scope", sql.NVarChar(20), scope).query(`
-;WITH BaseChat AS
+;;WITH BaseChat AS
 (
     SELECT
         CASE
-            WHEN SenderUserId = @userId
+            WHEN (SenderUserId = @userId or SenderUserId = @userGuid)
                  AND (@scope = 'all' OR SenderPropertyCode = @propertyCode)
             THEN ReceiverId
             ELSE SenderUserId
         END AS OtherUserId,
 
         CASE
-            WHEN SenderUserId = @userId
+             WHEN (SenderUserId = @userId or SenderUserId = @userGuid)
                  AND (@scope = 'all' OR SenderPropertyCode = @propertyCode)
             THEN ReceiverPropertyCode
             ELSE SenderPropertyCode
@@ -469,12 +469,12 @@ router.get("/my-direct-chats", async (req, res) => {
 
     WHERE
     (
-        SenderUserId = @userId
+        ( SenderUserId = @userId or SenderUserId = @userGuid)
         AND (@scope = 'all' OR SenderPropertyCode = @propertyCode)
     )
     OR
     (
-        ReceiverId = @userId
+        (ReceiverId = @userId or receiverid = @userGuid)
         AND (@scope = 'all' OR ReceiverPropertyCode = @propertyCode)
     )
 ),
