@@ -431,26 +431,29 @@ router.get("/my-direct-chats", async (req, res) => {
 
     const { userId, propertyCode } = decoded;
 
+    const scope = (req.query.scope || "property").toLowerCase();
+
     pool = await openCommunicationPool();
 
     const result = await pool
       .request()
       .input("userId", sql.NVarChar(100), userId)
-      .input("propertyCode", sql.NVarChar(50), propertyCode).query(`
-;WITH ChatList AS
+      .input("propertyCode", sql.NVarChar(50), propertyCode)
+      .input("scope", sql.NVarChar(20), scope).query(`
+;WITH BaseChat AS
 (
     SELECT
 
         CASE
             WHEN SenderUserId = @userId
-             AND SenderPropertyCode = @propertyCode
+             AND (@scope='all' OR SenderPropertyCode=@propertyCode)
             THEN ReceiverId
             ELSE SenderUserId
         END AS OtherUserId,
 
         CASE
             WHEN SenderUserId = @userId
-             AND SenderPropertyCode = @propertyCode
+             AND (@scope='all' OR SenderPropertyCode=@propertyCode)
             THEN ReceiverPropertyCode
             ELSE SenderPropertyCode
         END AS OtherPropertyCode,
@@ -461,51 +464,69 @@ router.get("/my-direct-chats", async (req, res) => {
         SenderUserId,
         ReceiverId,
         SenderPropertyCode,
-        ReceiverPropertyCode,
-
-        ROW_NUMBER() OVER
-        (
-            PARTITION BY
-
-                CASE
-                    WHEN SenderUserId = @userId
-                     AND SenderPropertyCode = @propertyCode
-                    THEN ReceiverId
-                    ELSE SenderUserId
-                END,
-
-                CASE
-                    WHEN SenderUserId = @userId
-                     AND SenderPropertyCode = @propertyCode
-                    THEN ReceiverPropertyCode
-                    ELSE SenderPropertyCode
-                END
-
-            ORDER BY MessageTime DESC
-        ) AS rn
+        ReceiverPropertyCode
 
     FROM MA_ChallanChat
 
     WHERE
     (
-        SenderUserId = @userId
-        AND SenderPropertyCode = @propertyCode
+        SenderUserId=@userId
+        AND
+        (
+            @scope='all'
+            OR SenderPropertyCode=@propertyCode
+        )
     )
     OR
     (
-        ReceiverId = @userId
-        AND ReceiverPropertyCode = @propertyCode
+        ReceiverId=@userId
+        AND
+        (
+            @scope='all'
+            OR ReceiverPropertyCode=@propertyCode
+        )
     )
+),
+
+ChatList AS
+(
+    SELECT
+        *,
+        ROW_NUMBER() OVER
+        (
+            PARTITION BY
+
+                OtherUserId,
+
+                CASE
+                    WHEN @scope='all'
+                    THEN ''
+                    ELSE OtherPropertyCode
+                END
+
+            ORDER BY MessageTime DESC
+        ) AS rn
+
+    FROM BaseChat
 )
 
 SELECT
 
     c.OtherUserId AS UserId,
+
     m.UserName,
 
-    m.PropertyCode,
-    m.DatabaseName,
-   
+    CASE
+        WHEN @scope='all'
+        THEN NULL
+        ELSE m.PropertyCode
+    END AS PropertyCode,
+
+    CASE
+        WHEN @scope='all'
+        THEN NULL
+        ELSE m.DatabaseName
+    END AS DatabaseName,
 
     c.MessageText AS LastMessage,
     c.MessageTime AS LastMessageTime,
@@ -516,20 +537,38 @@ SELECT
         SELECT COUNT(*)
         FROM MA_ChallanChat x
         WHERE
+
             x.SenderUserId = c.OtherUserId
-            AND x.SenderPropertyCode = c.OtherPropertyCode
-            AND x.ReceiverId = @userId
-            AND x.ReceiverPropertyCode = @propertyCode
-            AND x.IsRead = 0
+
+            AND
+            (
+                @scope='all'
+                OR x.SenderPropertyCode=c.OtherPropertyCode
+            )
+
+            AND x.ReceiverId=@userId
+
+            AND
+            (
+                @scope='all'
+                OR x.ReceiverPropertyCode=@propertyCode
+            )
+
+            AND x.IsRead=0
+
     ) AS UnreadCount
 
 FROM ChatList c
 
 LEFT JOIN MA_ChallanChatMembers m
-ON  m.UserId = c.OtherUserId
-AND m.PropertyCode = c.OtherPropertyCode
+ON m.UserId=c.OtherUserId
+AND
+(
+    @scope='all'
+    OR m.PropertyCode=c.OtherPropertyCode
+)
 
-WHERE c.rn = 1
+WHERE c.rn=1
 
 ORDER BY c.MessageTime DESC;
 `);

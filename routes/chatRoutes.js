@@ -596,79 +596,63 @@ router.get(
 );
 // IMPORTANT: This must be declared BEFORE GET /:challanId to avoid conflict.
 // Returns the count of unread messages sent by others for a given challan.
-router.get("/unread-count/:challanId", async (req, res) => {
-  let pool;
+router.get(
+  "/unread-count/:receiverId/:receiverPropertyCode",
+  async (req, res) => {
+    let pool;
 
-  try {
-    const decoded = decodeToken(req);
+    try {
+      const decoded = decodeToken(req);
 
-    if (!decoded) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized",
-      });
-    }
+      if (!decoded) {
+        return res.status(401).json({
+          success: false,
+          message: "Unauthorized",
+        });
+      }
 
-    const { propertyCode, clientId, userId } = decoded;
+      const { userId, propertyCode, clientId } = decoded;
+      const { receiverId, receiverPropertyCode } = req.params;
 
-    const { challanId } = req.params;
+      pool = await openCommunicationPool();
 
-    pool = await openCommunicationPool();
-
-    //----------------------------------------------------
-    // Security Check
-    //----------------------------------------------------
-
-    const access = await pool
-      .request()
-      .input("challanId", sql.NVarChar(100), challanId)
-      .input("userId", sql.NVarChar(100), userId)
-      .input("propertyCode", sql.NVarChar(20), propertyCode).query(`
-SELECT 1
-FROM MA_ChallanChatMembers
-WHERE ChallanId=@challanId
-  AND UserId=@userId
-  AND PropertyCode=@propertyCode
-  AND IsActive=1
-`);
-
-    if (access.recordset.length === 0) {
-      return res.status(403).json({
-        success: false,
-        message: "Access denied.",
-      });
-    }
-
-    //----------------------------------------------------
-    // Unread Count
-    //----------------------------------------------------
-
-    const result = await pool
-      .request()
-      .input("challanId", sql.NVarChar(100), challanId)
-      .input("userId", sql.NVarChar(100), userId)
-      .input("clientId", sql.UniqueIdentifier, clientId || null).query(`
+      const result = await pool
+        .request()
+        .input("userId", sql.NVarChar(100), userId)
+        .input("propertyCode", sql.NVarChar(20), propertyCode)
+        .input("receiverId", sql.NVarChar(100), receiverId)
+        .input("receiverPropertyCode", sql.NVarChar(20), receiverPropertyCode)
+        .input("clientId", sql.UniqueIdentifier, clientId || null).query(`
 SELECT COUNT(*) AS UnreadCount
 FROM MA_ChallanChat
-WHERE ChallanId=@challanId
-  AND SenderUserId<>@userId
-  AND IsRead=0
-  AND (@clientId IS NULL OR ClientId=@clientId)
+WHERE
+    SenderUserId=@receiverId
+AND SenderPropertyCode=@receiverPropertyCode
+
+AND ReceiverId=@userId
+AND ReceiverPropertyCode=@propertyCode
+
+AND IsRead=0
+
+AND (@clientId IS NULL OR ClientId=@clientId)
 `);
 
-    return res.json({
-      success: true,
-      count: result.recordset[0]?.UnreadCount || 0,
-    });
-  } catch (err) {
-    console.error(err);
+      return res.json({
+        success: true,
+        count: result.recordset[0].UnreadCount,
+      });
+    } catch (err) {
+      console.error(err);
 
-    return res.status(500).json({
-      success: false,
-      message: err.message,
-    });
-  }
-});
+      return res.status(500).json({
+        success: false,
+        message: err.message,
+      });
+    } finally {
+      if (pool) await pool.close();
+    }
+  },
+);
 
 router.get("/documents", async (req, res) => {
   let pool;
