@@ -419,7 +419,9 @@ router.post("/create", async (req, res) => {
 router.get("/my-direct-chats", async (req, res) => {
   let pool;
   console.log(req.query.scope);
+  console.log(req.query.userid);
   console.log(req.query.userId);
+  console.log(req.query.userGuid);
   try {
     const decoded = decodeToken(req);
 
