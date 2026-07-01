@@ -130,8 +130,7 @@ router.post("/send", async (req, res) => {
       });
     }
 
-    const { database, propertyCode, clientId, userId, isAdmin, userGuid } =
-      decoded;
+    const { database, propertyCode, clientId, userId, isAdmin } = decoded;
 
     const {
       challanId,
@@ -166,14 +165,13 @@ router.post("/send", async (req, res) => {
       .input("userName", sql.NVarChar(200), senderName || userId)
       .input("propertyCode", sql.NVarChar(20), propertyCode)
       .input("databaseName", sql.NVarChar(100), database)
-      .input("userGuid", sql.UniqueIdentifier, userGuid)
       .input("clientId", sql.UniqueIdentifier, clientId || null).query(`
 IF NOT EXISTS
 (
     SELECT 1
     FROM MA_ChallanChatMembers
     WHERE ChallanId=@challanId
-      AND (UserId=@userId or UserId=@userGuid)
+      AND UserId=@userId
       AND PropertyCode=@propertyCode
 )
 BEGIN
@@ -195,7 +193,7 @@ VALUES
 (
     NEWID(),
     @challanId,
-    @userGuid,
+    @userId,
     @userName,
     @userId,
     GETDATE(),
@@ -212,12 +210,11 @@ END
     // Ensure Receiver Member
     //----------------------------------------------------
 
-    if (userGuid) {
+    if (receiverUserId) {
       await pool
         .request()
         .input("challanId", sql.NVarChar(100), challanId)
         .input("receiverId", sql.NVarChar(100), receiverUserId)
-        .input("userGuid", sql.NVarChar(50), userGuid)
         .input(
           "receiverName",
           sql.NVarChar(200),
@@ -236,7 +233,7 @@ IF NOT EXISTS
     SELECT 1
     FROM MA_ChallanChatMembers
     WHERE ChallanId=@challanId
-      AND (UserId=@userGuid or UserId=@receiverId)
+      AND UserId=@receiverId
       AND PropertyCode=@receiverPropertyCode
 )
 BEGIN
@@ -258,7 +255,7 @@ VALUES
 (
     NEWID(),
     @challanId,
-    @userGuid,
+    @receiverId,
     @receiverName,
     @addedBy,
     GETDATE(),
@@ -319,7 +316,7 @@ AND IsActive=1
         receiverPropertyCode || propertyCode,
       )
       .input("clientId", sql.UniqueIdentifier, clientId || null)
-      .input("receiverId", sql.NVarChar(100), userGuid).query(`
+      .input("receiverId", sql.NVarChar(100), receiverUserId).query(`
 INSERT INTO MA_ChallanChat
 (
     ChatId,
