@@ -443,17 +443,16 @@ router.get("/my-direct-chats", async (req, res) => {
 ;WITH BaseChat AS
 (
     SELECT
-
         CASE
             WHEN SenderUserId = @userId
-             AND (@scope='all' OR SenderPropertyCode=@propertyCode)
+                 AND (@scope = 'all' OR SenderPropertyCode = @propertyCode)
             THEN ReceiverId
             ELSE SenderUserId
         END AS OtherUserId,
 
         CASE
             WHEN SenderUserId = @userId
-             AND (@scope='all' OR SenderPropertyCode=@propertyCode)
+                 AND (@scope = 'all' OR SenderPropertyCode = @propertyCode)
             THEN ReceiverPropertyCode
             ELSE SenderPropertyCode
         END AS OtherPropertyCode,
@@ -470,122 +469,56 @@ router.get("/my-direct-chats", async (req, res) => {
 
     WHERE
     (
-        SenderUserId=@userId
-        AND
-        (
-            @scope='all'
-            OR SenderPropertyCode=@propertyCode
-        )
+        SenderUserId = @userId
+        AND (@scope = 'all' OR SenderPropertyCode = @propertyCode)
     )
     OR
     (
-        ReceiverId=@userId
-        AND
-        (
-            @scope='all'
-            OR ReceiverPropertyCode=@propertyCode
-        )
+        ReceiverId = @userId
+        AND (@scope = 'all' OR ReceiverPropertyCode = @propertyCode)
     )
 ),
 
 ChatList AS
 (
-    SELECT
-        *,
-        ROW_NUMBER() OVER
-        (
-            PARTITION BY
-
-                OtherUserId,
-
-                CASE
-                    WHEN @scope='all'
-                    THEN ''
-                    ELSE OtherPropertyCode
-                END
-
-            ORDER BY MessageTime DESC
-        ) AS rn
-
+    SELECT *,
+           ROW_NUMBER() OVER
+           (
+               PARTITION BY
+                    OtherUserId,
+                    CASE
+                        WHEN @scope='all' THEN ''
+                        ELSE OtherPropertyCode
+                    END
+               ORDER BY MessageTime DESC
+           ) rn
     FROM BaseChat
 )
 
 SELECT
-
     c.OtherUserId AS UserId,
 
-    (
-        SELECT TOP 1 mm.UserName
-        FROM MA_ChallanChatMembers mm
-        WHERE mm.UserId = c.OtherUserId
-    ) AS UserName,
+    m.UserName,
 
     CASE
-        WHEN @scope = 'all'
-        THEN
-        (
-            SELECT STRING_AGG(mm.PropertyCode, ', ')
-            FROM
-            (
-                SELECT DISTINCT PropertyCode
-                FROM MA_ChallanChatMembers
-                WHERE UserId = c.OtherUserId
-            ) mm
-        )
-        ELSE
-        (
-            SELECT TOP 1 PropertyCode
-            FROM MA_ChallanChatMembers
-            WHERE UserId = c.OtherUserId
-              AND PropertyCode = c.OtherPropertyCode
-        )
+        WHEN @scope='all'
+        THEN agg.PropertyCodes
+        ELSE m.PropertyCode
     END AS PropertyCode,
 
     CASE
-        WHEN @scope = 'all'
-        THEN
-        (
-            SELECT STRING_AGG(mm.DatabaseName, ', ')
-            FROM
-            (
-                SELECT DISTINCT DatabaseName
-                FROM MA_ChallanChatMembers
-                WHERE UserId = c.OtherUserId
-            ) mm
-        )
-        ELSE
-        (
-            SELECT TOP 1 DatabaseName
-            FROM MA_ChallanChatMembers
-            WHERE UserId = c.OtherUserId
-              AND PropertyCode = c.OtherPropertyCode
-        )
+        WHEN @scope='all'
+        THEN agg.DatabaseNames
+        ELSE m.DatabaseName
     END AS DatabaseName,
 
     CASE
-        WHEN @scope = 'all'
-        THEN
-        (
-            SELECT STRING_AGG(cm.PropertyName, ', ')
-            FROM
-            (
-                SELECT DISTINCT PropertyCode
-                FROM MA_ChallanChatMembers
-                WHERE UserId = c.OtherUserId
-            ) p
-            INNER JOIN Cmpy_AutoShop.dbo.MA_ClientMaster cm
-                ON cm.PropertyCode = p.PropertyCode
-        )
-        ELSE
-        (
-            SELECT TOP 1 cm.PropertyName
-            FROM MA_ChallanChatMembers mm
-            INNER JOIN Cmpy_AutoShop.dbo.MA_ClientMaster cm
-                ON cm.PropertyCode = mm.PropertyCode
-            WHERE mm.UserId = c.OtherUserId
-              AND mm.PropertyCode = c.OtherPropertyCode
-        )
+        WHEN @scope='all'
+        THEN agg.CompanyNames
+        ELSE cm.PropertyName
     END AS CompanyName,
+
+    c.MessageText,
     c.MessageTime AS LastMessageTime,
     c.MessageType,
     c.SenderUserId,
@@ -594,33 +527,59 @@ SELECT
         SELECT COUNT(*)
         FROM MA_ChallanChat x
         WHERE
-
             x.SenderUserId = c.OtherUserId
-
+            AND x.ReceiverId = @userId
+            AND x.IsRead = 0
             AND
             (
                 @scope='all'
-                OR x.SenderPropertyCode=c.OtherPropertyCode
+                OR
+                (
+                    x.SenderPropertyCode = c.OtherPropertyCode
+                    AND x.ReceiverPropertyCode = @propertyCode
+                )
             )
-
-            AND x.ReceiverId=@userId
-
-            AND
-            (
-                @scope='all'
-                OR x.ReceiverPropertyCode=@propertyCode
-            )
-
-            AND x.IsRead=0
-
     ) AS UnreadCount
 
 FROM ChatList c
 
+OUTER APPLY
+(
+    SELECT TOP (1)
+        UserName,
+        PropertyCode,
+        DatabaseName
+    FROM MA_ChallanChatMembers
+    WHERE UserId = c.OtherUserId
+      AND (@scope='all' OR PropertyCode=c.OtherPropertyCode)
+) m
 
-WHERE c.rn=1
+OUTER APPLY
+(
+    SELECT
+        STRING_AGG(PropertyCode, ', ') AS PropertyCodes,
+        STRING_AGG(DatabaseName, ', ') AS DatabaseNames,
+        STRING_AGG(PropertyName, ', ') AS CompanyNames
+    FROM
+    (
+        SELECT DISTINCT
+            mm.PropertyCode,
+            mm.DatabaseName,
+            cm.PropertyName
+        FROM MA_ChallanChatMembers mm
+        INNER JOIN Cmpy_AutoShop.dbo.MA_ClientMaster cm
+            ON cm.PropertyCode = mm.PropertyCode
+        WHERE mm.UserId = c.OtherUserId
+    ) d
+) agg
+
+LEFT JOIN Cmpy_AutoShop.dbo.MA_ClientMaster cm
+    ON cm.PropertyCode = m.PropertyCode
+
+WHERE c.rn = 1
 
 ORDER BY c.MessageTime DESC;
+
 `);
 
     return res.json({
