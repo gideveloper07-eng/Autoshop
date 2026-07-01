@@ -216,7 +216,8 @@ END
       await pool
         .request()
         .input("challanId", sql.NVarChar(100), challanId)
-        .input("receiverId", sql.NVarChar(100), userGuid)
+        .input("receiverId", sql.NVarChar(100), receiverUserId)
+        .input("userGuid", sql.NVarChar(50), userGuid)
         .input(
           "receiverName",
           sql.NVarChar(200),
@@ -349,7 +350,7 @@ VALUES
     @messageType,
     @documentId,
     @databaseName,
-    @userGuid,
+    @receiverId,
     @propertyCode,
     @senderPropertyCode,
     @receiverPropertyCode,
