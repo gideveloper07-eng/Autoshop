@@ -514,44 +514,78 @@ SELECT
 
     c.OtherUserId AS UserId,
 
-    m.UserName,
-
-   CASE
-    WHEN @scope = 'all'
-    THEN
     (
-        SELECT STRING_AGG(DISTINCT mm.PropertyCode, ', ')
+        SELECT TOP 1 mm.UserName
         FROM MA_ChallanChatMembers mm
         WHERE mm.UserId = c.OtherUserId
-    )
-    ELSE m.PropertyCode
-END AS PropertyCode,
+    ) AS UserName,
 
-CASE
-    WHEN @scope = 'all'
-    THEN
-    (
-        SELECT STRING_AGG(DISTINCT mm.DatabaseName, ', ')
-        FROM MA_ChallanChatMembers mm
-        WHERE mm.UserId = c.OtherUserId
-    )
-    ELSE m.DatabaseName
-END AS DatabaseName,
+    CASE
+        WHEN @scope = 'all'
+        THEN
+        (
+            SELECT STRING_AGG(mm.PropertyCode, ', ')
+            FROM
+            (
+                SELECT DISTINCT PropertyCode
+                FROM MA_ChallanChatMembers
+                WHERE UserId = c.OtherUserId
+            ) mm
+        )
+        ELSE
+        (
+            SELECT TOP 1 PropertyCode
+            FROM MA_ChallanChatMembers
+            WHERE UserId = c.OtherUserId
+              AND PropertyCode = c.OtherPropertyCode
+        )
+    END AS PropertyCode,
 
-CASE
-    WHEN @scope = 'all'
-    THEN
-    (
-        SELECT STRING_AGG(DISTINCT cm.PropertyName, ', ')
-        FROM MA_ChallanChatMembers mm
-        INNER JOIN Cmpy_AutoShop.dbo.MA_ClientMaster cm
-            ON cm.PropertyCode = mm.PropertyCode
-        WHERE mm.UserId = c.OtherUserId
-    )
-    ELSE cm.PropertyName
-END AS CompanyName,
+    CASE
+        WHEN @scope = 'all'
+        THEN
+        (
+            SELECT STRING_AGG(mm.DatabaseName, ', ')
+            FROM
+            (
+                SELECT DISTINCT DatabaseName
+                FROM MA_ChallanChatMembers
+                WHERE UserId = c.OtherUserId
+            ) mm
+        )
+        ELSE
+        (
+            SELECT TOP 1 DatabaseName
+            FROM MA_ChallanChatMembers
+            WHERE UserId = c.OtherUserId
+              AND PropertyCode = c.OtherPropertyCode
+        )
+    END AS DatabaseName,
 
-    c.MessageText AS LastMessage,
+    CASE
+        WHEN @scope = 'all'
+        THEN
+        (
+            SELECT STRING_AGG(cm.PropertyName, ', ')
+            FROM
+            (
+                SELECT DISTINCT PropertyCode
+                FROM MA_ChallanChatMembers
+                WHERE UserId = c.OtherUserId
+            ) p
+            INNER JOIN Cmpy_AutoShop.dbo.MA_ClientMaster cm
+                ON cm.PropertyCode = p.PropertyCode
+        )
+        ELSE
+        (
+            SELECT TOP 1 cm.PropertyName
+            FROM MA_ChallanChatMembers mm
+            INNER JOIN Cmpy_AutoShop.dbo.MA_ClientMaster cm
+                ON cm.PropertyCode = mm.PropertyCode
+            WHERE mm.UserId = c.OtherUserId
+              AND mm.PropertyCode = c.OtherPropertyCode
+        )
+    END AS CompanyName,
     c.MessageTime AS LastMessageTime,
     c.MessageType,
     c.SenderUserId,
@@ -583,16 +617,6 @@ END AS CompanyName,
 
 FROM ChatList c
 
-LEFT JOIN MA_ChallanChatMembers m
-ON m.UserId=c.OtherUserId
-AND
-(
-    @scope='all'
-    OR m.PropertyCode=c.OtherPropertyCode
-)
-
-LEFT JOIN Cmpy_AutoShop.dbo.MA_ClientMaster cm
-ON cm.PropertyCode = m.PropertyCode
 
 WHERE c.rn=1
 
