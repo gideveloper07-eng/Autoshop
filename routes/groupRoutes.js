@@ -483,7 +483,7 @@ router.get("/my-direct-chats", async (req, res) => {
 (
     SELECT TOP 1 UserId
     FROM MA_ChallanChatMembers
-    WHERE UserName = @userId
+    WHERE userid = @userId
       AND PropertyCode = @propertyCode
 )
         AND
