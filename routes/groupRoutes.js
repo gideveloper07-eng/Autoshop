@@ -419,10 +419,9 @@ router.post("/create", async (req, res) => {
 router.get("/my-direct-chats", async (req, res) => {
   let pool;
   console.log(req.query.scope);
-
   try {
     const decoded = decodeToken(req);
-    console.log(decoded);
+
     if (!decoded) {
       return res.status(401).json({
         success: false,
@@ -480,13 +479,7 @@ router.get("/my-direct-chats", async (req, res) => {
     )
     OR
     (
-        ReceiverId =
-(
-    SELECT TOP 1 UserId
-    FROM MA_ChallanChatMembers
-    WHERE userid = @userId
-      AND PropertyCode = @propertyCode
-)
+        ReceiverId=@userId
         AND
         (
             @scope='all'
