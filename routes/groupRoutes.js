@@ -419,12 +419,10 @@ router.post("/create", async (req, res) => {
 router.get("/my-direct-chats", async (req, res) => {
   let pool;
   console.log(req.query.scope);
-  console.log(req.query.userid);
-  console.log(req.query.userId);
-  console.log(req.query.userGuid);
+
   try {
     const decoded = decodeToken(req);
-
+    console.log(decoded);
     if (!decoded) {
       return res.status(401).json({
         success: false,
@@ -440,7 +438,7 @@ router.get("/my-direct-chats", async (req, res) => {
 
     const result = await pool
       .request()
-      .input("userId", sql.NVarChar(100), userId)
+      .input("userId", sql.NVarChar(100), userGuid)
       .input("propertyCode", sql.NVarChar(50), propertyCode)
       .input("scope", sql.NVarChar(20), scope).query(`
 ;WITH BaseChat AS
