@@ -516,17 +516,40 @@ SELECT
 
     m.UserName,
 
-    CASE
-        WHEN @scope='all'
-        THEN NULL
-        ELSE m.PropertyCode
-    END AS PropertyCode,
+   CASE
+    WHEN @scope = 'all'
+    THEN
+    (
+        SELECT STRING_AGG(DISTINCT mm.PropertyCode, ', ')
+        FROM MA_ChallanChatMembers mm
+        WHERE mm.UserId = c.OtherUserId
+    )
+    ELSE m.PropertyCode
+END AS PropertyCode,
 
-    CASE
-        WHEN @scope='all'
-        THEN NULL
-        ELSE m.DatabaseName
-    END AS DatabaseName,
+CASE
+    WHEN @scope = 'all'
+    THEN
+    (
+        SELECT STRING_AGG(DISTINCT mm.DatabaseName, ', ')
+        FROM MA_ChallanChatMembers mm
+        WHERE mm.UserId = c.OtherUserId
+    )
+    ELSE m.DatabaseName
+END AS DatabaseName,
+
+CASE
+    WHEN @scope = 'all'
+    THEN
+    (
+        SELECT STRING_AGG(DISTINCT cm.PropertyName, ', ')
+        FROM MA_ChallanChatMembers mm
+        INNER JOIN Cmpy_AutoShop.dbo.MA_ClientMaster cm
+            ON cm.PropertyCode = mm.PropertyCode
+        WHERE mm.UserId = c.OtherUserId
+    )
+    ELSE cm.PropertyName
+END AS CompanyName,
 
     c.MessageText AS LastMessage,
     c.MessageTime AS LastMessageTime,
@@ -567,6 +590,9 @@ AND
     @scope='all'
     OR m.PropertyCode=c.OtherPropertyCode
 )
+
+LEFT JOIN Cmpy_AutoShop.dbo.MA_ClientMaster cm
+ON cm.PropertyCode = m.PropertyCode
 
 WHERE c.rn=1
 
