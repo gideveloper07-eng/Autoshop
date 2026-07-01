@@ -845,51 +845,77 @@ SELECT
     c.DocumentId,
     c.MessageTime,
     c.IsRead,
+
     d.DocumentNo,
     d.DocumentType,
     d.FileName,
+
     NULL AS TaskId,
     NULL AS AssignedTo,
     NULL AS AssignedToName,
     NULL AS Priority,
     NULL AS TaskStatus,
     NULL AS TaskDescription
+
 FROM MA_ChallanChat c
+
 LEFT JOIN MA_ChatDocuments d
-    ON c.DocumentId = d.DocumentId
-WHERE
-    c.ChallanId=@challanId
-    AND c.MessageType<>'TASK'
-    AND (@clientId IS NULL OR c.ClientId=@clientId)
+       ON c.DocumentId=d.DocumentId
+
+WHERE c.ChallanId=@challanId
+AND c.MessageType<>'TASK'
+AND (@clientId IS NULL OR c.ClientId=@clientId)
 
 UNION ALL
 
 SELECT
+
     CAST(t.TaskId AS NVARCHAR(50)) AS ChatId,
+
     t.AssignedBy AS SenderUserId,
-    t.AssignedBy AS SenderName,
+
+    ISNULL(byUser.UserName,t.AssignedBy) AS SenderName,
+
     t.TaskTitle AS MessageText,
+
     'TASK' AS MessageType,
+
     NULL AS DocumentId,
+
     t.CreatedDate AS MessageTime,
+
     1 AS IsRead,
+
     NULL AS DocumentNo,
     NULL AS DocumentType,
     NULL AS FileName,
-    CAST(t.TaskId AS NVARCHAR(50)) AS TaskId,
-    t.AssignedTo,
-    ISNULL(s.uti, t.AssignedTo) AS AssignedToName,
-    t.Priority,
-    t.Status AS TaskStatus,
-    t.TaskDescription
-FROM MA_ChatTasks t
-LEFT JOIN rh_secut s
-    ON CONVERT(VARCHAR(50), s.utunqid)=t.AssignedTo
-WHERE
-    t.ChallanId=@challanId
-    AND (@clientId IS NULL OR t.ClientId=@clientId)
 
-ORDER BY MessageTime
+    CAST(t.TaskId AS NVARCHAR(50)) AS TaskId,
+
+    t.AssignedTo,
+
+    ISNULL(toUser.UserName,t.AssignedTo) AS AssignedToName,
+
+    t.Priority,
+
+    t.Status AS TaskStatus,
+
+    t.TaskDescription
+
+FROM MA_ChatTasks t
+
+LEFT JOIN MA_ChallanChatMembers toUser
+ON  toUser.UserId=t.AssignedTo
+AND toUser.ChallanId=t.ChallanId
+
+LEFT JOIN MA_ChallanChatMembers byUser
+ON  byUser.UserId=t.AssignedBy
+AND byUser.ChallanId=t.ChallanId
+
+WHERE t.ChallanId=@challanId
+AND (@clientId IS NULL OR t.ClientId=@clientId)
+
+ORDER BY MessageTime;
 `);
 
     return res.json({
