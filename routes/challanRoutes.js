@@ -134,7 +134,7 @@ router.get("/retail-incentive", async (req, res) => {
     }
     console.log("RetailIncentive - Decoded Token:", decoded);
 
-    const { database: loginDatabase, userId, isAdmin = false } = decoded;
+    const { loginDatabase: database, userId, isAdmin = false } = decoded;
 
     if (!database) {
       return res.status(400).json({
@@ -149,7 +149,7 @@ router.get("/retail-incentive", async (req, res) => {
     console.log(
       "📋 CHALLAN — Retail Incentive",
       "DB:",
-      loginDatabase,
+      database,
       "User:",
       userId,
       "Admin:",
