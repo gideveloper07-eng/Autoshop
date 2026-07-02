@@ -194,17 +194,38 @@ WHERE propertydb = @db
 
     console.log("✅ DB updated — is_logged_in=1, device:", cleanDeviceId);
 
+    // Identity (never changes after login)
+    const loginDatabase = databaseName;
+    const loginPropertyCode = propertyCode;
+    const loginPropertyName = propertyName;
+    const loginClientId = clientId;
+
+    // Working dealership (changes after switch)
+    const currentDatabase = databaseName;
+    const currentPropertyCode = propertyCode;
+    const currentPropertyName = propertyName;
+    const currentClientId = clientId;
+
     const token = jwt.sign(
       {
         userId: user.uti,
         userName: user.utnm,
-        database: databaseName,
-        propertyCode,
-        propertyName,
-        clientId,
+
+        // Permanent Login Identity
+        loginDatabase,
+        loginPropertyCode,
+        loginPropertyName,
+        loginClientId,
+
+        // Current Working Dealership
+        currentDatabase,
+        currentPropertyCode,
+        currentPropertyName,
+        currentClientId,
+
         userGuid,
         utg: user.UTG || user.utg,
-        isAdmin: isAdmin,
+        isAdmin,
       },
       process.env.JWT_SECRET,
       {
@@ -212,17 +233,32 @@ WHERE propertydb = @db
       },
     );
 
-    // ── 7. Respond ───────────────────────────────────────────────────────────
     return res.json({
       success: true,
       token,
+
       userId: user.uti,
       userName: user.utnm,
       name: user.utnm,
-      databaseName,
-      propertyCode,
-      propertyName,
-      clientId,
+
+      // Permanent Login Identity
+      loginDatabase,
+      loginPropertyCode,
+      loginPropertyName,
+      loginClientId,
+
+      // Current Working Dealership
+      currentDatabase,
+      currentPropertyCode,
+      currentPropertyName,
+      currentClientId,
+
+      // Backward compatibility (existing Flutter code)
+      databaseName: currentDatabase,
+      propertyCode: currentPropertyCode,
+      propertyName: currentPropertyName,
+      clientId: currentClientId,
+
       userGuid,
       accessibleDatabases,
       utg: user.UTG || user.utg,
@@ -242,6 +278,8 @@ WHERE propertydb = @db
   }
 };
 const switchDatabase = async (req, res) => {
+  let masterPool;
+
   try {
     const decoded = decodeToken(req);
 
@@ -254,21 +292,21 @@ const switchDatabase = async (req, res) => {
 
     const { clientId } = req.body;
 
-    let masterPool = await openMasterPool();
+    masterPool = await openMasterPool();
 
     const accessResult = await masterPool
       .request()
       .input("userGuid", sql.UniqueIdentifier, decoded.userGuid)
       .input("clientId", sql.UniqueIdentifier, clientId).query(`
-          SELECT
-              CM.unqid,
-              CM.propertycode,
-              CM.propertyname,
-              CM.propertydb
-          FROM MA_UserDatabaseAccess UA
-          INNER JOIN MA_ClientMaster CM
-              ON UA.ClientId = CM.unqid
-          WHERE UA.UserGuid = @userGuid
+        SELECT
+            CM.unqid,
+            CM.propertycode,
+            CM.propertyname,
+            CM.propertydb
+        FROM MA_UserDatabaseAccess UA
+        INNER JOIN MA_ClientMaster CM
+            ON UA.ClientId = CM.unqid
+        WHERE UA.UserGuid = @userGuid
           AND UA.ClientId = @clientId
       `);
 
@@ -281,36 +319,61 @@ const switchDatabase = async (req, res) => {
 
     const db = accessResult.recordset[0];
 
+    // Create a new token while preserving login identity.
     const token = jwt.sign(
       {
         userId: decoded.userId,
         userName: decoded.userName,
-        database: db.propertydb,
-        propertyCode: db.propertycode,
-        propertyName: db.propertyname,
-        clientId: db.unqid,
+
+        // ===== LOGIN IDENTITY (Never changes) =====
+        loginDatabase: decoded.loginDatabase,
+        loginPropertyCode: decoded.loginPropertyCode,
+        loginPropertyName: decoded.loginPropertyName,
+        loginClientId: decoded.loginClientId,
+
+        // ===== CURRENT WORKING DEALERSHIP =====
+        currentDatabase: db.propertydb,
+        currentPropertyCode: db.propertycode,
+        currentPropertyName: db.propertyname,
+        currentClientId: db.unqid,
+
         userGuid: decoded.userGuid,
         utg: decoded.utg,
         isAdmin: decoded.isAdmin,
       },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" },
+      {
+        expiresIn: "7d",
+      },
     );
 
     return res.json({
       success: true,
       token,
+
+      // Current dealership
+      currentDatabase: db.propertydb,
+      currentPropertyCode: db.propertycode,
+      currentPropertyName: db.propertyname,
+      currentClientId: db.unqid,
+
+      // Backward compatibility
       databaseName: db.propertydb,
       propertyCode: db.propertycode,
       propertyName: db.propertyname,
+      clientId: db.unqid,
     });
   } catch (err) {
-    console.log(err);
+    console.error("SWITCH DATABASE ERROR:", err);
 
     return res.status(500).json({
       success: false,
       message: err.message,
     });
+  } finally {
+    if (masterPool) {
+      await masterPool.close();
+    }
   }
 };
 // ─────────────────────────────────────────────────────────────────────────────
