@@ -21,6 +21,99 @@ async function openPool(databaseName) {
     },
   }).connect();
 }
+async function findUserInDatabase(databaseName, receiverGuid) {
+  let pool;
+
+  try {
+    pool = await openPool(databaseName);
+
+    const result = await pool
+      .request()
+      .input("guid", sql.UniqueIdentifier, receiverGuid).query(`
+        SELECT TOP (1)
+            utunqid,
+            uti,
+            utnm
+        FROM rh_secut
+        WHERE utunqid=@guid
+      `);
+
+    if (result.recordset.length === 0) {
+      return null;
+    }
+
+    return result.recordset[0];
+  } finally {
+    if (pool) await pool.close();
+  }
+}
+
+async function findUserByGuid(decoded, receiverGuid) {
+  // -------------------------
+  // Employee
+  // -------------------------
+  if (!decoded.isAdmin) {
+    const user = await findUserInDatabase(decoded.loginDatabase, receiverGuid);
+
+    if (!user) return null;
+
+    return {
+      userId: user.uti,
+      userGuid: user.utunqid,
+      userName: user.utnm,
+
+      database: decoded.loginDatabase,
+      propertyCode: decoded.loginPropertyCode,
+      propertyName: decoded.loginPropertyName,
+      clientId: decoded.loginClientId,
+    };
+  }
+
+  // -------------------------
+  // Admin
+  // -------------------------
+
+  let masterPool;
+
+  try {
+    masterPool = await openMasterPool();
+
+    const access = await masterPool
+      .request()
+      .input("guid", sql.UniqueIdentifier, decoded.userGuid).query(`
+        SELECT
+            CM.unqid,
+            CM.propertydb,
+            CM.propertycode,
+            CM.propertyname
+        FROM MA_UserDatabaseAccess UA
+        INNER JOIN MA_ClientMaster CM
+            ON UA.ClientId=CM.unqid
+        WHERE UA.UserGuid=@guid
+      `);
+
+    for (const company of access.recordset) {
+      const user = await findUserInDatabase(company.propertydb, receiverGuid);
+
+      if (user) {
+        return {
+          userId: user.uti,
+          userGuid: user.utunqid,
+          userName: user.utnm,
+
+          database: company.propertydb,
+          propertyCode: company.propertycode,
+          propertyName: company.propertyname,
+          clientId: company.unqid,
+        };
+      }
+    }
+
+    return null;
+  } finally {
+    if (masterPool) await masterPool.close();
+  }
+}
 
 // ── Helper: resolve DB for a challan chat ─────────────────────────────────────
 // DatabaseName is stored in MA_ChallanChatMembers (set when member is added).
@@ -256,23 +349,29 @@ END
 
       finalReceiverPropertyCode = company.recordset[0]?.propertycode || null;
     }
+
+    const receiver = await findUserByGuid(decoded, receiverUserId);
+
+    if (!receiver) {
+      return res.status(404).json({
+        success: false,
+        message: "Receiver not found.",
+      });
+    }
+
     if (receiverUserId) {
       await pool
         .request()
         .input("challanId", sql.NVarChar(100), challanId)
-        .input("receiverId", sql.NVarChar(100), receiverUserId)
+        .input("receiverId", sql.NVarChar(100), receiver.userId)
         .input(
           "receiverName",
           sql.NVarChar(200),
-          receiverName || receiverUserId,
+          receiver.userName || receiver.userId,
         )
-        .input(
-          "receiverPropertyCode",
-          sql.NVarChar(20),
-          finalReceiverPropertyCode,
-        )
-        .input("databaseName", sql.NVarChar(100), req.body.receiverDatabase)
-        .input("clientId", sql.UniqueIdentifier, currentClientId || null)
+        .input("receiverPropertyCode", sql.NVarChar(20), receiver.propertyCode)
+        .input("databaseName", sql.NVarChar(100), receiver.database)
+        .input("clientId", sql.UniqueIdentifier, receiver.clientId || null)
         .input("addedBy", sql.NVarChar(100), userId).query(`
 IF NOT EXISTS
 (
@@ -359,14 +458,10 @@ AND IsActive=1
 
       .input("senderPropertyCode", sql.NVarChar(20), senderPropertyCode)
 
-      .input(
-        "receiverPropertyCode",
-        sql.NVarChar(20),
-        finalReceiverPropertyCode,
-      )
+      .input("receiverPropertyCode", sql.NVarChar(20), receiver.propertyCode)
 
-      .input("clientId", sql.UniqueIdentifier, senderClientId || null)
-      .input("receiverId", sql.NVarChar(100), receiverUserId).query(`
+      .input("clientId", sql.UniqueIdentifier, receiver.clientId || null)
+      .input("receiverId", sql.NVarChar(100), receiver.userId).query(`
 INSERT INTO MA_ChallanChat
 (
     ChatId,
