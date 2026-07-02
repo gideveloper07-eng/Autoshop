@@ -245,7 +245,7 @@ END
     //----------------------------------------------------
     let finalReceiverPropertyCode = receiverPropertyCode;
 
-    if (!finalReceiverPropertyCode && req.body.receiverDatabase) {
+    if (req.body.receiverDatabase) {
       const company = await pool
         .request()
         .input("database", sql.NVarChar(100), req.body.receiverDatabase).query(`
