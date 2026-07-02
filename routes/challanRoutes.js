@@ -134,7 +134,11 @@ router.get("/retail-incentive", async (req, res) => {
     }
     console.log("RetailIncentive - Decoded Token:", decoded);
 
-    const { loginDatabase: database, userId, isAdmin = false } = decoded;
+    const { database, userId, isAdmin = false } = decoded;
+
+    console.log("database =", database);
+    console.log("userId =", userId);
+    console.log("isAdmin =", isAdmin);
 
     if (!database) {
       return res.status(400).json({
