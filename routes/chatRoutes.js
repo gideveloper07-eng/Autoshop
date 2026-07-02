@@ -176,7 +176,7 @@ router.post("/send", async (req, res) => {
       receiverName,
       receiverPropertyCode,
     } = req.body;
-
+console.log(req.body);
     if (!challanId) {
       return res.status(400).json({
         success: false,
