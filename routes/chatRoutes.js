@@ -23,7 +23,7 @@ async function openPool(databaseName) {
 }
 
 async function openMasterPool() {
-  const pool = await new sql.ConnectionPool({
+  return await new sql.ConnectionPool({
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     server: process.env.DB_HOST,
