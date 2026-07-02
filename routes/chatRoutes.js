@@ -176,7 +176,7 @@ router.post("/send", async (req, res) => {
       receiverName,
       receiverPropertyCode,
     } = req.body;
-console.log(req.body);
+    console.log(req.body);
     if (!challanId) {
       return res.status(400).json({
         success: false,
@@ -243,7 +243,19 @@ END
     //----------------------------------------------------
     // Ensure Receiver Member
     //----------------------------------------------------
+    let finalReceiverPropertyCode = receiverPropertyCode;
 
+    if (!finalReceiverPropertyCode && req.body.receiverDatabase) {
+      const company = await pool
+        .request()
+        .input("database", sql.NVarChar(100), req.body.receiverDatabase).query(`
+      SELECT propertycode
+      FROM Cmpy_AutoShop.dbo.MA_ClientMaster
+      WHERE propertydb = @database
+    `);
+
+      finalReceiverPropertyCode = company.recordset[0]?.propertycode || null;
+    }
     if (receiverUserId) {
       await pool
         .request()
@@ -254,7 +266,11 @@ END
           sql.NVarChar(200),
           receiverName || receiverUserId,
         )
-        .input("receiverPropertyCode", sql.NVarChar(20), receiverPropertyCode)
+        .input(
+          "receiverPropertyCode",
+          sql.NVarChar(20),
+          finalReceiverPropertyCode,
+        )
         .input("databaseName", sql.NVarChar(100), currentDatabase)
         .input("clientId", sql.UniqueIdentifier, currentClientId || null)
         .input("addedBy", sql.NVarChar(100), userId).query(`
@@ -343,7 +359,11 @@ AND IsActive=1
 
       .input("senderPropertyCode", sql.NVarChar(20), senderPropertyCode)
 
-      .input("receiverPropertyCode", sql.NVarChar(20), receiverPropertyCode)
+      .input(
+        "receiverPropertyCode",
+        sql.NVarChar(20),
+        finalReceiverPropertyCode,
+      )
 
       .input("clientId", sql.UniqueIdentifier, senderClientId || null)
       .input("receiverId", sql.NVarChar(100), receiverUserId).query(`
@@ -394,7 +414,7 @@ VALUES
 
     console.log("Current Property :", currentPropertyCode);
 
-    console.log("Receiver Property :", receiverPropertyCode);
+    console.log("Receiver Property :", finalReceiverPropertyCode);
 
     console.log("=======================================");
     //----------------------------------------------------
