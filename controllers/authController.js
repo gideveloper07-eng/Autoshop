@@ -404,7 +404,7 @@ const logoutUser = async (req, res) => {
       return res.status(401).json({ success: false, message: "Invalid token" });
     }
 
-    const { userId, database: databaseName } = decoded;
+    const { userId, loginDatabase: databaseName } = decoded;
     console.log("🚪 LOGOUT — userId:", userId, "db:", databaseName);
 
     pool = await openPool(databaseName);
