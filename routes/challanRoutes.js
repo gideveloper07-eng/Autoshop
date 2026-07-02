@@ -133,9 +133,9 @@ router.get("/retail-incentive", async (req, res) => {
       });
     }
 
-    const { database: databaseName, userId, isAdmin = false } = decoded;
-
-    if (!databaseName) {
+    const { database: loginDatabase, userId, isAdmin = false } = decoded;
+    console.log(decoded);
+    if (!loginDatabase) {
       return res.status(400).json({
         success: false,
         message: "Database not found in token",
@@ -148,7 +148,7 @@ router.get("/retail-incentive", async (req, res) => {
     console.log(
       "📋 CHALLAN — Retail Incentive",
       "DB:",
-      databaseName,
+      loginDatabase,
       "User:",
       userId,
       "Admin:",
@@ -157,7 +157,7 @@ router.get("/retail-incentive", async (req, res) => {
       dateType,
     );
 
-    pool = await openPool(databaseName);
+    pool = await openPool(loginDatabase);
 
     // Get challans from SP
     const result = await pool
