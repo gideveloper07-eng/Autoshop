@@ -23,7 +23,7 @@ async function openPool(databaseName) {
 }
 
 async function openMasterPool() {
-  return await new sql.ConnectionPool({
+  const pool = await new sql.ConnectionPool({
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     server: process.env.DB_HOST,
@@ -34,6 +34,8 @@ async function openMasterPool() {
       trustServerCertificate: true,
     },
   }).connect();
+
+  return pool;
 }
 
 async function findUserInDatabase(databaseName, receiverGuid) {
