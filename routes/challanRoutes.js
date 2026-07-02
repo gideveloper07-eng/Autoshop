@@ -132,9 +132,10 @@ router.get("/retail-incentive", async (req, res) => {
         message: "Unauthorized",
       });
     }
+    console.log("RetailIncentive - Decoded Token:", decoded);
 
     const { database: loginDatabase, userId, isAdmin = false } = decoded;
-    console.log(decoded);
+
     if (!loginDatabase) {
       return res.status(400).json({
         success: false,
