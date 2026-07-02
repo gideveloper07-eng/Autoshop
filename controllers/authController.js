@@ -325,13 +325,16 @@ const switchDatabase = async (req, res) => {
         userId: decoded.userId,
         userName: decoded.userName,
 
-        // ===== LOGIN IDENTITY (Never changes) =====
-        loginDatabase: decoded.loginDatabase,
-        loginPropertyCode: decoded.loginPropertyCode,
-        loginPropertyName: decoded.loginPropertyName,
-        loginClientId: decoded.loginClientId,
+        // Permanent login identity
+        loginDatabase: decoded.loginDatabase || decoded.database,
 
-        // ===== CURRENT WORKING DEALERSHIP =====
+        loginPropertyCode: decoded.loginPropertyCode || decoded.propertyCode,
+
+        loginPropertyName: decoded.loginPropertyName || decoded.propertyName,
+
+        loginClientId: decoded.loginClientId || decoded.clientId,
+
+        // Current working dealership
         currentDatabase: db.propertydb,
         currentPropertyCode: db.propertycode,
         currentPropertyName: db.propertyname,
@@ -346,7 +349,11 @@ const switchDatabase = async (req, res) => {
         expiresIn: "7d",
       },
     );
+    const verify = jwt.verify(token, process.env.JWT_SECRET);
 
+    console.log("========== SWITCH DATABASE TOKEN ==========");
+    console.log(JSON.stringify(verify, null, 2));
+    console.log("===========================================");
     return res.json({
       success: true,
       token,
