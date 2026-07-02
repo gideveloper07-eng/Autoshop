@@ -4,6 +4,8 @@ const sql = require("mssql");
 const openCommunicationPool = require("../utils/communicationPool");
 const { randomUUID } = require("crypto");
 
+const openMasterPool = require("../utils/masterPool");
+
 const { decodeToken } = require("../middleware/authMiddleware");
 const { sendPushNotification } = require("../utils/pushNotificationHelper");
 const { getAccessibleDatabases } = require("../utils/databaseAccessHelper");
