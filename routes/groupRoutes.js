@@ -418,7 +418,7 @@ router.post("/create", async (req, res) => {
 
 router.get("/my-direct-chats", async (req, res) => {
   let pool;
-  console.log(req.query.scope);
+
   try {
     const decoded = decodeToken(req);
 
@@ -429,31 +429,69 @@ router.get("/my-direct-chats", async (req, res) => {
       });
     }
 
-    const { userId, propertyCode, userGuid } = decoded;
+    //----------------------------------------------------
+    // Permanent Login Identity
+    //----------------------------------------------------
+
+    const userId = decoded.userId;
+
+    const propertyCode = decoded.loginPropertyCode || decoded.propertyCode;
+
+    const database = decoded.loginDatabase || decoded.database;
+
+    const clientId = decoded.loginClientId || decoded.clientId;
+
+    const userGuid = decoded.userGuid;
 
     const scope = (req.query.scope || "property").toLowerCase();
+
+    console.log("========== MY DIRECT CHATS ==========");
+    console.log("User :", userId);
+    console.log("UserGuid :", userGuid);
+    console.log("Database :", database);
+    console.log("Property :", propertyCode);
+    console.log("Client :", clientId);
+    console.log("Scope :", scope);
+    console.log("====================================");
 
     pool = await openCommunicationPool();
 
     const result = await pool
       .request()
       .input("userId", sql.NVarChar(100), userId)
+      .input("userGuid", sql.UniqueIdentifier, userGuid)
       .input("propertyCode", sql.NVarChar(50), propertyCode)
-      .input("userGuid", sql.NVarChar(50), userGuid)
+      .input("clientId", sql.UniqueIdentifier, clientId || null)
       .input("scope", sql.NVarChar(20), scope).query(`
-;;WITH BaseChat AS
+;WITH BaseChat AS
 (
     SELECT
         CASE
-            WHEN (SenderUserId = @userId or SenderUserId = @userGuid)
-                 AND (@scope = 'all' OR SenderPropertyCode = @propertyCode)
+            WHEN
+            (
+                (SenderUserId = @userId
+                 OR SenderUserId = CONVERT(NVARCHAR(50), @userGuid))
+                AND
+                (
+                    @scope='all'
+                    OR SenderPropertyCode=@propertyCode
+                )
+            )
             THEN ReceiverId
             ELSE SenderUserId
         END AS OtherUserId,
 
         CASE
-             WHEN (SenderUserId = @userId or SenderUserId = @userGuid)
-                 AND (@scope = 'all' OR SenderPropertyCode = @propertyCode)
+            WHEN
+            (
+                (SenderUserId = @userId
+                 OR SenderUserId = CONVERT(NVARCHAR(50), @userGuid))
+                AND
+                (
+                    @scope='all'
+                    OR SenderPropertyCode=@propertyCode
+                )
+            )
             THEN ReceiverPropertyCode
             ELSE SenderPropertyCode
         END AS OtherPropertyCode,
@@ -469,15 +507,35 @@ router.get("/my-direct-chats", async (req, res) => {
     FROM MA_ChallanChat
 
     WHERE
+
     (
-        ( SenderUserId = @userId or SenderUserId = @userGuid)
-        AND (@scope = 'all' OR SenderPropertyCode = @propertyCode)
+        (
+            SenderUserId=@userId
+            OR SenderUserId=CONVERT(NVARCHAR(50),@userGuid)
+        )
+        AND
+        (
+            @scope='all'
+            OR SenderPropertyCode=@propertyCode
+        )
     )
+
     OR
+
     (
-        (ReceiverId = @userId or receiverid = @userGuid)
-        AND (@scope = 'all' OR ReceiverPropertyCode = @propertyCode)
+        (
+            ReceiverId=@userId
+            OR ReceiverId=CONVERT(NVARCHAR(50),@userGuid)
+        )
+        AND
+        (
+            @scope='all'
+            OR ReceiverPropertyCode=@propertyCode
+        )
     )
+
+    AND
+    (@clientId IS NULL OR ClientId=@clientId)
 ),
 
 ChatList AS
@@ -488,7 +546,8 @@ ChatList AS
                PARTITION BY
                     OtherUserId,
                     CASE
-                        WHEN @scope='all' THEN ''
+                        WHEN @scope='all'
+                        THEN ''
                         ELSE OtherPropertyCode
                     END
                ORDER BY MessageTime DESC
@@ -497,6 +556,7 @@ ChatList AS
 )
 
 SELECT
+
     c.OtherUserId AS UserId,
 
     m.UserName,
@@ -520,8 +580,11 @@ SELECT
     END AS CompanyName,
 
     c.MessageText,
+
     c.MessageTime AS LastMessageTime,
+
     c.MessageType,
+
     c.SenderUserId,
 
     (
@@ -540,6 +603,8 @@ SELECT
                     AND x.ReceiverPropertyCode = @propertyCode
                 )
             )
+            AND
+            (@clientId IS NULL OR x.ClientId=@clientId)
     ) AS UnreadCount
 
 FROM ChatList c
@@ -551,8 +616,13 @@ OUTER APPLY
         PropertyCode,
         DatabaseName
     FROM MA_ChallanChatMembers
-    WHERE UserId = c.OtherUserId
-      AND (@scope='all' OR PropertyCode=c.OtherPropertyCode)
+    WHERE
+        UserId = c.OtherUserId
+        AND
+        (
+            @scope='all'
+            OR PropertyCode=c.OtherPropertyCode
+        )
 ) m
 
 OUTER APPLY
@@ -580,7 +650,6 @@ LEFT JOIN Cmpy_AutoShop.dbo.MA_ClientMaster cm
 WHERE c.rn = 1
 
 ORDER BY c.MessageTime DESC;
-
 `);
 
     return res.json({
@@ -588,7 +657,7 @@ ORDER BY c.MessageTime DESC;
       data: result.recordset,
     });
   } catch (err) {
-    console.error(err);
+    console.error("MY DIRECT CHATS ERROR:", err);
 
     return res.status(500).json({
       success: false,

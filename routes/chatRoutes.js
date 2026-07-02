@@ -56,7 +56,18 @@ router.get("/my-chats", async (req, res) => {
       });
     }
 
-    const { database, propertyCode, clientId, userId, isAdmin } = decoded;
+    // Permanent Login Identity
+    const userId = decoded.userId;
+    const propertyCode = decoded.loginPropertyCode || decoded.propertyCode;
+    const clientId = decoded.loginClientId || decoded.clientId;
+
+    const isAdmin = decoded.isAdmin;
+
+    console.log("========= MY CHATS =========");
+    console.log("User :", userId);
+    console.log("Login Property :", propertyCode);
+    console.log("Client :", clientId);
+    console.log("============================");
 
     pool = await openCommunicationPool();
 
@@ -114,6 +125,10 @@ ORDER BY LastMessageTime DESC
       success: false,
       message: err.message,
     });
+  } finally {
+    if (pool) {
+      await pool.close();
+    }
   }
 });
 // ── POST /api/chat/send ──────────────────────────────────────────────────────
@@ -130,7 +145,24 @@ router.post("/send", async (req, res) => {
       });
     }
 
-    const { database, propertyCode, clientId, userId, isAdmin } = decoded;
+    // Permanent sender identity (never changes after login)
+    const senderDatabase = decoded.loginDatabase || decoded.database;
+
+    const senderPropertyCode =
+      decoded.loginPropertyCode || decoded.propertyCode;
+
+    const senderClientId = decoded.loginClientId || decoded.clientId;
+
+    // Current working dealership
+    const currentDatabase = decoded.currentDatabase || decoded.database;
+
+    const currentPropertyCode =
+      decoded.currentPropertyCode || decoded.propertyCode;
+
+    const currentClientId = decoded.currentClientId || decoded.clientId;
+
+    const userId = decoded.userId;
+    const isAdmin = decoded.isAdmin;
 
     const {
       challanId,
@@ -163,9 +195,11 @@ router.post("/send", async (req, res) => {
       .input("challanId", sql.NVarChar(100), challanId)
       .input("userId", sql.NVarChar(100), userId)
       .input("userName", sql.NVarChar(200), senderName || userId)
-      .input("propertyCode", sql.NVarChar(20), propertyCode)
-      .input("databaseName", sql.NVarChar(100), database)
-      .input("clientId", sql.UniqueIdentifier, clientId || null).query(`
+      .input("propertyCode", sql.NVarChar(20), senderPropertyCode)
+
+      .input("databaseName", sql.NVarChar(100), senderDatabase)
+
+      .input("clientId", sql.UniqueIdentifier, senderClientId || null).query(`
 IF NOT EXISTS
 (
     SELECT 1
@@ -220,13 +254,9 @@ END
           sql.NVarChar(200),
           receiverName || receiverUserId,
         )
-        .input(
-          "receiverPropertyCode",
-          sql.NVarChar(20),
-          receiverPropertyCode || propertyCode,
-        )
-        .input("databaseName", sql.NVarChar(100), database)
-        .input("clientId", sql.UniqueIdentifier, clientId || null)
+        .input("receiverPropertyCode", sql.NVarChar(20), receiverPropertyCode)
+        .input("databaseName", sql.NVarChar(100), currentDatabase)
+        .input("clientId", sql.UniqueIdentifier, currentClientId || null)
         .input("addedBy", sql.NVarChar(100), userId).query(`
 IF NOT EXISTS
 (
@@ -278,7 +308,7 @@ END
         .request()
         .input("challanId", sql.NVarChar(100), challanId)
         .input("userId", sql.NVarChar(100), userId)
-        .input("propertyCode", sql.NVarChar(20), propertyCode).query(`
+        .input("propertyCode", sql.NVarChar(20), senderPropertyCode).query(`
 SELECT 1
 FROM MA_ChallanChatMembers
 WHERE ChallanId=@challanId
@@ -307,15 +337,15 @@ AND IsActive=1
       .input("messageText", sql.NVarChar(sql.MAX), messageText)
       .input("messageType", sql.VarChar(20), messageType)
       .input("documentId", sql.UniqueIdentifier, documentId)
-      .input("databaseName", sql.NVarChar(100), database)
-      .input("propertyCode", sql.NVarChar(20), propertyCode)
-      .input("senderPropertyCode", sql.NVarChar(20), propertyCode)
-      .input(
-        "receiverPropertyCode",
-        sql.NVarChar(20),
-        receiverPropertyCode || propertyCode,
-      )
-      .input("clientId", sql.UniqueIdentifier, clientId || null)
+      .input("databaseName", sql.NVarChar(100), senderDatabase)
+
+      .input("propertyCode", sql.NVarChar(20), senderPropertyCode)
+
+      .input("senderPropertyCode", sql.NVarChar(20), senderPropertyCode)
+
+      .input("receiverPropertyCode", sql.NVarChar(20), receiverPropertyCode)
+
+      .input("clientId", sql.UniqueIdentifier, senderClientId || null)
       .input("receiverId", sql.NVarChar(100), receiverUserId).query(`
 INSERT INTO MA_ChallanChat
 (
@@ -354,7 +384,19 @@ VALUES
     @clientId
 )
 `);
+    console.log("============== CHAT SEND ==============");
 
+    console.log("Login DB :", senderDatabase);
+
+    console.log("Current DB :", currentDatabase);
+
+    console.log("Login Property :", senderPropertyCode);
+
+    console.log("Current Property :", currentPropertyCode);
+
+    console.log("Receiver Property :", receiverPropertyCode);
+
+    console.log("=======================================");
     //----------------------------------------------------
     // Notification
     //----------------------------------------------------
@@ -430,13 +472,26 @@ router.post("/mark-read/:challanId", async (req, res) => {
       });
     }
 
-    const { propertyCode, clientId, userId } = decoded;
+    // Permanent login identity
+    const userId = decoded.userId;
+    const propertyCode = decoded.loginPropertyCode || decoded.propertyCode;
+    const clientId = decoded.loginClientId || decoded.clientId;
 
     const { challanId } = req.params;
 
+    console.log("========= MARK READ =========");
+    console.log("User :", userId);
+    console.log("Property :", propertyCode);
+    console.log("Client :", clientId);
+    console.log("Challan :", challanId);
+    console.log("=============================");
+
     pool = await openCommunicationPool();
 
-    // Optional security check
+    //----------------------------------------------------
+    // Verify membership
+    //----------------------------------------------------
+
     const access = await pool
       .request()
       .input("challanId", sql.NVarChar(100), challanId)
@@ -457,6 +512,10 @@ WHERE ChallanId=@challanId
       });
     }
 
+    //----------------------------------------------------
+    // Mark messages as read
+    //----------------------------------------------------
+
     await pool
       .request()
       .input("challanId", sql.NVarChar(100), challanId)
@@ -465,7 +524,8 @@ WHERE ChallanId=@challanId
 UPDATE MA_ChallanChat
 SET IsRead = 1
 WHERE ChallanId = @challanId
-  AND SenderUserId <> @userId
+  AND ReceiverId = @userId
+  AND ReceiverPropertyCode = @propertyCode
   AND IsRead = 0
   AND (@clientId IS NULL OR ClientId=@clientId)
 `);
@@ -475,12 +535,16 @@ WHERE ChallanId = @challanId
       message: "Messages marked as read.",
     });
   } catch (err) {
-    console.error(err);
+    console.error("MARK READ ERROR:", err);
 
     return res.status(500).json({
       success: false,
       message: err.message,
     });
+  } finally {
+    if (pool) {
+      await pool.close();
+    }
   }
 });
 
@@ -502,83 +566,95 @@ router.get(
         });
       }
 
-      const { userId, propertyCode } = decoded;
+      // Permanent identity
+      const userId = decoded.userId;
+      const senderPropertyCode =
+        decoded.loginPropertyCode || decoded.propertyCode;
+
       const { receiverId, receiverPropertyCode } = req.params;
 
-      // Open the central communication database
+      console.log("========= DIRECT CHAT =========");
+      console.log("User :", userId);
+      console.log("Sender Property :", senderPropertyCode);
+      console.log("Receiver :", receiverId);
+      console.log("Receiver Property :", receiverPropertyCode);
+      console.log("===============================");
+
       pool = await openCommunicationPool();
 
       const result = await pool
         .request()
         .input("userId", sql.NVarChar(100), userId)
-        .input("propertyCode", sql.NVarChar(50), propertyCode)
+        .input("senderPropertyCode", sql.NVarChar(50), senderPropertyCode)
         .input("receiverId", sql.NVarChar(100), receiverId)
         .input("receiverPropertyCode", sql.NVarChar(50), receiverPropertyCode)
         .query(`
-        SELECT
-            CAST(c.ChatId AS NVARCHAR(50)) AS ChatId,
-            c.SenderUserId,
-            c.SenderName,
-            c.SenderPropertyCode,
-            c.ReceiverId,
-            c.ReceiverPropertyCode,
-            c.MessageText,
-            c.MessageType,
-            c.DocumentId,
-            c.MessageTime,
-            c.IsRead,
+            SELECT
+                CAST(c.ChatId AS NVARCHAR(50)) AS ChatId,
+                c.SenderUserId,
+                c.SenderName,
+                c.SenderPropertyCode,
+                c.ReceiverId,
+                c.ReceiverPropertyCode,
+                c.MessageText,
+                c.MessageType,
+                c.DocumentId,
+                c.MessageTime,
+                c.IsRead,
 
-            d.DocumentNo,
-            d.DocumentType,
-            d.FileName,
+                d.DocumentNo,
+                d.DocumentType,
+                d.FileName,
 
-            NULL AS TaskId,
-            NULL AS AssignedTo,
-            NULL AS AssignedToName,
-            NULL AS Priority,
-            NULL AS TaskStatus,
-            NULL AS TaskDescription
+                NULL AS TaskId,
+                NULL AS AssignedTo,
+                NULL AS AssignedToName,
+                NULL AS Priority,
+                NULL AS TaskStatus,
+                NULL AS TaskDescription
 
-        FROM MA_ChallanChat c
+            FROM MA_ChallanChat c
 
-        LEFT JOIN MA_ChatDocuments d
-            ON c.DocumentId = d.DocumentId
+            LEFT JOIN MA_ChatDocuments d
+                ON c.DocumentId = d.DocumentId
 
-        WHERE
-        (
-            c.SenderUserId = @userId
-            AND c.SenderPropertyCode = @propertyCode
-            AND c.ReceiverId = @receiverId
-            AND c.ReceiverPropertyCode = @receiverPropertyCode
-        )
-        OR
-        (
-            c.SenderUserId = @receiverId
-            AND c.SenderPropertyCode = @receiverPropertyCode
-            AND c.ReceiverId = @userId
-            AND c.ReceiverPropertyCode = @propertyCode
-        )
+            WHERE
+            (
+                c.SenderUserId = @userId
+                AND c.SenderPropertyCode = @senderPropertyCode
+                AND c.ReceiverId = @receiverId
+                AND c.ReceiverPropertyCode = @receiverPropertyCode
+            )
 
-        ORDER BY c.MessageTime ASC
-      `);
+            OR
 
-      // Mark received messages as read
+            (
+                c.SenderUserId = @receiverId
+                AND c.SenderPropertyCode = @receiverPropertyCode
+                AND c.ReceiverId = @userId
+                AND c.ReceiverPropertyCode = @senderPropertyCode
+            )
+
+            ORDER BY c.MessageTime ASC
+        `);
+
+      // Mark incoming messages as read
       await pool
         .request()
         .input("userId", sql.NVarChar(100), userId)
-        .input("propertyCode", sql.NVarChar(50), propertyCode)
+        .input("senderPropertyCode", sql.NVarChar(50), senderPropertyCode)
         .input("receiverId", sql.NVarChar(100), receiverId)
         .input("receiverPropertyCode", sql.NVarChar(50), receiverPropertyCode)
         .query(`
-        UPDATE MA_ChallanChat
-        SET IsRead = 1
-        WHERE
-            SenderUserId = @receiverId
-            AND SenderPropertyCode = @receiverPropertyCode
-            AND ReceiverId = @userId
-            AND ReceiverPropertyCode = @propertyCode
-            AND ISNULL(IsRead,0)=0
-      `);
+            UPDATE MA_ChallanChat
+            SET IsRead = 1
+            WHERE
+                SenderUserId = @receiverId
+                AND SenderPropertyCode = @receiverPropertyCode
+                AND ReceiverId = @userId
+                AND ReceiverPropertyCode = @senderPropertyCode
+                AND ISNULL(IsRead,0)=0
+        `);
 
       return res.json({
         success: true,
@@ -591,6 +667,10 @@ router.get(
         success: false,
         message: err.message,
       });
+    } finally {
+      if (pool) {
+        await pool.close();
+      }
     }
   },
 );
@@ -611,8 +691,19 @@ router.get(
         });
       }
 
-      const { userId, propertyCode, clientId } = decoded;
+      // Permanent login identity
+      const userId = decoded.userId;
+      const propertyCode = decoded.loginPropertyCode || decoded.propertyCode;
+      const clientId = decoded.loginClientId || decoded.clientId;
+
       const { receiverId, receiverPropertyCode } = req.params;
+
+      console.log("========= UNREAD COUNT =========");
+      console.log("User :", userId);
+      console.log("Property :", propertyCode);
+      console.log("Receiver :", receiverId);
+      console.log("Receiver Property :", receiverPropertyCode);
+      console.log("===============================");
 
       pool = await openCommunicationPool();
 
@@ -626,15 +717,15 @@ router.get(
 SELECT COUNT(*) AS UnreadCount
 FROM MA_ChallanChat
 WHERE
-    SenderUserId=@receiverId
-AND SenderPropertyCode=@receiverPropertyCode
+      SenderUserId = @receiverId
+  AND SenderPropertyCode = @receiverPropertyCode
 
-AND ReceiverId=@userId
-AND ReceiverPropertyCode=@propertyCode
+  AND ReceiverId = @userId
+  AND ReceiverPropertyCode = @propertyCode
 
-AND IsRead=0
+  AND IsRead = 0
 
-AND (@clientId IS NULL OR ClientId=@clientId)
+  AND (@clientId IS NULL OR ClientId = @clientId)
 `);
 
       return res.json({
@@ -642,14 +733,16 @@ AND (@clientId IS NULL OR ClientId=@clientId)
         count: result.recordset[0].UnreadCount,
       });
     } catch (err) {
-      console.error(err);
+      console.error("UNREAD COUNT ERROR:", err);
 
       return res.status(500).json({
         success: false,
         message: err.message,
       });
     } finally {
-      if (pool) await pool.close();
+      if (pool) {
+        await pool.close();
+      }
     }
   },
 );
@@ -667,14 +760,25 @@ router.get("/documents", async (req, res) => {
       });
     }
 
-    const { propertyCode, clientId, userId, isAdmin } = decoded;
+    // Permanent login identity
+    const userId = decoded.userId;
+    const propertyCode = decoded.loginPropertyCode || decoded.propertyCode;
+    const clientId = decoded.loginClientId || decoded.clientId;
+
+    const isAdmin = decoded.isAdmin;
+
+    console.log("========= CHAT DOCUMENTS =========");
+    console.log("User :", userId);
+    console.log("Property :", propertyCode);
+    console.log("Client :", clientId);
+    console.log("=================================");
 
     pool = await openCommunicationPool();
 
     let result;
 
     //----------------------------------------------------
-    // ADMIN → ALL DOCUMENTS
+    // ADMIN → ALL DOCUMENTS OF LOGIN COMPANY
     //----------------------------------------------------
 
     if (isAdmin) {
@@ -699,8 +803,7 @@ ORDER BY CreatedDate DESC
     }
 
     //----------------------------------------------------
-    // USER → ONLY DOCUMENTS OF CHALLANS
-    // THEY BELONG TO
+    // USER → ONLY DOCUMENTS OF CHALLANS THEY BELONG TO
     //----------------------------------------------------
     else {
       result = await pool
@@ -742,6 +845,10 @@ ORDER BY d.CreatedDate DESC
       success: false,
       message: err.message,
     });
+  } finally {
+    if (pool) {
+      await pool.close();
+    }
   }
 });
 
@@ -760,9 +867,20 @@ router.get("/:challanId", async (req, res) => {
       });
     }
 
-    const { propertyCode, clientId, userId, isAdmin } = decoded;
+    // Permanent Login Identity
+    const userId = decoded.userId;
+    const propertyCode = decoded.loginPropertyCode || decoded.propertyCode;
+    const clientId = decoded.loginClientId || decoded.clientId;
+    const isAdmin = decoded.isAdmin;
 
     const { challanId } = req.params;
+
+    console.log("========= GET CHAT =========");
+    console.log("User :", userId);
+    console.log("Property :", propertyCode);
+    console.log("Client :", clientId);
+    console.log("Challan :", challanId);
+    console.log("============================");
 
     pool = await openCommunicationPool();
 
@@ -804,6 +922,9 @@ SELECT
     CAST(c.ChatId AS NVARCHAR(50)) AS ChatId,
     c.SenderUserId,
     c.SenderName,
+    c.SenderPropertyCode,
+    c.ReceiverId,
+    c.ReceiverPropertyCode,
     c.MessageText,
     c.MessageType,
     c.DocumentId,
@@ -824,21 +945,25 @@ SELECT
 FROM MA_ChallanChat c
 
 LEFT JOIN MA_ChatDocuments d
-       ON c.DocumentId=d.DocumentId
+       ON c.DocumentId = d.DocumentId
 
-WHERE c.ChallanId=@challanId
-AND c.MessageType<>'TASK'
-AND (@clientId IS NULL OR c.ClientId=@clientId)
+WHERE
+    c.ChallanId=@challanId
+    AND c.MessageType<>'TASK'
+    AND (@clientId IS NULL OR c.ClientId=@clientId)
 
 UNION ALL
 
 SELECT
-
     CAST(t.TaskId AS NVARCHAR(50)) AS ChatId,
 
     t.AssignedBy AS SenderUserId,
 
     ISNULL(byUser.UserName,t.AssignedBy) AS SenderName,
+
+    NULL AS SenderPropertyCode,
+    NULL AS ReceiverId,
+    NULL AS ReceiverPropertyCode,
 
     t.TaskTitle AS MessageText,
 
@@ -869,17 +994,18 @@ SELECT
 FROM MA_ChatTasks t
 
 LEFT JOIN MA_ChallanChatMembers toUser
-ON  toUser.UserId=t.AssignedTo
-AND toUser.ChallanId=t.ChallanId
+       ON toUser.UserId=t.AssignedTo
+      AND toUser.ChallanId=t.ChallanId
 
 LEFT JOIN MA_ChallanChatMembers byUser
-ON  byUser.UserId=t.AssignedBy
-AND byUser.ChallanId=t.ChallanId
+       ON byUser.UserId=t.AssignedBy
+      AND byUser.ChallanId=t.ChallanId
 
-WHERE t.ChallanId=@challanId
-AND (@clientId IS NULL OR t.ClientId=@clientId)
+WHERE
+    t.ChallanId=@challanId
+    AND (@clientId IS NULL OR t.ClientId=@clientId)
 
-ORDER BY MessageTime;
+ORDER BY MessageTime ASC
 `);
 
     return res.json({
@@ -893,6 +1019,10 @@ ORDER BY MessageTime;
       success: false,
       message: err.message,
     });
+  } finally {
+    if (pool) {
+      await pool.close();
+    }
   }
 });
 
@@ -909,9 +1039,20 @@ router.get("/document/:documentId", async (req, res) => {
       });
     }
 
-    const { propertyCode, clientId, userId, isAdmin } = decoded;
+    // Permanent Login Identity
+    const userId = decoded.userId;
+    const propertyCode = decoded.loginPropertyCode || decoded.propertyCode;
+    const clientId = decoded.loginClientId || decoded.clientId;
+    const isAdmin = decoded.isAdmin;
 
     const { documentId } = req.params;
+
+    console.log("========= GET DOCUMENT =========");
+    console.log("User :", userId);
+    console.log("Property :", propertyCode);
+    console.log("Client :", clientId);
+    console.log("Document :", documentId);
+    console.log("================================");
 
     pool = await openCommunicationPool();
 
@@ -969,12 +1110,16 @@ WHERE ChallanId=@challanId
       data: document,
     });
   } catch (err) {
-    console.error(err);
+    console.error("GET DOCUMENT ERROR:", err);
 
     return res.status(500).json({
       success: false,
       message: err.message,
     });
+  } finally {
+    if (pool) {
+      await pool.close();
+    }
   }
 });
 
@@ -1023,7 +1168,29 @@ router.post("/create-task", async (req, res) => {
       });
     }
 
-    const { database, propertyCode, clientId, userId, userName } = decoded;
+    //----------------------------------------------------
+    // Login Identity (Never Changes)
+    //----------------------------------------------------
+
+    const userId = decoded.userId;
+    const userName = decoded.userName;
+
+    const loginDatabase = decoded.loginDatabase || decoded.database;
+
+    const loginPropertyCode = decoded.loginPropertyCode || decoded.propertyCode;
+
+    const loginClientId = decoded.loginClientId || decoded.clientId;
+
+    //----------------------------------------------------
+    // Current Working Dealership
+    //----------------------------------------------------
+
+    const currentDatabase = decoded.currentDatabase || decoded.database;
+
+    const currentPropertyCode =
+      decoded.currentPropertyCode || decoded.propertyCode;
+
+    const currentClientId = decoded.currentClientId || decoded.clientId;
 
     const {
       challanId,
@@ -1041,12 +1208,19 @@ router.post("/create-task", async (req, res) => {
       });
     }
 
+    console.log("========== CREATE TASK ==========");
+    console.log("Login DB :", loginDatabase);
+    console.log("Current DB :", currentDatabase);
+    console.log("Login Property :", loginPropertyCode);
+    console.log("Current Property :", currentPropertyCode);
+    console.log("=================================");
+
     //----------------------------------------------------
     // BUSINESS DATABASE
     // Read Challan Owner
     //----------------------------------------------------
 
-    businessPool = await openPool(database);
+    businessPool = await openPool(currentDatabase);
 
     const challanResult = await businessPool
       .request()
@@ -1066,6 +1240,7 @@ WHERE sp_462=@challanId
     }
 
     const assignedTo = challanResult.recordset[0].UserId;
+
     const taskId = randomUUID();
 
     //----------------------------------------------------
@@ -1074,12 +1249,15 @@ WHERE sp_462=@challanId
 
     communicationPool = await openCommunicationPool();
 
-    // Optional Security Check
+    //----------------------------------------------------
+    // Security
+    //----------------------------------------------------
+
     const access = await communicationPool
       .request()
       .input("challanId", sql.NVarChar(100), challanId)
       .input("userId", sql.NVarChar(100), userId)
-      .input("propertyCode", sql.NVarChar(20), propertyCode).query(`
+      .input("propertyCode", sql.NVarChar(20), loginPropertyCode).query(`
 SELECT 1
 FROM MA_ChallanChatMembers
 WHERE ChallanId=@challanId
@@ -1110,9 +1288,9 @@ AND IsActive=1
       .input("StartDate", sql.DateTime, startDate || null)
       .input("DueDate", sql.DateTime, dueDate || null)
       .input("Priority", sql.NVarChar(40), priority || "Medium")
-      .input("DatabaseName", sql.NVarChar(100), database)
-      .input("PropertyCode", sql.NVarChar(20), propertyCode)
-      .input("ClientId", sql.UniqueIdentifier, clientId || null).query(`
+      .input("DatabaseName", sql.NVarChar(100), loginDatabase)
+      .input("PropertyCode", sql.NVarChar(20), loginPropertyCode)
+      .input("ClientId", sql.UniqueIdentifier, loginClientId || null).query(`
 INSERT INTO MA_ChatTasks
 (
     TaskId,
@@ -1160,11 +1338,17 @@ VALUES
       .input("SenderUserId", sql.NVarChar(100), userId)
       .input("SenderName", sql.NVarChar(200), userName || userId)
       .input("MessageText", sql.NVarChar(sql.MAX), taskTitle)
-      .input("DatabaseName", sql.NVarChar(100), database)
-      .input("PropertyCode", sql.NVarChar(20), propertyCode)
-      .input("SenderPropertyCode", sql.NVarChar(20), propertyCode)
-      .input("ReceiverPropertyCode", sql.NVarChar(20), propertyCode)
-      .input("ClientId", sql.UniqueIdentifier, clientId || null)
+
+      .input("DatabaseName", sql.NVarChar(100), loginDatabase)
+
+      .input("PropertyCode", sql.NVarChar(20), loginPropertyCode)
+
+      .input("SenderPropertyCode", sql.NVarChar(20), loginPropertyCode)
+
+      .input("ReceiverPropertyCode", sql.NVarChar(20), currentPropertyCode)
+
+      .input("ClientId", sql.UniqueIdentifier, loginClientId || null)
+
       .input("ReceiverId", sql.NVarChar(100), assignedTo).query(`
 INSERT INTO MA_ChallanChat
 (
@@ -1210,7 +1394,7 @@ VALUES
       message: "Task created successfully",
     });
   } catch (err) {
-    console.error(err);
+    console.error("CREATE TASK ERROR:", err);
 
     return res.status(500).json({
       success: false,
@@ -1237,9 +1421,26 @@ router.get("/members/:challanId", async (req, res) => {
       });
     }
 
-    const { propertyCode, clientId, userId, isAdmin } = decoded;
+    //----------------------------------------------------
+    // Login Identity (Chat Identity)
+    //----------------------------------------------------
+
+    const userId = decoded.userId;
+
+    const propertyCode = decoded.loginPropertyCode || decoded.propertyCode;
+
+    const clientId = decoded.loginClientId || decoded.clientId;
+
+    const isAdmin = decoded.isAdmin;
 
     const { challanId } = req.params;
+
+    console.log("========== GET MEMBERS ==========");
+    console.log("User :", userId);
+    console.log("Property :", propertyCode);
+    console.log("Client :", clientId);
+    console.log("Challan :", challanId);
+    console.log("=================================");
 
     pool = await openCommunicationPool();
 
@@ -1304,6 +1505,10 @@ ORDER BY AddedOn
       success: false,
       message: err.message,
     });
+  } finally {
+    if (pool) {
+      await pool.close();
+    }
   }
 });
 
@@ -1333,7 +1538,21 @@ router.post("/members/add", async (req, res) => {
       });
     }
 
-    const { database, propertyCode, clientId, userId: addedBy } = decoded;
+    //----------------------------------------------------
+    // Login Identity (Admin)
+    //----------------------------------------------------
+
+    const addedBy = decoded.userId;
+
+    const loginDatabase = decoded.loginDatabase || decoded.database;
+
+    const loginPropertyCode = decoded.loginPropertyCode || decoded.propertyCode;
+
+    const loginClientId = decoded.loginClientId || decoded.clientId;
+
+    //----------------------------------------------------
+    // Member To Be Added
+    //----------------------------------------------------
 
     const { challanId, userId, userName, databaseName, receiverPropertyCode } =
       req.body;
@@ -1347,6 +1566,13 @@ router.post("/members/add", async (req, res) => {
 
     pool = await openCommunicationPool();
 
+    console.log("========== ADD MEMBER ==========");
+    console.log("Admin :", addedBy);
+    console.log("Admin Property :", loginPropertyCode);
+    console.log("Member :", userId);
+    console.log("Member Property :", receiverPropertyCode);
+    console.log("===============================");
+
     //----------------------------------------------------
     // Add / Reactivate Member
     //----------------------------------------------------
@@ -1357,13 +1583,9 @@ router.post("/members/add", async (req, res) => {
       .input("userId", sql.NVarChar(100), userId)
       .input("userName", sql.NVarChar(500), userName)
       .input("addedBy", sql.NVarChar(100), addedBy)
-      .input("databaseName", sql.NVarChar(100), databaseName || database)
-      .input(
-        "propertyCode",
-        sql.NVarChar(20),
-        receiverPropertyCode || propertyCode,
-      )
-      .input("clientId", sql.UniqueIdentifier, clientId || null).query(`
+      .input("databaseName", sql.NVarChar(100), databaseName || loginDatabase)
+      .input("propertyCode", sql.NVarChar(20), receiverPropertyCode)
+      .input("clientId", sql.UniqueIdentifier, loginClientId || null).query(`
 IF EXISTS
 (
     SELECT 1
@@ -1433,15 +1655,11 @@ END
         sql.NVarChar(sql.MAX),
         `${userName} was added to the chat`,
       )
-      .input("databaseName", sql.NVarChar(100), databaseName || database)
-      .input("propertyCode", sql.NVarChar(20), propertyCode)
-      .input("senderPropertyCode", sql.NVarChar(20), propertyCode)
-      .input(
-        "receiverPropertyCode",
-        sql.NVarChar(20),
-        receiverPropertyCode || propertyCode,
-      )
-      .input("clientId", sql.UniqueIdentifier, clientId || null)
+      .input("databaseName", sql.NVarChar(100), loginDatabase)
+      .input("propertyCode", sql.NVarChar(20), loginPropertyCode)
+      .input("senderPropertyCode", sql.NVarChar(20), loginPropertyCode)
+      .input("receiverPropertyCode", sql.NVarChar(20), receiverPropertyCode)
+      .input("clientId", sql.UniqueIdentifier, loginClientId || null)
       .input("receiverId", sql.NVarChar(100), userId).query(`
 INSERT INTO MA_ChallanChat
 (
@@ -1490,6 +1708,10 @@ VALUES
       success: false,
       message: err.message,
     });
+  } finally {
+    if (pool) {
+      await pool.close();
+    }
   }
 });
 
@@ -1518,7 +1740,21 @@ router.delete("/members/remove", async (req, res) => {
       });
     }
 
-    const { database, propertyCode, clientId, userId: removedBy } = decoded;
+    //----------------------------------------------------
+    // Login Identity (Admin)
+    //----------------------------------------------------
+
+    const removedBy = decoded.userId;
+
+    const loginDatabase = decoded.loginDatabase || decoded.database;
+
+    const loginPropertyCode = decoded.loginPropertyCode || decoded.propertyCode;
+
+    const loginClientId = decoded.loginClientId || decoded.clientId;
+
+    //----------------------------------------------------
+    // Request
+    //----------------------------------------------------
 
     const { challanId, userId, userName, databaseName, receiverPropertyCode } =
       req.body;
@@ -1530,7 +1766,21 @@ router.delete("/members/remove", async (req, res) => {
       });
     }
 
+    if (!receiverPropertyCode || !databaseName) {
+      return res.status(400).json({
+        success: false,
+        message: "receiverPropertyCode and databaseName are required",
+      });
+    }
+
     pool = await openCommunicationPool();
+
+    console.log("========== REMOVE MEMBER ==========");
+    console.log("Admin :", removedBy);
+    console.log("Admin Property :", loginPropertyCode);
+    console.log("Member :", userId);
+    console.log("Member Property :", receiverPropertyCode);
+    console.log("===================================");
 
     //----------------------------------------------------
     // Remove Member
@@ -1539,12 +1789,9 @@ router.delete("/members/remove", async (req, res) => {
     await pool
       .request()
       .input("challanId", sql.NVarChar(100), challanId)
-      .input("userId", sql.NVarChar(100), userId)
-      .input(
-        "propertyCode",
-        sql.NVarChar(20),
-        receiverPropertyCode || propertyCode,
-      ).query(`
+      .input("memberUserId", sql.NVarChar(100), userId)
+      .input("removedBy", sql.NVarChar(100), removedBy)
+      .input("propertyCode", sql.NVarChar(20), receiverPropertyCode).query(`
 UPDATE MA_ChallanChatMembers
 SET
     IsActive = 0,
@@ -1570,15 +1817,11 @@ WHERE ChallanId=@challanId
         sql.NVarChar(sql.MAX),
         `${displayName} was removed from the chat`,
       )
-      .input("databaseName", sql.NVarChar(100), databaseName || database)
-      .input("propertyCode", sql.NVarChar(20), propertyCode)
-      .input("senderPropertyCode", sql.NVarChar(20), propertyCode)
-      .input(
-        "receiverPropertyCode",
-        sql.NVarChar(20),
-        receiverPropertyCode || propertyCode,
-      )
-      .input("clientId", sql.UniqueIdentifier, clientId || null)
+      .input("databaseName", sql.NVarChar(100), loginDatabase)
+      .input("propertyCode", sql.NVarChar(20), loginPropertyCode)
+      .input("senderPropertyCode", sql.NVarChar(20), loginPropertyCode)
+      .input("receiverPropertyCode", sql.NVarChar(20), receiverPropertyCode)
+      .input("clientId", sql.UniqueIdentifier, loginClientId || null)
       .input("receiverId", sql.NVarChar(100), userId).query(`
 INSERT INTO MA_ChallanChat
 (
@@ -1627,6 +1870,10 @@ VALUES
       success: false,
       message: err.message,
     });
+  } finally {
+    if (pool) {
+      await pool.close();
+    }
   }
 });
 module.exports = router;
