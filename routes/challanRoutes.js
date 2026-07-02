@@ -136,7 +136,7 @@ router.get("/retail-incentive", async (req, res) => {
 
     const { database, userId, isAdmin = false } = decoded;
 
-    console.log("database =", database);
+    console.log("database =", decoded.databaseName || decoded.database);
     console.log("userId =", userId);
     console.log("isAdmin =", isAdmin);
 
