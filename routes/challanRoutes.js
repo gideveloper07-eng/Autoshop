@@ -134,13 +134,13 @@ router.get("/retail-incentive", async (req, res) => {
     }
     console.log("RetailIncentive - Decoded Token:", decoded);
 
-    const { database, userId, isAdmin = false } = decoded;
+    const { currentDatabase, userId, isAdmin = false } = decoded;
 
-    console.log("database =", decoded.loginDatabase || database);
+    console.log("database =", decoded.currentDatabase || database);
     console.log("userId =", userId);
     console.log("isAdmin =", isAdmin);
 
-    if (!database) {
+    if (!decoded.currentDatabase) {
       return res.status(400).json({
         success: false,
         message: "Database not found in token",
@@ -153,7 +153,7 @@ router.get("/retail-incentive", async (req, res) => {
     console.log(
       "📋 CHALLAN — Retail Incentive",
       "DB:",
-      database,
+      decoded.currentDatabase,
       "User:",
       userId,
       "Admin:",
@@ -162,7 +162,7 @@ router.get("/retail-incentive", async (req, res) => {
       dateType,
     );
 
-    pool = await openPool(database);
+    pool = await openPool(decoded.currentDatabase);
 
     // Get challans from SP
     const result = await pool
@@ -230,7 +230,7 @@ router.get("/edit/:sp_462", async (req, res) => {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
-    const { database: databaseName } = decoded;
+    const { currentDatabase: databaseName } = decoded;
     if (!databaseName) {
       return res
         .status(400)
@@ -303,7 +303,7 @@ router.post("/approve", async (req, res) => {
       });
     }
 
-    const { database: databaseName, userId, utg } = decoded;
+    const { currentDatabase: databaseName, userId, utg } = decoded;
 
     // ───────────────── GROUP SECURITY ─────────────────
 
@@ -643,7 +643,7 @@ router.post("/reject", async (req, res) => {
       });
     }
 
-    const { database: databaseName, userId, utg } = decoded;
+    const { currentDatabase: databaseName, userId, utg } = decoded;
 
     // ───────────────── GROUP SECURITY ─────────────────
 
