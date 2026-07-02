@@ -985,7 +985,7 @@ router.get("/dashboard-stats", async (req, res) => {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
-    const { database: databaseName } = decoded;
+    const { currentDatabase: databaseName } = decoded;
     if (!databaseName) {
       return res
         .status(400)
