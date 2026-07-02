@@ -19,16 +19,39 @@ const verifyToken = (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Standardized user object available everywhere
     req.user = {
       userId: decoded.userId,
       userName: decoded.userName,
-      database: decoded.database,
 
-      propertyCode: decoded.propertyCode,
-      propertyName: decoded.propertyName,
+      // Permanent identity
+      loginDatabase: decoded.loginDatabase,
+      loginPropertyCode: decoded.loginPropertyCode,
+      loginPropertyName: decoded.loginPropertyName,
+      loginClientId: decoded.loginClientId,
 
-      clientId: decoded.clientId,
+      // Current working dealership
+      currentDatabase: decoded.currentDatabase,
+      currentPropertyCode: decoded.currentPropertyCode,
+      currentPropertyName: decoded.currentPropertyName,
+      currentClientId: decoded.currentClientId,
+
+      // Backward compatibility
+      database:
+        decoded.currentDatabase || decoded.loginDatabase || decoded.database,
+
+      propertyCode:
+        decoded.currentPropertyCode ||
+        decoded.loginPropertyCode ||
+        decoded.propertyCode,
+
+      propertyName:
+        decoded.currentPropertyName ||
+        decoded.loginPropertyName ||
+        decoded.propertyName,
+
+      clientId:
+        decoded.currentClientId || decoded.loginClientId || decoded.clientId,
+
       userGuid: decoded.userGuid,
       utg: decoded.utg,
       isAdmin: decoded.isAdmin || false,
@@ -64,12 +87,36 @@ const decodeToken = (req) => {
     return {
       userId: decoded.userId,
       userName: decoded.userName,
-      database: decoded.database,
 
-      propertyCode: decoded.propertyCode,
-      propertyName: decoded.propertyName,
+      // Permanent identity
+      loginDatabase: decoded.loginDatabase,
+      loginPropertyCode: decoded.loginPropertyCode,
+      loginPropertyName: decoded.loginPropertyName,
+      loginClientId: decoded.loginClientId,
 
-      clientId: decoded.clientId,
+      // Current working dealership
+      currentDatabase: decoded.currentDatabase,
+      currentPropertyCode: decoded.currentPropertyCode,
+      currentPropertyName: decoded.currentPropertyName,
+      currentClientId: decoded.currentClientId,
+
+      // Backward compatibility
+      database:
+        decoded.currentDatabase || decoded.loginDatabase || decoded.database,
+
+      propertyCode:
+        decoded.currentPropertyCode ||
+        decoded.loginPropertyCode ||
+        decoded.propertyCode,
+
+      propertyName:
+        decoded.currentPropertyName ||
+        decoded.loginPropertyName ||
+        decoded.propertyName,
+
+      clientId:
+        decoded.currentClientId || decoded.loginClientId || decoded.clientId,
+
       userGuid: decoded.userGuid,
       utg: decoded.utg,
       isAdmin: decoded.isAdmin || false,
@@ -79,10 +126,6 @@ const decodeToken = (req) => {
     return null;
   }
 };
-
-// ─────────────────────────────────────
-// ADMIN ONLY MIDDLEWARE
-// ─────────────────────────────────────
 
 const verifyAdmin = (req, res, next) => {
   try {
