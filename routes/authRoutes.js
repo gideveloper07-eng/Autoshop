@@ -127,7 +127,9 @@ router.post("/activity-log", async (req, res) => {
       });
     }
 
-    const { database: databaseName, userId } = decoded;
+    const databaseName = decoded.currentDatabase || decoded.loginDatabase;
+
+    const userId = decoded.userId;
 
     const {
       activityType,
