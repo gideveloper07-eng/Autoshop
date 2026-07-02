@@ -92,7 +92,8 @@ async function findUserByGuid(decoded, receiverGuid) {
 
   try {
     masterPool = await openMasterPool();
-
+    console.log("masterPool =", masterPool);
+    console.log("typeof masterPool =", typeof masterPool);
     const access = await masterPool
       .request()
       .input("guid", sql.UniqueIdentifier, decoded.userGuid).query(`
