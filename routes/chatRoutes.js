@@ -271,7 +271,7 @@ END
           sql.NVarChar(20),
           finalReceiverPropertyCode,
         )
-        .input("databaseName", sql.NVarChar(100), currentDatabase)
+        .input("databaseName", sql.NVarChar(100), req.body.receiverDatabase)
         .input("clientId", sql.UniqueIdentifier, currentClientId || null)
         .input("addedBy", sql.NVarChar(100), userId).query(`
 IF NOT EXISTS
