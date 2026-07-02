@@ -136,7 +136,7 @@ router.get("/retail-incentive", async (req, res) => {
 
     const { database: loginDatabase, userId, isAdmin = false } = decoded;
 
-    if (!loginDatabase) {
+    if (!database) {
       return res.status(400).json({
         success: false,
         message: "Database not found in token",
@@ -158,7 +158,7 @@ router.get("/retail-incentive", async (req, res) => {
       dateType,
     );
 
-    pool = await openPool(loginDatabase);
+    pool = await openPool(database);
 
     // Get challans from SP
     const result = await pool
