@@ -364,7 +364,7 @@ END
       finalReceiverPropertyCode = company.recordset[0]?.propertycode || null;
     }
     console.log("receiverUserId =", receiverUserId);
-    console.log("typeof =", typeof receiverUserId);
+    console.log("is GUID =", /^[0-9a-fA-F-]{36}$/.test(receiverUserId));
     const receiver = await findUserByGuid(decoded, receiverUserId);
 
     if (!receiver) {
