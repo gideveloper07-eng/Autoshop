@@ -85,11 +85,7 @@ async function findUserByGuid(decoded, receiverGuid) {
       clientId: decoded.loginClientId,
     };
   }
-
-  // -------------------------
   // Admin
-  // -------------------------
-
   let masterPool;
 
   try {
@@ -367,7 +363,8 @@ END
 
       finalReceiverPropertyCode = company.recordset[0]?.propertycode || null;
     }
-
+    console.log("receiverUserId =", receiverUserId);
+    console.log("typeof =", typeof receiverUserId);
     const receiver = await findUserByGuid(decoded, receiverUserId);
 
     if (!receiver) {
