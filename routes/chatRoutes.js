@@ -363,8 +363,9 @@ END
 
       finalReceiverPropertyCode = company.recordset[0]?.propertycode || null;
     }
-    let receiverGuid = receiverUserId;
 
+    let receiverGuid = receiverUserId;
+    console.log("hello receiverGuid: " + receiverGuid);
     // Is it already a GUID?
     const guidRegex =
       /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
@@ -396,7 +397,7 @@ END
 
       receiverGuid = result.recordset[0].utunqid;
     }
-
+    console.log("hello again  receiverGuid: " + receiverGuid);
     // Existing code remains unchanged
     const receiver = await findUserByGuid(decoded, receiverGuid);
 
