@@ -455,13 +455,40 @@ router.get("/my-direct-chats", async (req, res) => {
     console.log("====================================");
 
     pool = await openCommunicationPool();
+    let allowedProperties = [propertyCode];
 
+    if (decoded.isAdmin) {
+      const masterPool = await openMasterPool();
+
+      try {
+        const access = await masterPool
+          .request()
+          .input("userGuid", sql.UniqueIdentifier, userGuid).query(`
+        SELECT CM.PropertyCode
+        FROM MA_UserDatabaseAccess UA
+        INNER JOIN Cmpy_AutoShop.dbo.MA_ClientMaster CM
+            ON UA.ClientId = CM.Unqid
+        WHERE UA.UserGuid = @userGuid
+      `);
+
+        if (access.recordset.length > 0) {
+          allowedProperties = access.recordset.map((x) => x.PropertyCode);
+        }
+      } finally {
+        await masterPool.close();
+      }
+    }
     const result = await pool
       .request()
       .input("userId", sql.NVarChar(100), userId)
       .input("userGuid", sql.UniqueIdentifier, userGuid)
       .input("propertyCode", sql.NVarChar(50), propertyCode)
       .input("clientId", sql.UniqueIdentifier, clientId || null)
+      .input(
+        "allowedProperties",
+        sql.NVarChar(sql.MAX),
+        allowedProperties.join(","),
+      )
       .input("scope", sql.NVarChar(20), scope).query(`
 ;WITH BaseChat AS
 (
@@ -473,7 +500,12 @@ router.get("/my-direct-chats", async (req, res) => {
                  OR SenderUserId = CONVERT(NVARCHAR(50), @userGuid))
                 AND
                 (
-                    @scope='all'
+                    EXISTS
+(
+    SELECT 1
+    FROM STRING_SPLIT(@allowedProperties, ',') p
+    WHERE p.value = SenderPropertyCode
+)
                     OR SenderPropertyCode=@propertyCode
                 )
             )
@@ -488,7 +520,12 @@ router.get("/my-direct-chats", async (req, res) => {
                  OR SenderUserId = CONVERT(NVARCHAR(50), @userGuid))
                 AND
                 (
-                    @scope='all'
+                    EXISTS
+(
+    SELECT 1
+    FROM STRING_SPLIT(@allowedProperties, ',') p
+    WHERE p.value = SenderPropertyCode
+)
                     OR SenderPropertyCode=@propertyCode
                 )
             )
@@ -506,36 +543,45 @@ router.get("/my-direct-chats", async (req, res) => {
 
     FROM MA_ChallanChat
 
-    WHERE
-
+WHERE
+(
     (
+        SenderUserId=@userId
+        OR SenderUserId=CONVERT(NVARCHAR(50),@userGuid)
+    )
+    AND
+    (
+        EXISTS
         (
-            SenderUserId=@userId
-            OR SenderUserId=CONVERT(NVARCHAR(50),@userGuid)
+            SELECT 1
+            FROM STRING_SPLIT(@allowedProperties, ',') p
+            WHERE LTRIM(RTRIM(p.value))=SenderPropertyCode
         )
-        AND
-        (
-            @scope='all'
-            OR SenderPropertyCode=@propertyCode
-        )
+        OR SenderPropertyCode=@propertyCode
     )
 
     OR
 
     (
-        (
-            ReceiverId=@userId
-            OR ReceiverId=CONVERT(NVARCHAR(50),@userGuid)
-        )
-        AND
-        (
-            @scope='all'
-            OR ReceiverPropertyCode=@propertyCode
-        )
+        ReceiverId=@userId
+        OR ReceiverId=CONVERT(NVARCHAR(50),@userGuid)
     )
-
     AND
-    (@clientId IS NULL OR ClientId=@clientId)
+    (
+        EXISTS
+        (
+            SELECT 1
+            FROM STRING_SPLIT(@allowedProperties, ',') p
+            WHERE LTRIM(RTRIM(p.value))=ReceiverPropertyCode
+        )
+        OR ReceiverPropertyCode=@propertyCode
+    )
+)
+AND
+(
+    @clientId IS NULL
+    OR ClientId=@clientId
+)
 ),
 
 ChatList AS
@@ -596,13 +642,14 @@ SELECT
             AND x.IsRead = 0
             AND
             (
-                @scope='all'
-                OR
-                (
-                    x.SenderPropertyCode = c.OtherPropertyCode
-                    AND x.ReceiverPropertyCode = @propertyCode
-                )
-            )
+    x.SenderPropertyCode = c.OtherPropertyCode
+    AND EXISTS
+    (
+        SELECT 1
+        FROM STRING_SPLIT(@allowedProperties, ',') p
+        WHERE LTRIM(RTRIM(p.value)) = x.ReceiverPropertyCode
+    )
+)
             AND
             (@clientId IS NULL OR x.ClientId=@clientId)
     ) AS UnreadCount
@@ -618,11 +665,8 @@ OUTER APPLY
     FROM MA_ChallanChatMembers
     WHERE
         UserId = c.OtherUserId
-        AND
-        (
-            @scope='all'
-            OR PropertyCode=c.OtherPropertyCode
-        )
+       AND PropertyCode = c.OtherPropertyCode
+       AND IsActive=1
 ) m
 
 OUTER APPLY
@@ -640,7 +684,14 @@ OUTER APPLY
         FROM MA_ChallanChatMembers mm
         INNER JOIN Cmpy_AutoShop.dbo.MA_ClientMaster cm
             ON cm.PropertyCode = mm.PropertyCode
-        WHERE mm.UserId = c.OtherUserId
+        WHERE
+    mm.UserId = c.OtherUserId
+    AND EXISTS
+    (
+        SELECT 1
+        FROM STRING_SPLIT(@allowedProperties, ',') p
+        WHERE LTRIM(RTRIM(p.value)) = mm.PropertyCode
+    )
     ) d
 ) agg
 
