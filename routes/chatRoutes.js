@@ -363,9 +363,42 @@ END
 
       finalReceiverPropertyCode = company.recordset[0]?.propertycode || null;
     }
-    console.log("receiverUserId =", receiverUserId);
-    console.log("is GUID =", /^[0-9a-fA-F-]{36}$/.test(receiverUserId));
-    const receiver = await findUserByGuid(decoded, receiverUserId);
+    let receiverGuid = receiverUserId;
+
+    // Is it already a GUID?
+    const guidRegex =
+      /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+    if (!guidRegex.test(receiverGuid)) {
+      // receiverUserId contains UserId like ACHOUHAN
+      const employeePool = await openPool(
+        req.body.receiverDatabase ||
+          decoded.currentDatabase ||
+          decoded.loginDatabase,
+      );
+
+      const result = await employeePool
+        .request()
+        .input("userId", sql.NVarChar(50), receiverGuid).query(`
+        SELECT utunqid
+        FROM rh_secut
+        WHERE uti = @userId
+    `);
+
+      await employeePool.close();
+
+      if (result.recordset.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "Receiver not found.",
+        });
+      }
+
+      receiverGuid = result.recordset[0].utunqid;
+    }
+
+    // Existing code remains unchanged
+    const receiver = await findUserByGuid(decoded, receiverGuid);
 
     if (!receiver) {
       return res.status(404).json({
