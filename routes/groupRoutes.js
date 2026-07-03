@@ -473,7 +473,12 @@ router.get("/my-direct-chats", async (req, res) => {
                  OR SenderUserId = CONVERT(NVARCHAR(50), @userGuid))
                 AND
                 (
-                    @scope='all'
+                    EXISTS
+(
+    SELECT 1
+    FROM STRING_SPLIT(@allowedProperties, ',') p
+    WHERE LTRIM(RTRIM(p.value)) = SenderPropertyCode
+)
                     OR SenderPropertyCode=@propertyCode
                 )
             )
@@ -488,7 +493,12 @@ router.get("/my-direct-chats", async (req, res) => {
                  OR SenderUserId = CONVERT(NVARCHAR(50), @userGuid))
                 AND
                 (
-                    @scope='all'
+                   EXISTS
+(
+    SELECT 1
+    FROM STRING_SPLIT(@allowedProperties, ',') p
+    WHERE LTRIM(RTRIM(p.value)) = SenderPropertyCode
+)
                     OR SenderPropertyCode=@propertyCode
                 )
             )
@@ -515,7 +525,12 @@ router.get("/my-direct-chats", async (req, res) => {
         )
         AND
         (
-            @scope='all'
+           EXISTS
+(
+    SELECT 1
+    FROM STRING_SPLIT(@allowedProperties, ',') p
+    WHERE LTRIM(RTRIM(p.value)) = SenderPropertyCode
+)
             OR SenderPropertyCode=@propertyCode
         )
     )
@@ -529,7 +544,12 @@ router.get("/my-direct-chats", async (req, res) => {
         )
         AND
         (
-            @scope='all'
+           EXISTS
+(
+    SELECT 1
+    FROM STRING_SPLIT(@allowedProperties, ',') p
+    WHERE LTRIM(RTRIM(p.value)) = ReceiverPropertyCode
+)
             OR ReceiverPropertyCode=@propertyCode
         )
     )
