@@ -926,16 +926,23 @@ router.get("/documents", async (req, res) => {
 
     // Permanent login identity
     const userId = decoded.userId;
-    const propertyCode = decoded.loginPropertyCode || decoded.propertyCode;
-    const clientId = decoded.loginClientId || decoded.clientId;
+
+    // Current selected company
+    const propertyCode =
+      decoded.currentPropertyCode || decoded.loginPropertyCode;
+
+    const databaseName = decoded.currentDatabase || decoded.loginDatabase;
+
+    const clientId = decoded.currentClientId || decoded.loginClientId;
 
     const isAdmin = decoded.isAdmin;
 
-    console.log("========= CHAT DOCUMENTS =========");
+    console.log("========= DOCUMENTS =========");
     console.log("User :", userId);
+    console.log("Database :", databaseName);
     console.log("Property :", propertyCode);
     console.log("Client :", clientId);
-    console.log("=================================");
+    console.log("=============================");
 
     pool = await openCommunicationPool();
 
@@ -948,7 +955,7 @@ router.get("/documents", async (req, res) => {
     if (isAdmin) {
       result = await pool
         .request()
-        .input("clientId", sql.UniqueIdentifier, clientId || null).query(`
+        .input("propertyCode", sql.NVarChar(20), propertyCode).query(`
 SELECT
     DocumentId,
     DocumentType,
@@ -961,7 +968,7 @@ SELECT
     ClientId,
     CreatedDate
 FROM MA_ChatDocuments
-WHERE (@clientId IS NULL OR ClientId=@clientId)
+WHERE PropertyCode=@propertyCode
 ORDER BY CreatedDate DESC
 `);
     }
@@ -973,8 +980,7 @@ ORDER BY CreatedDate DESC
       result = await pool
         .request()
         .input("userId", sql.NVarChar(100), userId)
-        .input("propertyCode", sql.NVarChar(20), propertyCode)
-        .input("clientId", sql.UniqueIdentifier, clientId || null).query(`
+        .input("propertyCode", sql.NVarChar(20), propertyCode).query(`
 SELECT DISTINCT
     d.DocumentId,
     d.DocumentType,
@@ -989,11 +995,11 @@ SELECT DISTINCT
 FROM MA_ChatDocuments d
 INNER JOIN MA_ChallanChatMembers m
     ON d.ReferenceId = m.ChallanId
+   AND d.PropertyCode = m.PropertyCode
 WHERE
     m.UserId=@userId
     AND m.PropertyCode=@propertyCode
     AND m.IsActive=1
-    AND (@clientId IS NULL OR d.ClientId=@clientId)
 ORDER BY d.CreatedDate DESC
 `);
     }
