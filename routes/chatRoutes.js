@@ -936,14 +936,22 @@ router.get("/documents", async (req, res) => {
     const clientId = decoded.currentClientId || decoded.loginClientId;
 
     const isAdmin = decoded.isAdmin;
-
+    const receiverPropertyCode = req.query.receiverPropertyCode;
+    const receiverCompanyName = req.query.receiverCompanyName;
     console.log("========= DOCUMENTS =========");
     console.log("User :", userId);
     console.log("Database :", databaseName);
     console.log("Property :", propertyCode);
     console.log("Client :", clientId);
     console.log("=============================");
-
+    if (receiverPropertyCode && receiverPropertyCode !== propertyCode) {
+      return res.json({
+        success: true,
+        requireSwitch: true,
+        message: `Please switch to ${receiverCompanyName} to fetch documents.`,
+        data: [],
+      });
+    }
     pool = await openCommunicationPool();
 
     let result;
