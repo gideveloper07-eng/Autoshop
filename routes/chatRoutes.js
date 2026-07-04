@@ -936,26 +936,25 @@ router.get("/documents", async (req, res) => {
     const clientId = decoded.currentClientId || decoded.loginClientId;
 
     const isAdmin = decoded.isAdmin;
-  const receiverPropertyCode =
-  (req.query.receiverPropertyCode || "").trim().toUpperCase();
+    const receiverPropertyCode = (req.query.receiverPropertyCode || "")
+      .trim()
+      .toUpperCase();
 
-const receiverCompanyName =
-  (req.query.receiverCompanyName || "").trim();
+    const receiverCompanyName = (req.query.receiverCompanyName || "").trim();
 
-const currentPropertyCode =
-  (propertyCode || "").trim().toUpperCase();
+    const currentPropertyCode = (propertyCode || "").trim().toUpperCase();
 
-if (
-  receiverPropertyCode.isNotEmpty &&
-  receiverPropertyCode !== currentPropertyCode
-) {
-  return res.json({
-    success: true,
-    requireSwitch: true,
-    message: `Please switch company to ${receiverCompanyName} to fetch documents.`,
-    data: [],
-  });
-}
+    if (
+      receiverPropertyCode.isNotEmpty &&
+      receiverPropertyCode !== currentPropertyCode
+    ) {
+      return res.json({
+        success: true,
+        requireSwitch: true,
+        message: `Please switch company to ${receiverCompanyName} to fetch documents.`,
+        data: [],
+      });
+    }
     console.log("========= DOCUMENTS =========");
     console.log("User :", userId);
     console.log("Database :", databaseName);
@@ -974,7 +973,7 @@ if (
     if (isAdmin) {
       result = await pool
         .request()
-        .input("propertyCode", sql.NVarChar(20), propertyCode).query(`
+        .input("propertyCode", sql.NVarChar(20), receiverPropertyCode).query(`
 SELECT
     DocumentId,
     DocumentType,
@@ -999,7 +998,7 @@ ORDER BY CreatedDate DESC
       result = await pool
         .request()
         .input("userId", sql.NVarChar(100), userId)
-        .input("propertyCode", sql.NVarChar(20), propertyCode).query(`
+        .input("propertyCode", sql.NVarChar(20), receiverPropertyCode).query(`
 SELECT DISTINCT
     d.DocumentId,
     d.DocumentType,
