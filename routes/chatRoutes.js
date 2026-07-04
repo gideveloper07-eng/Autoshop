@@ -923,7 +923,7 @@ router.get("/documents", async (req, res) => {
         message: "Unauthorized",
       });
     }
-
+    console.log("========= GET DOCUMENTS =========", decoded);
     // Permanent login identity
     const userId = decoded.userId;
 
