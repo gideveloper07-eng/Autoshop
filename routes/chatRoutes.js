@@ -2069,8 +2069,7 @@ VALUES
 });
 // ── GET /api/chat/individual-tasks ────────────────────────────────────────────
 // Returns individual tasks (GroupId=NULL) for the logged-in user
-// from the communication DB — filtered by CURRENT company (not login company).
-// v3: filters by currentPropertyCode so switching company shows that company's tasks
+// from the communication DB — filtered by current company's database name.
 router.get("/individual-tasks", async (req, res) => {
   let pool;
 
@@ -2082,12 +2081,17 @@ router.get("/individual-tasks", async (req, res) => {
     }
 
     const userId = decoded.userId;
+    // Match by DatabaseName (e.g. "TATADEMO") — this is what gets stored in
+    // MA_ChatTasks.DatabaseName when a task is created. Works for both old
+    // (loginDatabase) and new (currentDatabase) inserts.
+    const currentDatabase = decoded.currentDatabase || decoded.loginDatabase || decoded.database;
     const currentPropertyCode = decoded.currentPropertyCode || decoded.loginPropertyCode || decoded.propertyCode;
 
-    console.log("========== INDIVIDUAL TASKS v3 ==========");
+    console.log("========== INDIVIDUAL TASKS ==========");
     console.log("userId          :", userId);
+    console.log("currentDatabase :", currentDatabase);
     console.log("currentProperty :", currentPropertyCode);
-    console.log("=========================================");
+    console.log("======================================");
 
     // Fresh dedicated pool to AUTOSHOP_COMMUNICATION
     pool = await new sql.ConnectionPool({
@@ -2102,6 +2106,7 @@ router.get("/individual-tasks", async (req, res) => {
     const result = await pool
       .request()
       .input("UserId", sql.NVarChar(100), userId)
+      .input("DatabaseName", sql.NVarChar(100), currentDatabase)
       .input("PropertyCode", sql.NVarChar(20), currentPropertyCode)
       .query(`
         SELECT
@@ -2117,7 +2122,10 @@ router.get("/individual-tasks", async (req, res) => {
           t.CreatedDate
         FROM MA_ChatTasks t
         WHERE t.GroupId IS NULL
-          AND t.PropertyCode = @PropertyCode
+          AND (
+            UPPER(ISNULL(t.DatabaseName,'')) = UPPER(@DatabaseName)
+            OR UPPER(ISNULL(t.PropertyCode,'')) = UPPER(@PropertyCode)
+          )
           AND (
             LOWER(t.AssignedTo) = LOWER(@UserId)
             OR LOWER(t.AssignedBy) = LOWER(@UserId)
