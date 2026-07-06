@@ -1946,7 +1946,7 @@ router.get("/get-tasks", async (req, res) => {
     console.log("MA_ChatTasks total rows:", countResult.recordset[0].Total);
 
     let result;
-
+    console.log("yeh h curretn database:", currentDatabase);
     if (isAdmin) {
       // Admin sees ALL tasks (optionally filtered by ClientId if set)
       result = await pool
