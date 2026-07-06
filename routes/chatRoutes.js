@@ -1045,178 +1045,6 @@ ORDER BY d.CreatedDate DESC
 
 // ── GET /api/chat/:challanId ─────────────────────────────────────────────────
 
-router.get("/:challanId", async (req, res) => {
-  let pool;
-
-  try {
-    const decoded = decodeToken(req);
-
-    if (!decoded) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized",
-      });
-    }
-
-    // Permanent Login Identity
-    const userId = decoded.userId;
-    const propertyCode = decoded.loginPropertyCode || decoded.propertyCode;
-    const clientId = decoded.loginClientId || decoded.clientId;
-    const isAdmin = decoded.isAdmin;
-
-    const { challanId } = req.params;
-
-    console.log("========= GET CHAT =========");
-    console.log("User :", userId);
-    console.log("Property :", propertyCode);
-    console.log("Client :", clientId);
-    console.log("Challan :", challanId);
-    console.log("============================");
-
-    pool = await openCommunicationPool();
-
-    //----------------------------------------------------
-    // Security
-    //----------------------------------------------------
-
-    if (!isAdmin) {
-      const access = await pool
-        .request()
-        .input("challanId", sql.NVarChar(100), challanId)
-        .input("userId", sql.NVarChar(100), userId)
-        .input("propertyCode", sql.NVarChar(20), propertyCode).query(`
-SELECT 1
-FROM MA_ChallanChatMembers
-WHERE ChallanId=@challanId
-  AND UserId=@userId
-  AND PropertyCode=@propertyCode
-  AND IsActive=1
-`);
-
-      if (access.recordset.length === 0) {
-        return res.status(403).json({
-          success: false,
-          message: "Access denied",
-        });
-      }
-    }
-
-    //----------------------------------------------------
-    // Messages + Tasks
-    //----------------------------------------------------
-
-    const result = await pool
-      .request()
-      .input("challanId", sql.NVarChar(100), challanId)
-      .input("clientId", sql.UniqueIdentifier, clientId || null).query(`
-SELECT
-    CAST(c.ChatId AS NVARCHAR(50)) AS ChatId,
-    c.SenderUserId,
-    c.SenderName,
-    c.SenderPropertyCode,
-    c.ReceiverId,
-    c.ReceiverPropertyCode,
-    c.MessageText,
-    c.MessageType,
-    c.DocumentId,
-    c.MessageTime,
-    c.IsRead,
-
-    d.DocumentNo,
-    d.DocumentType,
-    d.FileName,
-
-    NULL AS TaskId,
-    NULL AS AssignedTo,
-    NULL AS AssignedToName,
-    NULL AS Priority,
-    NULL AS TaskStatus,
-    NULL AS TaskDescription
-
-FROM MA_ChallanChat c
-
-LEFT JOIN MA_ChatDocuments d
-       ON c.DocumentId = d.DocumentId
-
-WHERE
-    c.ChallanId=@challanId
-    AND c.MessageType<>'TASK'
-    AND (@clientId IS NULL OR c.ClientId=@clientId)
-
-UNION ALL
-
-SELECT
-    CAST(t.TaskId AS NVARCHAR(50)) AS ChatId,
-
-    t.AssignedBy AS SenderUserId,
-
-    ISNULL(byUser.UserName,t.AssignedBy) AS SenderName,
-
-    NULL AS SenderPropertyCode,
-    NULL AS ReceiverId,
-    NULL AS ReceiverPropertyCode,
-
-    t.TaskTitle AS MessageText,
-
-    'TASK' AS MessageType,
-
-    NULL AS DocumentId,
-
-    t.CreatedDate AS MessageTime,
-
-    1 AS IsRead,
-
-    NULL AS DocumentNo,
-    NULL AS DocumentType,
-    NULL AS FileName,
-
-    CAST(t.TaskId AS NVARCHAR(50)) AS TaskId,
-
-    t.AssignedTo,
-
-    ISNULL(toUser.UserName,t.AssignedTo) AS AssignedToName,
-
-    t.Priority,
-
-    t.Status AS TaskStatus,
-
-    t.TaskDescription
-
-FROM MA_ChatTasks t
-
-LEFT JOIN MA_ChallanChatMembers toUser
-       ON toUser.UserId=t.AssignedTo
-      AND toUser.ChallanId=t.ChallanId
-
-LEFT JOIN MA_ChallanChatMembers byUser
-       ON byUser.UserId=t.AssignedBy
-      AND byUser.ChallanId=t.ChallanId
-
-WHERE
-    t.ChallanId=@challanId
-    AND (@clientId IS NULL OR t.ClientId=@clientId)
-
-ORDER BY MessageTime ASC
-`);
-
-    return res.json({
-      success: true,
-      data: result.recordset,
-    });
-  } catch (err) {
-    console.error("GET CHAT ERROR:", err);
-
-    return res.status(500).json({
-      success: false,
-      message: err.message,
-    });
-  } finally {
-    if (pool) {
-      await pool.close();
-    }
-  }
-});
-
 router.get("/document/:documentId", async (req, res) => {
   let pool;
 
@@ -2366,5 +2194,175 @@ VALUES
     if (pool) await pool.close();
   }
 });
+router.get("/:challanId", async (req, res) => {
+  let pool;
 
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    // Permanent Login Identity
+    const userId = decoded.userId;
+    const propertyCode = decoded.loginPropertyCode || decoded.propertyCode;
+    const clientId = decoded.loginClientId || decoded.clientId;
+    const isAdmin = decoded.isAdmin;
+
+    const { challanId } = req.params;
+
+    console.log("========= GET CHAT =========");
+    console.log("User :", userId);
+    console.log("Property :", propertyCode);
+    console.log("Client :", clientId);
+    console.log("Challan :", challanId);
+    console.log("============================");
+
+    pool = await openCommunicationPool();
+
+    //----------------------------------------------------
+    // Security
+    //----------------------------------------------------
+
+    if (!isAdmin) {
+      const access = await pool
+        .request()
+        .input("challanId", sql.NVarChar(100), challanId)
+        .input("userId", sql.NVarChar(100), userId)
+        .input("propertyCode", sql.NVarChar(20), propertyCode).query(`
+SELECT 1
+FROM MA_ChallanChatMembers
+WHERE ChallanId=@challanId
+  AND UserId=@userId
+  AND PropertyCode=@propertyCode
+  AND IsActive=1
+`);
+
+      if (access.recordset.length === 0) {
+        return res.status(403).json({
+          success: false,
+          message: "Access denied",
+        });
+      }
+    }
+
+    //----------------------------------------------------
+    // Messages + Tasks
+    //----------------------------------------------------
+
+    const result = await pool
+      .request()
+      .input("challanId", sql.NVarChar(100), challanId)
+      .input("clientId", sql.UniqueIdentifier, clientId || null).query(`
+SELECT
+    CAST(c.ChatId AS NVARCHAR(50)) AS ChatId,
+    c.SenderUserId,
+    c.SenderName,
+    c.SenderPropertyCode,
+    c.ReceiverId,
+    c.ReceiverPropertyCode,
+    c.MessageText,
+    c.MessageType,
+    c.DocumentId,
+    c.MessageTime,
+    c.IsRead,
+
+    d.DocumentNo,
+    d.DocumentType,
+    d.FileName,
+
+    NULL AS TaskId,
+    NULL AS AssignedTo,
+    NULL AS AssignedToName,
+    NULL AS Priority,
+    NULL AS TaskStatus,
+    NULL AS TaskDescription
+
+FROM MA_ChallanChat c
+
+LEFT JOIN MA_ChatDocuments d
+       ON c.DocumentId = d.DocumentId
+
+WHERE
+    c.ChallanId=@challanId
+    AND c.MessageType<>'TASK'
+    AND (@clientId IS NULL OR c.ClientId=@clientId)
+
+UNION ALL
+
+SELECT
+    CAST(t.TaskId AS NVARCHAR(50)) AS ChatId,
+
+    t.AssignedBy AS SenderUserId,
+
+    ISNULL(byUser.UserName,t.AssignedBy) AS SenderName,
+
+    NULL AS SenderPropertyCode,
+    NULL AS ReceiverId,
+    NULL AS ReceiverPropertyCode,
+
+    t.TaskTitle AS MessageText,
+
+    'TASK' AS MessageType,
+
+    NULL AS DocumentId,
+
+    t.CreatedDate AS MessageTime,
+
+    1 AS IsRead,
+
+    NULL AS DocumentNo,
+    NULL AS DocumentType,
+    NULL AS FileName,
+
+    CAST(t.TaskId AS NVARCHAR(50)) AS TaskId,
+
+    t.AssignedTo,
+
+    ISNULL(toUser.UserName,t.AssignedTo) AS AssignedToName,
+
+    t.Priority,
+
+    t.Status AS TaskStatus,
+
+    t.TaskDescription
+
+FROM MA_ChatTasks t
+
+LEFT JOIN MA_ChallanChatMembers toUser
+       ON toUser.UserId=t.AssignedTo
+      AND toUser.ChallanId=t.ChallanId
+
+LEFT JOIN MA_ChallanChatMembers byUser
+       ON byUser.UserId=t.AssignedBy
+      AND byUser.ChallanId=t.ChallanId
+
+WHERE
+    t.ChallanId=@challanId
+    AND (@clientId IS NULL OR t.ClientId=@clientId)
+
+ORDER BY MessageTime ASC
+`);
+
+    return res.json({
+      success: true,
+      data: result.recordset,
+    });
+  } catch (err) {
+    console.error("GET CHAT ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  } finally {
+    if (pool) {
+      await pool.close();
+    }
+  }
+});
 module.exports = router;
