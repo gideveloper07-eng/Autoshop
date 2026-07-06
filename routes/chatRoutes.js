@@ -1903,7 +1903,9 @@ router.get("/get-tasks", async (req, res) => {
 
   try {
     const decoded = decodeToken(req);
-
+    console.log("========== DECODED TOKEN ==========");
+    console.log(decoded);
+    console.log("===================================");
     if (!decoded) {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
