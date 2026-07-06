@@ -2080,8 +2080,8 @@ router.get("/get-tasks", async (req, res) => {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
-    const userId   = decoded.userId;
-    const isAdmin  = decoded.isAdmin || false;
+    const userId = decoded.userId;
+    const isAdmin = decoded.isAdmin || false;
     const clientId = decoded.loginClientId || decoded.clientId || null;
 
     const currentDatabase =
@@ -2110,7 +2110,9 @@ router.get("/get-tasks", async (req, res) => {
     }).connect();
 
     // First, log total row count in the table for debug
-    const countResult = await pool.request().query(`SELECT COUNT(*) AS Total FROM MA_ChatTasks`);
+    const countResult = await pool
+      .request()
+      .query(`SELECT COUNT(*) AS Total FROM MA_ChatTasks`);
     console.log("MA_ChatTasks total rows:", countResult.recordset[0].Total);
 
     let result;
@@ -2119,8 +2121,7 @@ router.get("/get-tasks", async (req, res) => {
       // Admin sees ALL tasks (optionally filtered by ClientId if set)
       result = await pool
         .request()
-        .input("ClientId", sql.UniqueIdentifier, clientId || null)
-        .query(`
+        .input("ClientId", sql.UniqueIdentifier, clientId || null).query(`
           SELECT
             CAST(TaskId  AS NVARCHAR(50))  AS TaskId,
             CAST(ChallanId AS NVARCHAR(100)) AS ChallanId,
@@ -2141,11 +2142,12 @@ router.get("/get-tasks", async (req, res) => {
           WHERE (@ClientId IS NULL OR ClientId = @ClientId)
           ORDER BY CreatedDate DESC;
         `);
+      console.log("Decoded User:", userId);
+      console.log("Rows returned:", result.recordset.length);
+      console.log(result.recordset);
     } else {
       // Regular user — see tasks assigned TO them OR created BY them
-      result = await pool
-        .request()
-        .input("UserId", sql.NVarChar(100), userId)
+      result = await pool.request().input("UserId", sql.NVarChar(100), userId)
         .query(`
           SELECT
             CAST(TaskId  AS NVARCHAR(50))  AS TaskId,
