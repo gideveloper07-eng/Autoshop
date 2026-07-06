@@ -2070,7 +2070,7 @@ VALUES
 // ── GET /api/chat/individual-tasks ────────────────────────────────────────────
 // Returns individual tasks (GroupId=NULL) for the logged-in user
 // from the communication DB — filtered by current company's database name.
-router.get("/individual-tasks", async (req, res) => {
+router.get("/get-tasks", async (req, res) => {
   let pool;
 
   try {
