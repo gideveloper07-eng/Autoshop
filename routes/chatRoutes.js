@@ -2044,7 +2044,7 @@ router.post("/create-individual-task", async (req, res) => {
       decoded.propertyCode;
     const currentClientId =
       decoded.currentClientId || decoded.loginClientId || decoded.clientId;
-
+    const loginPropertyCode = decode.loginPropertyCode;
     const {
       receiverId,
       receiverPropertyCode,
