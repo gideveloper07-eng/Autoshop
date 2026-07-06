@@ -2070,6 +2070,7 @@ VALUES
 // ── GET /api/chat/individual-tasks ────────────────────────────────────────────
 // Returns individual tasks (GroupId=NULL) for the logged-in user
 // from the communication DB — tasks assigned to or by this user.
+// v2: uses fresh pool per request to avoid stale singleton issues
 router.get("/individual-tasks", async (req, res) => {
   let pool;
 
@@ -2082,20 +2083,20 @@ router.get("/individual-tasks", async (req, res) => {
 
     const userId = decoded.userId;
 
-    console.log("========== INDIVIDUAL TASKS ==========");
-    console.log("userId :", userId);
-    console.log("======================================");
+    console.log("========== INDIVIDUAL TASKS v2 ==========");
+    console.log("userId      :", userId);
+    console.log("COMM_DB     :", process.env.COMM_DB);
+    console.log("=========================================");
 
-    pool = await openCommunicationPool();
-
-    // Debug: log all individual tasks
-    const debugResult = await pool.request().query(`
-      SELECT CAST(TaskId AS NVARCHAR(50)) AS TaskId, AssignedBy, AssignedTo,
-             CAST(GroupId AS NVARCHAR(50)) AS GroupId, Status
-      FROM MA_ChatTasks
-      WHERE GroupId IS NULL
-    `);
-    console.log("ALL individual tasks in comm DB:", JSON.stringify(debugResult.recordset));
+    // Use a fresh dedicated pool to ensure we hit AUTOSHOP_COMMUNICATION
+    pool = await new sql.ConnectionPool({
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      server: process.env.DB_HOST,
+      port: parseInt(process.env.DB_PORT || "1433"),
+      database: process.env.COMM_DB,
+      options: { encrypt: false, trustServerCertificate: true },
+    }).connect();
 
     const result = await pool
       .request()
@@ -2114,11 +2115,14 @@ router.get("/individual-tasks", async (req, res) => {
           t.CreatedDate
         FROM MA_ChatTasks t
         WHERE t.GroupId IS NULL
-          AND (t.AssignedTo = @UserId OR t.AssignedBy = @UserId)
+          AND (
+            LOWER(t.AssignedTo) = LOWER(@UserId)
+            OR LOWER(t.AssignedBy) = LOWER(@UserId)
+          )
         ORDER BY t.CreatedDate DESC
       `);
 
-    console.log("FILTERED individual tasks:", result.recordset.length);
+    console.log("INDIVIDUAL TASKS result count:", result.recordset.length);
 
     return res.json({ success: true, data: result.recordset });
   } catch (err) {
