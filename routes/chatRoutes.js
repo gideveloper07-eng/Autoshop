@@ -1952,8 +1952,7 @@ router.get("/get-tasks", async (req, res) => {
       result = await pool
         .request()
         .input("ClientId", sql.UniqueIdentifier, clientId || null)
-        .input("currentDB", sql.UniqueIdentifier, currentDatabase || null)
-        .query(`
+        .input("currentDB", sql.NVarChar(50), currentDatabase || null).query(`
           SELECT
             CAST(TaskId  AS NVARCHAR(50))  AS TaskId,
             CAST(ChallanId AS NVARCHAR(100)) AS ChallanId,
