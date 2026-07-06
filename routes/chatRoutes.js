@@ -2081,14 +2081,25 @@ router.get("/individual-tasks", async (req, res) => {
     }
 
     const userId = decoded.userId;
-    const loginClientId = decoded.loginClientId || decoded.clientId;
+
+    console.log("========== INDIVIDUAL TASKS ==========");
+    console.log("userId :", userId);
+    console.log("======================================");
 
     pool = await openCommunicationPool();
+
+    // Debug: log all individual tasks
+    const debugResult = await pool.request().query(`
+      SELECT CAST(TaskId AS NVARCHAR(50)) AS TaskId, AssignedBy, AssignedTo,
+             CAST(GroupId AS NVARCHAR(50)) AS GroupId, Status
+      FROM MA_ChatTasks
+      WHERE GroupId IS NULL
+    `);
+    console.log("ALL individual tasks in comm DB:", JSON.stringify(debugResult.recordset));
 
     const result = await pool
       .request()
       .input("UserId", sql.NVarChar(100), userId)
-      .input("ClientId", sql.UniqueIdentifier, loginClientId || null)
       .query(`
         SELECT
           CAST(t.TaskId AS NVARCHAR(50)) AS TaskId,
@@ -2104,9 +2115,10 @@ router.get("/individual-tasks", async (req, res) => {
         FROM MA_ChatTasks t
         WHERE t.GroupId IS NULL
           AND (t.AssignedTo = @UserId OR t.AssignedBy = @UserId)
-          AND (@ClientId IS NULL OR t.ClientId = @ClientId)
         ORDER BY t.CreatedDate DESC
       `);
+
+    console.log("FILTERED individual tasks:", result.recordset.length);
 
     return res.json({ success: true, data: result.recordset });
   } catch (err) {
