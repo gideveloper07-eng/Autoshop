@@ -1952,11 +1952,8 @@ router.get("/get-tasks", async (req, res) => {
       result = await pool
         .request()
         .input("ClientId", sql.UniqueIdentifier, clientId || null)
-        .input(
-          "currentpropertycode",
-          sql.UniqueIdentifier,
-          currentPropertyCode || null,
-        ).query(`
+        .input("currentDB", sql.UniqueIdentifier, currentDatabase || null)
+        .query(`
           SELECT
             CAST(TaskId  AS NVARCHAR(50))  AS TaskId,
             CAST(ChallanId AS NVARCHAR(100)) AS ChallanId,
@@ -1974,7 +1971,7 @@ router.get("/get-tasks", async (req, res) => {
             DatabaseName,
             PropertyCode
           FROM MA_ChatTasks
-          WHERE  PropertyCode=@currentpropertycode
+          WHERE  DatabaseName=@currentDB
           ORDER BY CreatedDate DESC;
         `);
       console.log("Decoded User:", userId);
