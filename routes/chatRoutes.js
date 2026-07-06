@@ -2135,7 +2135,7 @@ VALUES
       .input("MessageText", sql.NVarChar(sql.MAX), taskTitle)
       .input("DatabaseName", sql.NVarChar(100), currentDatabase)
       .input("PropertyCode", sql.NVarChar(20), currentPropertyCode)
-      .input("SenderPropertyCode", sql.NVarChar(20), currentPropertyCode)
+      .input("SenderPropertyCode", sql.NVarChar(20), loginPropertyCode)
       .input(
         "ReceiverPropertyCode",
         sql.NVarChar(20),
