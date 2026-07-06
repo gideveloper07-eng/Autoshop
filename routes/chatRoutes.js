@@ -2084,14 +2084,19 @@ router.get("/individual-tasks", async (req, res) => {
     // Match by DatabaseName (e.g. "TATADEMO") — this is what gets stored in
     // MA_ChatTasks.DatabaseName when a task is created. Works for both old
     // (loginDatabase) and new (currentDatabase) inserts.
-    const currentDatabase = decoded.currentDatabase || decoded.loginDatabase || decoded.database;
-    const currentPropertyCode = decoded.currentPropertyCode || decoded.loginPropertyCode || decoded.propertyCode;
+    const currentDatabase =
+      decoded.currentDatabase || decoded.loginDatabase || decoded.database;
+    const currentPropertyCode =
+      decoded.currentPropertyCode ||
+      decoded.loginPropertyCode ||
+      decoded.propertyCode;
 
     console.log("========== INDIVIDUAL TASKS ==========");
     console.log("userId          :", userId);
     console.log("currentDatabase :", currentDatabase);
     console.log("currentProperty :", currentPropertyCode);
     console.log("======================================");
+    console.log("JWT UserId:", userId);
 
     // Fresh dedicated pool to AUTOSHOP_COMMUNICATION
     pool = await new sql.ConnectionPool({
@@ -2107,30 +2112,25 @@ router.get("/individual-tasks", async (req, res) => {
       .request()
       .input("UserId", sql.NVarChar(100), userId)
       .input("DatabaseName", sql.NVarChar(100), currentDatabase)
-      .input("PropertyCode", sql.NVarChar(20), currentPropertyCode)
-      .query(`
-        SELECT
-          CAST(t.TaskId AS NVARCHAR(50)) AS TaskId,
-          t.TaskTitle,
-          t.TaskDescription,
-          t.AssignedBy,
-          t.AssignedTo,
-          t.Priority,
-          t.Status,
-          t.StartDate,
-          t.DueDate,
-          t.CreatedDate
-        FROM MA_ChatTasks t
-        WHERE t.GroupId IS NULL
-          AND (
-            UPPER(ISNULL(t.DatabaseName,'')) = UPPER(@DatabaseName)
-            OR UPPER(ISNULL(t.PropertyCode,'')) = UPPER(@PropertyCode)
-          )
-          AND (
-            LOWER(t.AssignedTo) = LOWER(@UserId)
-            OR LOWER(t.AssignedBy) = LOWER(@UserId)
-          )
-        ORDER BY t.CreatedDate DESC
+      .input("PropertyCode", sql.NVarChar(20), currentPropertyCode).query(`
+       SELECT
+    CAST(TaskId AS NVARCHAR(50)) AS TaskId,
+    CAST(ChallanId AS NVARCHAR(100)) AS ChallanId,
+    TaskTitle,
+    TaskDescription,
+    AssignedBy,
+    AssignedTo,
+    Priority,
+    Status,
+    StartDate,
+    DueDate,
+    CreatedDate,
+    DatabaseName,
+    PropertyCode
+FROM MA_ChatTasks
+WHERE
+    LOWER(AssignedTo) = LOWER(@UserId)
+ORDER BY CreatedDate DESC;
       `);
 
     console.log("INDIVIDUAL TASKS result count:", result.recordset.length);
@@ -2165,9 +2165,14 @@ router.post("/create-individual-task", async (req, res) => {
     //----------------------------------------------------
     const userId = decoded.userId;
     const userName = decoded.userName || decoded.userId;
-    const currentDatabase = decoded.currentDatabase || decoded.loginDatabase || decoded.database;
-    const currentPropertyCode = decoded.currentPropertyCode || decoded.loginPropertyCode || decoded.propertyCode;
-    const currentClientId = decoded.currentClientId || decoded.loginClientId || decoded.clientId;
+    const currentDatabase =
+      decoded.currentDatabase || decoded.loginDatabase || decoded.database;
+    const currentPropertyCode =
+      decoded.currentPropertyCode ||
+      decoded.loginPropertyCode ||
+      decoded.propertyCode;
+    const currentClientId =
+      decoded.currentClientId || decoded.loginClientId || decoded.clientId;
 
     const {
       receiverId,
@@ -2212,8 +2217,7 @@ router.post("/create-individual-task", async (req, res) => {
       .input("Priority", sql.NVarChar(40), priority || "Medium")
       .input("DatabaseName", sql.NVarChar(100), currentDatabase)
       .input("PropertyCode", sql.NVarChar(20), currentPropertyCode)
-      .input("ClientId", sql.UniqueIdentifier, currentClientId || null)
-      .query(`
+      .input("ClientId", sql.UniqueIdentifier, currentClientId || null).query(`
 INSERT INTO MA_ChatTasks
 (
     TaskId,
@@ -2261,10 +2265,13 @@ VALUES
       .input("DatabaseName", sql.NVarChar(100), currentDatabase)
       .input("PropertyCode", sql.NVarChar(20), currentPropertyCode)
       .input("SenderPropertyCode", sql.NVarChar(20), currentPropertyCode)
-      .input("ReceiverPropertyCode", sql.NVarChar(20), receiverPropertyCode || currentPropertyCode)
+      .input(
+        "ReceiverPropertyCode",
+        sql.NVarChar(20),
+        receiverPropertyCode || currentPropertyCode,
+      )
       .input("ClientId", sql.UniqueIdentifier, currentClientId || null)
-      .input("ReceiverId", sql.NVarChar(100), receiverId)
-      .query(`
+      .input("ReceiverId", sql.NVarChar(100), receiverId).query(`
 INSERT INTO MA_ChallanChat
 (
     ChatId,
