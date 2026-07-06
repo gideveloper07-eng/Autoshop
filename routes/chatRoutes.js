@@ -2069,8 +2069,8 @@ VALUES
 });
 // ── GET /api/chat/individual-tasks ────────────────────────────────────────────
 // Returns individual tasks (GroupId=NULL) for the logged-in user
-// from the communication DB — tasks assigned to or by this user.
-// v2: uses fresh pool per request to avoid stale singleton issues
+// from the communication DB — filtered by CURRENT company (not login company).
+// v3: filters by currentPropertyCode so switching company shows that company's tasks
 router.get("/individual-tasks", async (req, res) => {
   let pool;
 
@@ -2082,13 +2082,14 @@ router.get("/individual-tasks", async (req, res) => {
     }
 
     const userId = decoded.userId;
+    const currentPropertyCode = decoded.currentPropertyCode || decoded.loginPropertyCode || decoded.propertyCode;
 
-    console.log("========== INDIVIDUAL TASKS v2 ==========");
-    console.log("userId      :", userId);
-    console.log("COMM_DB     :", process.env.COMM_DB);
+    console.log("========== INDIVIDUAL TASKS v3 ==========");
+    console.log("userId          :", userId);
+    console.log("currentProperty :", currentPropertyCode);
     console.log("=========================================");
 
-    // Use a fresh dedicated pool to ensure we hit AUTOSHOP_COMMUNICATION
+    // Fresh dedicated pool to AUTOSHOP_COMMUNICATION
     pool = await new sql.ConnectionPool({
       user: process.env.DB_USER,
       password: process.env.DB_PASSWORD,
@@ -2101,6 +2102,7 @@ router.get("/individual-tasks", async (req, res) => {
     const result = await pool
       .request()
       .input("UserId", sql.NVarChar(100), userId)
+      .input("PropertyCode", sql.NVarChar(20), currentPropertyCode)
       .query(`
         SELECT
           CAST(t.TaskId AS NVARCHAR(50)) AS TaskId,
@@ -2115,6 +2117,7 @@ router.get("/individual-tasks", async (req, res) => {
           t.CreatedDate
         FROM MA_ChatTasks t
         WHERE t.GroupId IS NULL
+          AND t.PropertyCode = @PropertyCode
           AND (
             LOWER(t.AssignedTo) = LOWER(@UserId)
             OR LOWER(t.AssignedBy) = LOWER(@UserId)
@@ -2149,13 +2152,14 @@ router.post("/create-individual-task", async (req, res) => {
     }
 
     //----------------------------------------------------
-    // Login Identity (Never Changes)
+    // Use CURRENT working company (switches when user switches company)
+    // This matches how documents work — currentPropertyCode, not loginPropertyCode
     //----------------------------------------------------
     const userId = decoded.userId;
     const userName = decoded.userName || decoded.userId;
-    const loginDatabase = decoded.loginDatabase || decoded.database;
-    const loginPropertyCode = decoded.loginPropertyCode || decoded.propertyCode;
-    const loginClientId = decoded.loginClientId || decoded.clientId;
+    const currentDatabase = decoded.currentDatabase || decoded.loginDatabase || decoded.database;
+    const currentPropertyCode = decoded.currentPropertyCode || decoded.loginPropertyCode || decoded.propertyCode;
+    const currentClientId = decoded.currentClientId || decoded.loginClientId || decoded.clientId;
 
     const {
       receiverId,
@@ -2175,9 +2179,10 @@ router.post("/create-individual-task", async (req, res) => {
     }
 
     console.log("========== CREATE INDIVIDUAL TASK ==========");
-    console.log("AssignedBy :", userId);
-    console.log("AssignedTo :", receiverId);
-    console.log("Login DB   :", loginDatabase);
+    console.log("AssignedBy      :", userId);
+    console.log("AssignedTo      :", receiverId);
+    console.log("Current DB      :", currentDatabase);
+    console.log("Current Property:", currentPropertyCode);
     console.log("============================================");
 
     const taskId = randomUUID();
@@ -2197,9 +2202,9 @@ router.post("/create-individual-task", async (req, res) => {
       .input("StartDate", sql.DateTime, startDate || null)
       .input("DueDate", sql.DateTime, dueDate || null)
       .input("Priority", sql.NVarChar(40), priority || "Medium")
-      .input("DatabaseName", sql.NVarChar(100), loginDatabase)
-      .input("PropertyCode", sql.NVarChar(20), loginPropertyCode)
-      .input("ClientId", sql.UniqueIdentifier, loginClientId || null)
+      .input("DatabaseName", sql.NVarChar(100), currentDatabase)
+      .input("PropertyCode", sql.NVarChar(20), currentPropertyCode)
+      .input("ClientId", sql.UniqueIdentifier, currentClientId || null)
       .query(`
 INSERT INTO MA_ChatTasks
 (
@@ -2245,11 +2250,11 @@ VALUES
       .input("SenderUserId", sql.NVarChar(100), userId)
       .input("SenderName", sql.NVarChar(200), userName)
       .input("MessageText", sql.NVarChar(sql.MAX), taskTitle)
-      .input("DatabaseName", sql.NVarChar(100), loginDatabase)
-      .input("PropertyCode", sql.NVarChar(20), loginPropertyCode)
-      .input("SenderPropertyCode", sql.NVarChar(20), loginPropertyCode)
-      .input("ReceiverPropertyCode", sql.NVarChar(20), receiverPropertyCode || loginPropertyCode)
-      .input("ClientId", sql.UniqueIdentifier, loginClientId || null)
+      .input("DatabaseName", sql.NVarChar(100), currentDatabase)
+      .input("PropertyCode", sql.NVarChar(20), currentPropertyCode)
+      .input("SenderPropertyCode", sql.NVarChar(20), currentPropertyCode)
+      .input("ReceiverPropertyCode", sql.NVarChar(20), receiverPropertyCode || currentPropertyCode)
+      .input("ClientId", sql.UniqueIdentifier, currentClientId || null)
       .input("ReceiverId", sql.NVarChar(100), receiverId)
       .query(`
 INSERT INTO MA_ChallanChat
