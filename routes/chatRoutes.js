@@ -2080,10 +2080,10 @@ router.get("/get-tasks", async (req, res) => {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
-    const userId = decoded.userId;
-    // Match by DatabaseName (e.g. "TATADEMO") — this is what gets stored in
-    // MA_ChatTasks.DatabaseName when a task is created. Works for both old
-    // (loginDatabase) and new (currentDatabase) inserts.
+    const userId   = decoded.userId;
+    const isAdmin  = decoded.isAdmin || false;
+    const clientId = decoded.loginClientId || decoded.clientId || null;
+
     const currentDatabase =
       decoded.currentDatabase || decoded.loginDatabase || decoded.database;
     const currentPropertyCode =
@@ -2091,12 +2091,13 @@ router.get("/get-tasks", async (req, res) => {
       decoded.loginPropertyCode ||
       decoded.propertyCode;
 
-    console.log("========== INDIVIDUAL TASKS ==========");
+    console.log("========== GET TASKS ==========");
     console.log("userId          :", userId);
+    console.log("isAdmin         :", isAdmin);
     console.log("currentDatabase :", currentDatabase);
     console.log("currentProperty :", currentPropertyCode);
-    console.log("======================================");
-    console.log("JWT UserId:", userId);
+    console.log("clientId        :", clientId);
+    console.log("===============================");
 
     // Fresh dedicated pool to AUTOSHOP_COMMUNICATION
     pool = await new sql.ConnectionPool({
@@ -2108,36 +2109,73 @@ router.get("/get-tasks", async (req, res) => {
       options: { encrypt: false, trustServerCertificate: true },
     }).connect();
 
-    const result = await pool
-      .request()
-      .input("UserId", sql.NVarChar(100), userId)
-      .input("DatabaseName", sql.NVarChar(100), currentDatabase)
-      .input("PropertyCode", sql.NVarChar(20), currentPropertyCode).query(`
-       SELECT
-    CAST(TaskId AS NVARCHAR(50)) AS TaskId,
-    CAST(ChallanId AS NVARCHAR(100)) AS ChallanId,
-    TaskTitle,
-    TaskDescription,
-    AssignedBy,
-    AssignedTo,
-    Priority,
-    Status,
-    StartDate,
-    DueDate,
-    CreatedDate,
-    DatabaseName,
-    PropertyCode
-FROM MA_ChatTasks
-WHERE
-    LOWER(AssignedTo) = LOWER(@UserId)
-ORDER BY CreatedDate DESC;
-      `);
+    // First, log total row count in the table for debug
+    const countResult = await pool.request().query(`SELECT COUNT(*) AS Total FROM MA_ChatTasks`);
+    console.log("MA_ChatTasks total rows:", countResult.recordset[0].Total);
 
-    console.log("INDIVIDUAL TASKS result count:", result.recordset.length);
+    let result;
+
+    if (isAdmin) {
+      // Admin sees ALL tasks (optionally filtered by ClientId if set)
+      result = await pool
+        .request()
+        .input("ClientId", sql.UniqueIdentifier, clientId || null)
+        .query(`
+          SELECT
+            CAST(TaskId  AS NVARCHAR(50))  AS TaskId,
+            CAST(ChallanId AS NVARCHAR(100)) AS ChallanId,
+            CAST(GroupId AS NVARCHAR(50))  AS GroupId,
+            TaskTitle,
+            TaskDescription,
+            AssignedBy,
+            AssignedTo,
+            AssignedTo AS AssignedToName,
+            Priority,
+            Status,
+            StartDate,
+            DueDate,
+            CreatedDate,
+            DatabaseName,
+            PropertyCode
+          FROM MA_ChatTasks
+          WHERE (@ClientId IS NULL OR ClientId = @ClientId)
+          ORDER BY CreatedDate DESC;
+        `);
+    } else {
+      // Regular user — see tasks assigned TO them OR created BY them
+      result = await pool
+        .request()
+        .input("UserId", sql.NVarChar(100), userId)
+        .query(`
+          SELECT
+            CAST(TaskId  AS NVARCHAR(50))  AS TaskId,
+            CAST(ChallanId AS NVARCHAR(100)) AS ChallanId,
+            CAST(GroupId AS NVARCHAR(50))  AS GroupId,
+            TaskTitle,
+            TaskDescription,
+            AssignedBy,
+            AssignedTo,
+            AssignedTo AS AssignedToName,
+            Priority,
+            Status,
+            StartDate,
+            DueDate,
+            CreatedDate,
+            DatabaseName,
+            PropertyCode
+          FROM MA_ChatTasks
+          WHERE
+            LOWER(ISNULL(AssignedTo,'')) = LOWER(@UserId)
+            OR LOWER(ISNULL(AssignedBy,'')) = LOWER(@UserId)
+          ORDER BY CreatedDate DESC;
+        `);
+    }
+
+    console.log("GET TASKS result count:", result.recordset.length);
 
     return res.json({ success: true, data: result.recordset });
   } catch (err) {
-    console.error("INDIVIDUAL TASKS ERROR:", err);
+    console.error("GET TASKS ERROR:", err);
     return res.status(500).json({ success: false, message: err.message });
   } finally {
     if (pool) await pool.close();
