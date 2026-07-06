@@ -2081,14 +2081,14 @@ router.get("/individual-tasks", async (req, res) => {
     }
 
     const userId = decoded.userId;
-    const loginPropertyCode = decoded.loginPropertyCode || decoded.propertyCode;
+    const loginClientId = decoded.loginClientId || decoded.clientId;
 
     pool = await openCommunicationPool();
 
     const result = await pool
       .request()
       .input("UserId", sql.NVarChar(100), userId)
-      .input("PropertyCode", sql.NVarChar(20), loginPropertyCode)
+      .input("ClientId", sql.UniqueIdentifier, loginClientId || null)
       .query(`
         SELECT
           CAST(t.TaskId AS NVARCHAR(50)) AS TaskId,
@@ -2104,7 +2104,7 @@ router.get("/individual-tasks", async (req, res) => {
         FROM MA_ChatTasks t
         WHERE t.GroupId IS NULL
           AND (t.AssignedTo = @UserId OR t.AssignedBy = @UserId)
-          AND t.PropertyCode = @PropertyCode
+          AND (@ClientId IS NULL OR t.ClientId = @ClientId)
         ORDER BY t.CreatedDate DESC
       `);
 
