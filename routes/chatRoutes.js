@@ -765,22 +765,25 @@ router.get(
                 c.DocumentId,
                 c.MessageTime,
                 c.IsRead,
+                CAST(c.TaskId AS NVARCHAR(50)) AS TaskId,
 
                 d.DocumentNo,
                 d.DocumentType,
                 d.FileName,
 
-                NULL AS TaskId,
-                NULL AS AssignedTo,
-                NULL AS AssignedToName,
-                NULL AS Priority,
-                NULL AS TaskStatus,
-                NULL AS TaskDescription
+                t.AssignedTo,
+                t.AssignedTo AS AssignedToName,
+                t.Priority,
+                t.Status AS TaskStatus,
+                t.TaskDescription
 
             FROM MA_ChallanChat c
 
             LEFT JOIN MA_ChatDocuments d
                 ON c.DocumentId = d.DocumentId
+
+            LEFT JOIN MA_ChatTasks t
+                ON c.TaskId = t.TaskId
 
             WHERE
             (
@@ -2064,4 +2067,228 @@ VALUES
     }
   }
 });
+// ── GET /api/chat/individual-tasks ────────────────────────────────────────────
+// Returns individual tasks (GroupId=NULL) for the logged-in user
+// from the communication DB — tasks assigned to or by this user.
+router.get("/individual-tasks", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const userId = decoded.userId;
+    const loginPropertyCode = decoded.loginPropertyCode || decoded.propertyCode;
+
+    pool = await openCommunicationPool();
+
+    const result = await pool
+      .request()
+      .input("UserId", sql.NVarChar(100), userId)
+      .input("PropertyCode", sql.NVarChar(20), loginPropertyCode)
+      .query(`
+        SELECT
+          CAST(t.TaskId AS NVARCHAR(50)) AS TaskId,
+          t.TaskTitle,
+          t.TaskDescription,
+          t.AssignedBy,
+          t.AssignedTo,
+          t.Priority,
+          t.Status,
+          t.StartDate,
+          t.DueDate,
+          t.CreatedDate
+        FROM MA_ChatTasks t
+        WHERE t.GroupId IS NULL
+          AND (t.AssignedTo = @UserId OR t.AssignedBy = @UserId)
+          AND t.PropertyCode = @PropertyCode
+        ORDER BY t.CreatedDate DESC
+      `);
+
+    return res.json({ success: true, data: result.recordset });
+  } catch (err) {
+    console.error("INDIVIDUAL TASKS ERROR:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  } finally {
+    if (pool) await pool.close();
+  }
+});
+
+// ── POST /api/chat/create-individual-task ─────────────────────────────────────
+// Creates a task for a direct (1-on-1) chat.
+// GroupId = NULL, ChallanId = NULL in MA_ChatTasks (communication DB).
+// A TASK-type message is inserted into MA_ChallanChat using the same
+// ChallanId="0001" convention used by direct messages.
+router.post("/create-individual-task", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    //----------------------------------------------------
+    // Login Identity (Never Changes)
+    //----------------------------------------------------
+    const userId = decoded.userId;
+    const userName = decoded.userName || decoded.userId;
+    const loginDatabase = decoded.loginDatabase || decoded.database;
+    const loginPropertyCode = decoded.loginPropertyCode || decoded.propertyCode;
+    const loginClientId = decoded.loginClientId || decoded.clientId;
+
+    const {
+      receiverId,
+      receiverPropertyCode,
+      taskTitle,
+      taskDescription,
+      startDate,
+      dueDate,
+      priority,
+    } = req.body;
+
+    if (!receiverId || !taskTitle) {
+      return res.status(400).json({
+        success: false,
+        message: "receiverId and taskTitle are required",
+      });
+    }
+
+    console.log("========== CREATE INDIVIDUAL TASK ==========");
+    console.log("AssignedBy :", userId);
+    console.log("AssignedTo :", receiverId);
+    console.log("Login DB   :", loginDatabase);
+    console.log("============================================");
+
+    const taskId = randomUUID();
+
+    pool = await openCommunicationPool();
+
+    //----------------------------------------------------
+    // Insert Task (GroupId=NULL, ChallanId=NULL)
+    //----------------------------------------------------
+    await pool
+      .request()
+      .input("TaskId", sql.UniqueIdentifier, taskId)
+      .input("TaskTitle", sql.NVarChar(400), taskTitle)
+      .input("TaskDescription", sql.NVarChar(sql.MAX), taskDescription || "")
+      .input("AssignedBy", sql.NVarChar(200), userId)
+      .input("AssignedTo", sql.NVarChar(200), receiverId)
+      .input("StartDate", sql.DateTime, startDate || null)
+      .input("DueDate", sql.DateTime, dueDate || null)
+      .input("Priority", sql.NVarChar(40), priority || "Medium")
+      .input("DatabaseName", sql.NVarChar(100), loginDatabase)
+      .input("PropertyCode", sql.NVarChar(20), loginPropertyCode)
+      .input("ClientId", sql.UniqueIdentifier, loginClientId || null)
+      .query(`
+INSERT INTO MA_ChatTasks
+(
+    TaskId,
+    TaskTitle,
+    TaskDescription,
+    AssignedBy,
+    AssignedTo,
+    StartDate,
+    DueDate,
+    Priority,
+    Status,
+    CreatedDate,
+    DatabaseName,
+    PropertyCode,
+    ClientId
+)
+VALUES
+(
+    @TaskId,
+    @TaskTitle,
+    @TaskDescription,
+    @AssignedBy,
+    @AssignedTo,
+    @StartDate,
+    @DueDate,
+    @Priority,
+    'Pending',
+    GETDATE(),
+    @DatabaseName,
+    @PropertyCode,
+    @ClientId
+)
+`);
+
+    //----------------------------------------------------
+    // Insert TASK message into MA_ChallanChat
+    // (ChallanId="0001" is the convention for direct messages)
+    //----------------------------------------------------
+    await pool
+      .request()
+      .input("TaskId", sql.UniqueIdentifier, taskId)
+      .input("SenderUserId", sql.NVarChar(100), userId)
+      .input("SenderName", sql.NVarChar(200), userName)
+      .input("MessageText", sql.NVarChar(sql.MAX), taskTitle)
+      .input("DatabaseName", sql.NVarChar(100), loginDatabase)
+      .input("PropertyCode", sql.NVarChar(20), loginPropertyCode)
+      .input("SenderPropertyCode", sql.NVarChar(20), loginPropertyCode)
+      .input("ReceiverPropertyCode", sql.NVarChar(20), receiverPropertyCode || loginPropertyCode)
+      .input("ClientId", sql.UniqueIdentifier, loginClientId || null)
+      .input("ReceiverId", sql.NVarChar(100), receiverId)
+      .query(`
+INSERT INTO MA_ChallanChat
+(
+    ChatId,
+    ChallanId,
+    SenderUserId,
+    SenderName,
+    MessageText,
+    MessageTime,
+    IsRead,
+    MessageType,
+    TaskId,
+    DatabaseName,
+    ReceiverId,
+    PropertyCode,
+    SenderPropertyCode,
+    ReceiverPropertyCode,
+    ClientId
+)
+VALUES
+(
+    NEWID(),
+    '0001',
+    @SenderUserId,
+    @SenderName,
+    @MessageText,
+    GETDATE(),
+    0,
+    'TASK',
+    @TaskId,
+    @DatabaseName,
+    @ReceiverId,
+    @PropertyCode,
+    @SenderPropertyCode,
+    @ReceiverPropertyCode,
+    @ClientId
+)
+`);
+
+    return res.json({
+      success: true,
+      taskId,
+      message: "Task created successfully",
+    });
+  } catch (err) {
+    console.error("CREATE INDIVIDUAL TASK ERROR:", err);
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+      detail: err.originalError?.message,
+    });
+  } finally {
+    if (pool) await pool.close();
+  }
+});
+
 module.exports = router;
