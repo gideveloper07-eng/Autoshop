@@ -253,163 +253,174 @@ router.post("/create", async (req, res) => {
 
   try {
     const decoded = decodeToken(req);
+
     if (!decoded) {
-      return res.status(401).json({ success: false, message: "Unauthorized" });
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
     }
 
-    const { database: currentDb, userId } = decoded;
-    // databaseName in body = the dealership DB this group belongs to.
-    // Falls back to the logged-in user's own DB when not supplied.
+    // Permanent login identity
+    const currentDb = decoded.loginDatabase || decoded.database;
+
+    const currentPropertyCode =
+      decoded.loginPropertyCode || decoded.propertyCode;
+
+    const currentClientId = decoded.loginClientId || decoded.clientId;
+
+    const userId = decoded.userId;
+
     const { groupName, members = [], databaseName: groupDb } = req.body;
+
     const databaseName =
       groupDb && groupDb.trim() !== "" ? groupDb.trim() : currentDb;
 
     if (!groupName || groupName.trim() === "") {
-      return res
-        .status(400)
-        .json({ success: false, message: "Group name is required" });
+      return res.status(400).json({
+        success: false,
+        message: "Group name is required",
+      });
     }
 
     pool = await openCommunicationPool();
 
-    // ── Ensure tables exist (safe, never drops) ─────────────────
-    await pool.request().query(`
-      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'MA_ChatGroups')
-        CREATE TABLE MA_ChatGroups (
-          GroupId         UNIQUEIDENTIFIER  NOT NULL DEFAULT NEWID() PRIMARY KEY,
-          GroupName       NVARCHAR(200)     NOT NULL,
-          CreatedBy       NVARCHAR(100)     NOT NULL,
-          CreatedDate     DATETIME          NOT NULL DEFAULT GETDATE(),
-          IsActive        BIT               NOT NULL DEFAULT 1,
-          LastMessageTime DATETIME          NULL,
-          DatabaseName    NVARCHAR(200)     NULL
-        );
-      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='MA_ChatGroups' AND COLUMN_NAME='LastMessageTime')
-        ALTER TABLE MA_ChatGroups ADD LastMessageTime DATETIME NULL;
-      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='MA_ChatGroups' AND COLUMN_NAME='IsActive')
-        ALTER TABLE MA_ChatGroups ADD IsActive BIT NOT NULL DEFAULT 1;
-      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='MA_ChatGroups' AND COLUMN_NAME='DatabaseName')
-        ALTER TABLE MA_ChatGroups ADD DatabaseName NVARCHAR(200) NULL;
-      -- Fix CreatedBy if it was incorrectly created as UNIQUEIDENTIFIER
-      IF EXISTS (
-        SELECT 1 FROM sys.columns c
-        INNER JOIN sys.types t ON c.user_type_id = t.user_type_id
-        WHERE c.object_id = OBJECT_ID('MA_ChatGroups')
-          AND c.name = 'CreatedBy'
-          AND t.name = 'uniqueidentifier'
-      )
-        ALTER TABLE MA_ChatGroups ALTER COLUMN CreatedBy NVARCHAR(100) NOT NULL;
-    `);
-
-    await pool.request().query(`
-      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'MA_ChatGroupMembers')
-        CREATE TABLE MA_ChatGroupMembers (
-          MemberId     UNIQUEIDENTIFIER  NOT NULL DEFAULT NEWID() PRIMARY KEY,
-          GroupId      UNIQUEIDENTIFIER  NOT NULL,
-          UserId       NVARCHAR(100)     NOT NULL,
-          IsAdmin      BIT               NOT NULL DEFAULT 0,
-          AddedBy      NVARCHAR(100)     NOT NULL,
-          AddedDate    DATETIME          NOT NULL DEFAULT GETDATE(),
-          DatabaseName NVARCHAR(200)     NULL
-        );
-      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='MA_ChatGroupMembers' AND COLUMN_NAME='IsAdmin')
-        ALTER TABLE MA_ChatGroupMembers ADD IsAdmin BIT NOT NULL DEFAULT 0;
-      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='MA_ChatGroupMembers' AND COLUMN_NAME='AddedBy')
-        ALTER TABLE MA_ChatGroupMembers ADD AddedBy NVARCHAR(100) NOT NULL DEFAULT '';
-      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='MA_ChatGroupMembers' AND COLUMN_NAME='AddedDate')
-        ALTER TABLE MA_ChatGroupMembers ADD AddedDate DATETIME NOT NULL DEFAULT GETDATE();
-      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='MA_ChatGroupMembers' AND COLUMN_NAME='DatabaseName')
-        ALTER TABLE MA_ChatGroupMembers ADD DatabaseName NVARCHAR(200) NULL;
-      -- Fix UserId if it was incorrectly created as UNIQUEIDENTIFIER
-      IF EXISTS (
-        SELECT 1 FROM sys.columns c INNER JOIN sys.types t ON c.user_type_id = t.user_type_id
-        WHERE c.object_id = OBJECT_ID('MA_ChatGroupMembers') AND c.name = 'UserId' AND t.name = 'uniqueidentifier'
-      )
-        ALTER TABLE MA_ChatGroupMembers ALTER COLUMN UserId NVARCHAR(100) NOT NULL;
-      -- Fix AddedBy if it was incorrectly created as UNIQUEIDENTIFIER
-      IF EXISTS (
-        SELECT 1 FROM sys.columns c INNER JOIN sys.types t ON c.user_type_id = t.user_type_id
-        WHERE c.object_id = OBJECT_ID('MA_ChatGroupMembers') AND c.name = 'AddedBy' AND t.name = 'uniqueidentifier'
-      )
-        ALTER TABLE MA_ChatGroupMembers ALTER COLUMN AddedBy NVARCHAR(100) NULL;
-    `);
-
-    await pool.request().query(`
-      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'MA_GroupChatMessages')
-        CREATE TABLE MA_GroupChatMessages (
-          ChatId        UNIQUEIDENTIFIER  NOT NULL DEFAULT NEWID() PRIMARY KEY,
-          GroupId       UNIQUEIDENTIFIER  NOT NULL,
-          SenderUserId  NVARCHAR(100)     NOT NULL,
-          SenderName    NVARCHAR(200)     NOT NULL DEFAULT '',
-          MessageText   NVARCHAR(MAX)     NOT NULL,
-          MessageType   NVARCHAR(50)      NOT NULL DEFAULT 'TEXT',
-          DocumentId    UNIQUEIDENTIFIER  NULL,
-          TaskId        UNIQUEIDENTIFIER  NULL,
-          TaskDatabase  NVARCHAR(200)     NULL,
-          MessageTime   DATETIME          NOT NULL DEFAULT GETDATE()
-        );
-      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='MA_GroupChatMessages' AND COLUMN_NAME='SenderName')
-        ALTER TABLE MA_GroupChatMessages ADD SenderName NVARCHAR(200) NOT NULL DEFAULT '';
-      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='MA_GroupChatMessages' AND COLUMN_NAME='MessageType')
-        ALTER TABLE MA_GroupChatMessages ADD MessageType NVARCHAR(50) NOT NULL DEFAULT 'TEXT';
-      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='MA_GroupChatMessages' AND COLUMN_NAME='DocumentId')
-        ALTER TABLE MA_GroupChatMessages ADD DocumentId UNIQUEIDENTIFIER NULL;
-      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='MA_GroupChatMessages' AND COLUMN_NAME='TaskId')
-        ALTER TABLE MA_GroupChatMessages ADD TaskId UNIQUEIDENTIFIER NULL;
-      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='MA_GroupChatMessages' AND COLUMN_NAME='TaskDatabase')
-        ALTER TABLE MA_GroupChatMessages ADD TaskDatabase NVARCHAR(200) NULL;
-      -- Fix SenderUserId if it was incorrectly created as UNIQUEIDENTIFIER
-      IF EXISTS (
-        SELECT 1 FROM sys.columns c INNER JOIN sys.types t ON c.user_type_id = t.user_type_id
-        WHERE c.object_id = OBJECT_ID('MA_GroupChatMessages') AND c.name = 'SenderUserId' AND t.name = 'uniqueidentifier'
-      )
-        ALTER TABLE MA_GroupChatMessages ALTER COLUMN SenderUserId NVARCHAR(100) NOT NULL;
-    `);
-    // ────────────────────────────────────────────────────────────
-
     const groupId = crypto.randomUUID().toUpperCase();
 
-    // Insert group — GroupId via NEWID() in SQL, returns it for use in members insert
+    //------------------------------------------
+    // Insert Group
+    //------------------------------------------
+
     await pool
       .request()
       .input("GroupId", sql.NVarChar(50), groupId)
       .input("GroupName", sql.NVarChar(200), groupName.trim())
       .input("CreatedBy", sql.NVarChar(100), userId)
-      .input("DatabaseName", sql.NVarChar(200), databaseName).query(`
-        INSERT INTO MA_ChatGroups (GroupId, GroupName, CreatedBy, CreatedDate, IsActive, DatabaseName)
-        VALUES (CONVERT(UNIQUEIDENTIFIER, @GroupId), @GroupName, @CreatedBy, GETDATE(), 1, @DatabaseName)
+      .input("DatabaseName", sql.NVarChar(200), databaseName)
+      .input("PropertyCode", sql.NVarChar(50), currentPropertyCode)
+      .input("ClientId", sql.UniqueIdentifier, currentClientId).query(`
+        INSERT INTO MA_ChatGroups
+        (
+            GroupId,
+            GroupName,
+            CreatedBy,
+            CreatedDate,
+            IsActive,
+            LastMessageTime,
+            DatabaseName,
+            PropertyCode,
+            ClientId
+        )
+        VALUES
+        (
+            CONVERT(UNIQUEIDENTIFIER,@GroupId),
+            @GroupName,
+            @CreatedBy,
+            GETDATE(),
+            1,
+            NULL,
+            @DatabaseName,
+            @PropertyCode,
+            @ClientId
+        )
       `);
 
-    // Creator is admin — DatabaseName for creator = the group's DB
+    //------------------------------------------
+    // Insert Creator
+    //------------------------------------------
+
     await pool
       .request()
       .input("GroupId", sql.NVarChar(50), groupId)
       .input("UserId", sql.NVarChar(100), userId)
       .input("AddedBy", sql.NVarChar(100), userId)
-      .input("DatabaseName", sql.NVarChar(200), databaseName).query(`
-        INSERT INTO MA_ChatGroupMembers (MemberId, GroupId, UserId, IsAdmin, AddedBy, AddedDate, DatabaseName)
-        VALUES (NEWID(), CONVERT(UNIQUEIDENTIFIER, @GroupId), @UserId, 1, @AddedBy, GETDATE(), @DatabaseName)
+      .input("DatabaseName", sql.NVarChar(200), databaseName)
+      .input("PropertyCode", sql.NVarChar(50), currentPropertyCode)
+      .input("ClientId", sql.UniqueIdentifier, currentClientId).query(`
+        INSERT INTO MA_ChatGroupMembers
+        (
+            MemberId,
+            GroupId,
+            UserId,
+            IsAdmin,
+            AddedBy,
+            AddedDate,
+            DatabaseName,
+            PropertyCode,
+            ClientId
+        )
+        VALUES
+        (
+            NEWID(),
+            CONVERT(UNIQUEIDENTIFIER,@GroupId),
+            @UserId,
+            1,
+            @AddedBy,
+            GETDATE(),
+            @DatabaseName,
+            @PropertyCode,
+            @ClientId
+        )
       `);
 
-    // Add extra members — members can be plain userId strings OR {id, database} objects
+    //------------------------------------------
+    // Insert Other Members
+    //------------------------------------------
+
     for (const member of members) {
-      const memberId = typeof member === "string" ? member : member?.id;
+      const memberId = typeof member === "string" ? member : member.id;
+
       const memberDb =
         typeof member === "object"
-          ? member?.database || databaseName
+          ? member.database || databaseName
           : databaseName;
 
-      if (!memberId || memberId.toLowerCase() === userId.toLowerCase())
+      const memberProperty =
+        typeof member === "object"
+          ? member.propertyCode || currentPropertyCode
+          : currentPropertyCode;
+
+      const memberClientId =
+        typeof member === "object"
+          ? member.clientId || currentClientId
+          : currentClientId;
+
+      if (!memberId || memberId.toLowerCase() === userId.toLowerCase()) {
         continue;
+      }
 
       await pool
         .request()
         .input("GroupId", sql.NVarChar(50), groupId)
         .input("UserId", sql.NVarChar(100), memberId)
         .input("AddedBy", sql.NVarChar(100), userId)
-        .input("DatabaseName", sql.NVarChar(200), memberDb).query(`
-          INSERT INTO MA_ChatGroupMembers (MemberId, GroupId, UserId, IsAdmin, AddedBy, AddedDate, DatabaseName)
-          VALUES (NEWID(), CONVERT(UNIQUEIDENTIFIER, @GroupId), @UserId, 0, @AddedBy, GETDATE(), @DatabaseName)
+        .input("DatabaseName", sql.NVarChar(200), memberDb)
+        .input("PropertyCode", sql.NVarChar(50), memberProperty)
+        .input("ClientId", sql.UniqueIdentifier, memberClientId).query(`
+          INSERT INTO MA_ChatGroupMembers
+          (
+              MemberId,
+              GroupId,
+              UserId,
+              IsAdmin,
+              AddedBy,
+              AddedDate,
+              DatabaseName,
+              PropertyCode,
+              ClientId
+          )
+          VALUES
+          (
+              NEWID(),
+              CONVERT(UNIQUEIDENTIFIER,@GroupId),
+              @UserId,
+              0,
+              @AddedBy,
+              GETDATE(),
+              @DatabaseName,
+              @PropertyCode,
+              @ClientId
+          )
         `);
     }
 
@@ -420,14 +431,16 @@ router.post("/create", async (req, res) => {
     });
   } catch (err) {
     console.error("CREATE GROUP ERROR:", err);
+
     return res.status(500).json({
       success: false,
       message: err.message,
       detail: err.originalError?.message || err.toString(),
-      number: err.number,
     });
   } finally {
-    if (pool) await pool.close();
+    if (pool) {
+      await pool.close();
+    }
   }
 });
 
