@@ -1596,16 +1596,23 @@ router.get("/messages/:groupId", async (req, res) => {
 
     // Resolve which DB this group belongs to
     const databaseName = await getGroupDatabase(groupId, currentDb);
-    pool = await openPool(databaseName);
+
+    // Open Communication DB because
+    // MA_ChatGroupMembers and MA_GroupChatMessages are stored there
+    pool = await openCommunicationPool();
 
     // Verify membership
     const memberCheck = await pool
       .request()
       .input("GroupId", sql.NVarChar(50), groupId)
       .input("UserId", sql.NVarChar(100), userId).query(`
-        SELECT TOP 1 1 FROM MA_ChatGroupMembers
-        WHERE GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId) AND UserId = @UserId
-      `);
+      SELECT *
+      FROM MA_ChatGroupMembers
+      WHERE GroupId = CONVERT(UNIQUEIDENTIFIER,@GroupId)
+      AND LOWER(UserId)=LOWER(@UserId)
+`);
+
+    console.log("Member Check:", memberCheck.recordset);
 
     if (memberCheck.recordset.length === 0) {
       return res.status(403).json({ success: false, message: "Access denied" });
