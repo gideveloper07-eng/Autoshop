@@ -1593,7 +1593,7 @@ router.get("/messages/:groupId", async (req, res) => {
 
     // Resolve which DB this group belongs to
     const databaseName = await getGroupDatabase(groupId, currentDb);
-    pool = await openCommunicationPool();
+    pool = await openPool(databaseName);
 
     // Verify membership
     const memberCheck = await pool
