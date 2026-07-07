@@ -364,9 +364,8 @@ const switchDatabase = async (req, res) => {
       message: err.message,
     });
   } finally {
-    if (masterPool) {
-      await masterPool.close();
-    }
+    // Don't close shared Master pool - it's reusable
+    // pool is only closed on application shutdown in masterPool.js
   }
 };
 // ─────────────────────────────────────────────────────────────────────────────

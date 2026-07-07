@@ -76,7 +76,8 @@ async function getGroupDatabase(groupId, fallbackDb) {
   } catch {
     return fallbackDb;
   } finally {
-    if (pool && !usingCommunicationPool) await pool.close();
+    // Don't close shared Communication pool - it's reusable
+    // pool is only closed on application shutdown in communicationPool.js
   }
 }
 
@@ -454,9 +455,8 @@ router.post("/create", async (req, res) => {
       detail: err.originalError?.message || err.toString(),
     });
   } finally {
-    if (pool) {
-      await pool.close();
-    }
+    // Don't close shared Communication pool - it's reusable
+    // pool is only closed on application shutdown in communicationPool.js
   }
 });
 
@@ -755,9 +755,8 @@ ORDER BY c.MessageTime DESC;
       message: err.message,
     });
   } finally {
-    if (pool) {
-      await pool.close();
-    }
+    // Don't close shared Communication pool - it's reusable
+    // pool is only closed on application shutdown in communicationPool.js
   }
 });
 
@@ -1158,9 +1157,8 @@ ON CONVERT(VARCHAR(50), s.utunqid) = gm.UserId
       stack: err.stack,
     });
   } finally {
-    if (pool) {
-      await pool.close();
-    }
+    // Don't close shared Communication pool - it's reusable
+    // pool is only closed on application shutdown in communicationPool.js
   }
 });
 
@@ -1399,9 +1397,8 @@ router.post("/send-message", async (req, res) => {
       message: err.message,
     });
   } finally {
-    if (pool) {
-      await pool.close();
-    }
+    // Don't close shared Communication pool - it's reusable
+    // pool is only closed on application shutdown in communicationPool.js
   }
 });
 router.post("/create-task", async (req, res) => {

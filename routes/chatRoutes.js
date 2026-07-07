@@ -218,9 +218,8 @@ ORDER BY LastMessageTime DESC
       message: err.message,
     });
   } finally {
-    if (pool) {
-      await pool.close();
-    }
+    // Don't close shared Communication pool - it's reusable
+    // pool is only closed on application shutdown in communicationPool.js
   }
 });
 // ── POST /api/chat/send ──────────────────────────────────────────────────────
@@ -691,9 +690,8 @@ WHERE ChallanId = @challanId
       message: err.message,
     });
   } finally {
-    if (pool) {
-      await pool.close();
-    }
+    // Don't close shared Communication pool - it's reusable
+    // pool is only closed on application shutdown in communicationPool.js
   }
 });
 
@@ -820,9 +818,8 @@ router.get(
         message: err.message,
       });
     } finally {
-      if (pool) {
-        await pool.close();
-      }
+      // Don't close shared Communication pool - it's reusable
+      // pool is only closed on application shutdown in communicationPool.js
     }
   },
 );
@@ -892,9 +889,8 @@ WHERE
         message: err.message,
       });
     } finally {
-      if (pool) {
-        await pool.close();
-      }
+      // Don't close shared Communication pool - it's reusable
+      // pool is only closed on application shutdown in communicationPool.js
     }
   },
 );
@@ -1022,9 +1018,8 @@ ORDER BY d.CreatedDate DESC
       message: err.message,
     });
   } finally {
-    if (pool) {
-      await pool.close();
-    }
+    // Don't close shared Communication pool - it's reusable
+    // pool is only closed on application shutdown in communicationPool.js
   }
 });
 
@@ -1121,9 +1116,8 @@ WHERE ChallanId=@challanId
       message: err.message,
     });
   } finally {
-    if (pool) {
-      await pool.close();
-    }
+    // Don't close shared Communication pool - it's reusable
+    // pool is only closed on application shutdown in communicationPool.js
   }
 });
 
@@ -1406,8 +1400,15 @@ VALUES
       detail: err.originalError?.message,
     });
   } finally {
-    if (businessPool) await businessPool.close();
-    if (communicationPool) await communicationPool.close();
+    // Close temporary database pool, but don't close shared Communication pool
+    if (businessPool) {
+      try {
+        await businessPool.close();
+      } catch (closeErr) {
+        console.warn("Error closing business pool:", closeErr.message);
+      }
+    }
+    // communicationPool is shared and will be closed on application shutdown
   }
 });
 // ── GET /api/chat/members/:challanId ─────────────────────────────────────────
@@ -1510,9 +1511,8 @@ ORDER BY AddedOn
       message: err.message,
     });
   } finally {
-    if (pool) {
-      await pool.close();
-    }
+    // Don't close shared Communication pool - it's reusable
+    // pool is only closed on application shutdown in communicationPool.js
   }
 });
 
@@ -1713,9 +1713,8 @@ VALUES
       message: err.message,
     });
   } finally {
-    if (pool) {
-      await pool.close();
-    }
+    // Don't close shared Communication pool - it's reusable
+    // pool is only closed on application shutdown in communicationPool.js
   }
 });
 
@@ -1875,9 +1874,8 @@ VALUES
       message: err.message,
     });
   } finally {
-    if (pool) {
-      await pool.close();
-    }
+    // Don't close shared Communication pool - it's reusable
+    // pool is only closed on application shutdown in communicationPool.js
   }
 });
 // ── GET /api/chat/individual-tasks ────────────────────────────────────────────
@@ -2348,9 +2346,8 @@ ORDER BY MessageTime ASC
       message: err.message,
     });
   } finally {
-    if (pool) {
-      await pool.close();
-    }
+    // Don't close shared Communication pool - it's reusable
+    // pool is only closed on application shutdown in communicationPool.js
   }
 });
 module.exports = router;
