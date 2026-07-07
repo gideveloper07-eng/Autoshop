@@ -290,7 +290,11 @@ router.post("/create", async (req, res) => {
 
     const { groupName, members = [], databaseName: groupDb } = req.body;
 
-    const databaseName = decoded.currentDatabase;
+    const databaseName =
+      decoded.currentDatabase ||
+      decoded.loginDatabase ||
+      decoded.database ||
+      groupDb;
 
     if (!groupName || groupName.trim() === "") {
       return res.status(400).json({
