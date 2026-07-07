@@ -270,7 +270,7 @@ router.post("/create", async (req, res) => {
         .json({ success: false, message: "Group name is required" });
     }
 
-    pool = await openPool(databaseName);
+    pool = await openCommunicationPool();
 
     // ── Ensure tables exist (safe, never drops) ─────────────────
     await pool.request().query(`
@@ -774,7 +774,7 @@ router.get("/my-groups", async (req, res) => {
       let pool;
 
       try {
-        pool = await openPool(db.database);
+        pool = await openCommunicationPool();
 
         // Skip databases without chat tables
         const tableCheck = await pool.request().query(`
