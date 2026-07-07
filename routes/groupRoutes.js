@@ -1590,6 +1590,9 @@ router.get("/messages/:groupId", async (req, res) => {
 
     const { database: currentDb, userId } = decoded;
     const { groupId } = req.params;
+    const escapedCurrentDb = currentDb
+      ? currentDb.replace(/]/g, "]]")
+      : currentDb;
 
     // Resolve which DB this group belongs to
     const databaseName = await getGroupDatabase(groupId, currentDb);
@@ -1645,13 +1648,12 @@ router.get("/messages/:groupId", async (req, res) => {
         LEFT JOIN MA_ChatTasks t
           ON m.TaskId = t.TaskId
 
-        LEFT JOIN rh_secut s
+        LEFT JOIN [${escapedCurrentDb}].dbo.rh_secut s
           ON CONVERT(VARCHAR(50), s.utunqid) = t.AssignedTo
 
         WHERE m.GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId)
         ORDER BY m.MessageTime ASC
       `);
-
     return res.json({ success: true, data: result.recordset });
   } catch (err) {
     console.error("GET GROUP MESSAGES ERROR:", err);
