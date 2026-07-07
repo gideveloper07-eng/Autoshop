@@ -1268,7 +1268,7 @@ router.post("/send-message", async (req, res) => {
 
     // Resolve which DB this group belongs to
     const databaseName = await getGroupDatabase(groupId, currentDb);
-    pool = await openPool(databaseName);
+    pool = await openCommunicationPool();
 
     // ─────────────────────────────────────────────
     // VERIFY MEMBERSHIP
