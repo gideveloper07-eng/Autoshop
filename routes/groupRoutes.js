@@ -1246,14 +1246,25 @@ router.post("/send-message", async (req, res) => {
       });
     }
 
-    const { database: currentDb, userId, userName } = decoded;
+    const {
+      database: currentDb,
+      userId,
+      userName,
+      userGuid,
+      currentPropertyCode,
+      propertyCode,
+    } = decoded;
 
     const {
-      groupId,
+      groupId: rawGroupId,
       messageText,
       messageType = "TEXT",
       documentId = null,
     } = req.body;
+
+    const groupId = rawGroupId ? rawGroupId.trim() : rawGroupId;
+    const senderPropertyCode =
+      currentPropertyCode || decoded.loginPropertyCode || propertyCode;
 
     // Resolve which DB this group belongs to
     const databaseName = await getGroupDatabase(groupId, currentDb);
@@ -1265,11 +1276,18 @@ router.post("/send-message", async (req, res) => {
     const memberCheck = await pool
       .request()
       .input("GroupId", sql.NVarChar(50), groupId)
-      .input("UserId", sql.NVarChar(100), userId).query(`
+      .input("UserId", sql.NVarChar(100), userId)
+      .input("UserGuid", sql.NVarChar(50), userGuid || null).query(`
         SELECT TOP 1 1
         FROM MA_ChatGroupMembers
         WHERE GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId)
-          AND UserId = @UserId
+          AND (
+              LOWER(UserId) = LOWER(@UserId)
+              OR (
+                  @UserGuid IS NOT NULL
+                  AND LOWER(UserId) = LOWER(@UserGuid)
+              )
+          )
       `);
 
     if (memberCheck.recordset.length === 0) {
@@ -1292,7 +1310,9 @@ router.post("/send-message", async (req, res) => {
       .input("SenderName", sql.NVarChar(200), userName || userId)
       .input("MessageText", sql.NVarChar(sql.MAX), messageText || "")
       .input("MessageType", sql.NVarChar(50), messageType)
-      .input("DocumentId", sql.NVarChar(50), documentId).query(`
+      .input("DocumentId", sql.NVarChar(50), documentId)
+      .input("SenderPropertyCode", sql.NVarChar(50), senderPropertyCode)
+      .input("TaskDatabase", sql.NVarChar(200), null).query(`
         INSERT INTO MA_GroupChatMessages
         (
           ChatId,
@@ -1302,6 +1322,8 @@ router.post("/send-message", async (req, res) => {
           MessageText,
           MessageType,
           DocumentId,
+          SenderPropertyCode,
+          TaskDatabase,
           MessageTime
         )
         VALUES
@@ -1317,6 +1339,8 @@ router.post("/send-message", async (req, res) => {
             THEN NULL
             ELSE CONVERT(UNIQUEIDENTIFIER, @DocumentId)
           END,
+          @SenderPropertyCode,
+          @TaskDatabase,
           GETDATE()
         )
       `);
