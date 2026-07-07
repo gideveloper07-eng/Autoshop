@@ -1588,27 +1588,20 @@ router.get("/messages/:groupId", async (req, res) => {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
-    const { userId, userGuid } = decoded;
-    const { groupId: rawGroupId } = req.params;
-    const groupId = rawGroupId ? rawGroupId.trim() : rawGroupId;
+    const { database: currentDb, userId } = decoded;
+    const { groupId } = req.params;
 
-    pool = await openCommunicationPool();
+    // Resolve which DB this group belongs to
+    const databaseName = await getGroupDatabase(groupId, currentDb);
+    pool = await openPool(databaseName);
 
     // Verify membership
     const memberCheck = await pool
       .request()
       .input("GroupId", sql.NVarChar(50), groupId)
-      .input("UserId", sql.NVarChar(100), userId)
-      .input("UserGuid", sql.NVarChar(50), userGuid || null).query(`
+      .input("UserId", sql.NVarChar(100), userId).query(`
         SELECT TOP 1 1 FROM MA_ChatGroupMembers
-        WHERE GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId)
-          AND (
-            LOWER(UserId) = LOWER(@UserId)
-            OR (
-              @UserGuid IS NOT NULL
-              AND LOWER(UserId) = LOWER(@UserGuid)
-            )
-          )
+        WHERE GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId) AND UserId = @UserId
       `);
 
     if (memberCheck.recordset.length === 0) {
