@@ -1614,50 +1614,50 @@ router.get("/messages/:groupId", async (req, res) => {
     const result = await pool
       .request()
       .input("GroupId", sql.NVarChar(50), groupId).query(`
-        SELECT
-          m.ChatId,
-          m.GroupId,
-          m.SenderUserId,
-          m.SenderName,
-          m.MessageText,
-          m.MessageType,
-          m.TaskId,
-          m.TaskDatabase,
-          m.DocumentId,
-          m.MessageTime,
+  SELECT
+    m.ChatId,
+    m.GroupId,
+    m.SenderUserId,
+    m.SenderName,
+    m.MessageText,
+    m.MessageType,
+    m.DocumentId,
+    m.TaskId,
+    m.TaskDatabase,
+    m.MessageTime,
 
-          d.DocumentNo,
-          d.DocumentType,
-          d.FileName,
-          d.FilePath,
+    d.DocumentNo,
+    d.DocumentType,
+    d.FileName,
+    d.FilePath,
 
-          -- Task fields: only populated when task lives in same DB as group
-          -- When TaskDatabase differs, the Flutter app uses TaskDatabase to fetch status
-          t.Status     AS TaskStatus,
-          t.Priority,
-          t.AssignedTo,
-          t.TaskDescription,
-          t.DueDate,
-          ISNULL(s.uti, t.AssignedTo) AS AssignedToName
+    t.Status AS TaskStatus,
+    t.Priority,
+    t.AssignedTo,
+    t.TaskDescription,
+    t.DueDate
 
-        FROM MA_GroupChatMessages m
+FROM MA_GroupChatMessages m
 
-        LEFT JOIN MA_ChatDocuments d
-          ON m.DocumentId = d.DocumentId
+LEFT JOIN MA_ChatDocuments d
+ON d.DocumentId = m.DocumentId
 
-        LEFT JOIN MA_ChatTasks t
-          ON m.TaskId = t.TaskId
+LEFT JOIN MA_ChatTasks t
+ON t.TaskId = m.TaskId
 
-        LEFT JOIN [${escapedCurrentDb}].dbo.rh_secut s
-          ON CONVERT(VARCHAR(50), s.utunqid) = t.AssignedTo
+WHERE m.GroupId = CONVERT(uniqueidentifier,@GroupId)
 
-        WHERE m.GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId)
-        ORDER BY m.MessageTime ASC
+ORDER BY m.MessageTime ASC
       `);
     return res.json({ success: true, data: result.recordset });
   } catch (err) {
-    console.error("GET GROUP MESSAGES ERROR:", err);
-    return res.status(500).json({ success: false, message: err.message });
+    console.log(err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+      sql: err.originalError?.message,
+    });
   } finally {
     if (pool) await pool.close();
   }
