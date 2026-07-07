@@ -522,7 +522,7 @@ router.get("/my-direct-chats", async (req, res) => {
           allowedProperties = access.recordset.map((x) => x.PropertyCode);
         }
       } finally {
-        await masterPool.close();
+        // await masterPool.close();
       }
     }
     const result = await pool
