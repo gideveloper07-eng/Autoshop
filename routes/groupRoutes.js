@@ -1040,56 +1040,138 @@ router.post("/add-member", async (req, res) => {
 });
 
 // ── POST /api/group/remove-member ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// POST : /api/group/remove-member
+// ─────────────────────────────────────────────────────────────
 router.post("/remove-member", async (req, res) => {
-  let pool;
-
   try {
     const decoded = decodeToken(req);
+
     if (!decoded) {
-      return res.status(401).json({ success: false, message: "Unauthorized" });
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
     }
 
-    const { database: currentDb, userId: currentUserId } = decoded;
+    const currentDb = decoded.loginDatabase || decoded.database;
+    const currentUserId = decoded.userId;
+
     const { groupId, userId } = req.body;
 
-    // Resolve which DB this group belongs to
-    const databaseName = await getGroupDatabase(groupId, currentDb);
-    pool = await openCommunicationPool();
+    if (!groupId || !userId) {
+      return res.status(400).json({
+        success: false,
+        message: "groupId and userId are required",
+      });
+    }
 
-    const adminCheck = await pool
+    // Resolve group database (kept for consistency)
+    await getGroupDatabase(groupId, currentDb);
+
+    const pool = await openCommunicationPool();
+
+    //-------------------------------------------------------
+    // Verify current user is admin
+    //-------------------------------------------------------
+    const adminResult = await pool
       .request()
       .input("GroupId", sql.NVarChar(50), groupId)
       .input("UserId", sql.NVarChar(100), currentUserId).query(`
-        SELECT IsAdmin FROM MA_ChatGroupMembers
-        WHERE GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId) AND UserId = @UserId
-      `);
+        SELECT IsAdmin
+        FROM MA_ChatGroupMembers
+        WHERE GroupId = CONVERT(UNIQUEIDENTIFIER,@GroupId)
+          AND UserId = @UserId
+    `);
 
-    if (adminCheck.recordset.length === 0 || !adminCheck.recordset[0].IsAdmin) {
-      return res
-        .status(403)
-        .json({ success: false, message: "Only admin can remove members" });
+    if (
+      adminResult.recordset.length === 0 ||
+      adminResult.recordset[0].IsAdmin !== true
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "Only group admin can remove members.",
+      });
     }
 
-    if (userId && currentUserId.toLowerCase() === userId.toLowerCase()) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Admin cannot remove himself" });
+    //-------------------------------------------------------
+    // Admin cannot remove himself
+    //-------------------------------------------------------
+    if (currentUserId.toLowerCase() === userId.toLowerCase()) {
+      return res.status(400).json({
+        success: false,
+        message: "Group admin cannot remove himself.",
+      });
     }
 
+    //-------------------------------------------------------
+    // Check member exists
+    //-------------------------------------------------------
+    const member = await pool
+      .request()
+      .input("GroupId", sql.NVarChar(50), groupId)
+      .input("UserId", sql.NVarChar(100), userId).query(`
+        SELECT MemberId, IsAdmin
+        FROM MA_ChatGroupMembers
+        WHERE GroupId = CONVERT(UNIQUEIDENTIFIER,@GroupId)
+          AND UserId = @UserId
+    `);
+
+    if (member.recordset.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Member not found.",
+      });
+    }
+
+    //-------------------------------------------------------
+    // Prevent removing last admin
+    //-------------------------------------------------------
+    if (member.recordset[0].IsAdmin) {
+      const adminCount = await pool
+        .request()
+        .input("GroupId", sql.NVarChar(50), groupId).query(`
+          SELECT COUNT(*) AS TotalAdmins
+          FROM MA_ChatGroupMembers
+          WHERE GroupId = CONVERT(UNIQUEIDENTIFIER,@GroupId)
+            AND IsAdmin = 1
+        `);
+
+      if (adminCount.recordset[0].TotalAdmins <= 1) {
+        return res.status(400).json({
+          success: false,
+          message: "Cannot remove the last group admin.",
+        });
+      }
+    }
+
+    //-------------------------------------------------------
+    // Remove member
+    //-------------------------------------------------------
     await pool
       .request()
       .input("GroupId", sql.NVarChar(50), groupId)
       .input("UserId", sql.NVarChar(100), userId).query(`
-        DELETE FROM MA_ChatGroupMembers
-        WHERE GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId) AND UserId = @UserId
-      `);
+        DELETE
+        FROM MA_ChatGroupMembers
+        WHERE GroupId = CONVERT(UNIQUEIDENTIFIER,@GroupId)
+          AND UserId = @UserId
+    `);
 
-    return res.json({ success: true, message: "Member removed successfully" });
+    return res.json({
+      success: true,
+      message: "Member removed successfully.",
+    });
   } catch (err) {
-    console.error("REMOVE MEMBER ERROR:", err);
-    return res.status(500).json({ success: false, message: err.message });
-  } finally {
-    if (pool) await pool.close();
+    console.error("REMOVE MEMBER ERROR:");
+    console.error(err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+      detail: err.originalError?.message,
+      stack: err.stack,
+    });
   }
 });
 
