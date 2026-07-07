@@ -881,6 +881,9 @@ router.get("/my-groups", async (req, res) => {
 
 // ── POST /api/group/add-member ────────────────────────────────────────────────
 // ── POST /api/group/add-member ────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// POST : /api/group/add-member
+// ─────────────────────────────────────────────────────────────
 router.post("/add-member", async (req, res) => {
   try {
     const decoded = decodeToken(req);
@@ -892,16 +895,7 @@ router.post("/add-member", async (req, res) => {
       });
     }
 
-    const loginDatabase = decoded.loginDatabase || decoded.database;
-
-    const loginPropertyCode =
-      decoded.loginPropertyCode ||
-      decoded.currentPropertyCode ||
-      decoded.propertyCode;
-
-    const loginClientId =
-      decoded.loginClientId || decoded.currentClientId || decoded.clientId;
-
+    const currentDb = decoded.loginDatabase || decoded.database;
     const currentUserId = decoded.userId;
 
     const { groupId, userId } = req.body;
@@ -913,89 +907,120 @@ router.post("/add-member", async (req, res) => {
       });
     }
 
-    // Resolve actual company database of this group
-    const groupDatabase = await getGroupDatabase(groupId, loginDatabase);
+    const groupDatabase = await getGroupDatabase(groupId, currentDb);
 
     const pool = await openCommunicationPool();
 
-    // ----------------------------------------------------
+    //-------------------------------------------------------
     // Verify current user is group admin
-    // ----------------------------------------------------
-    const adminResult = await pool
+    //-------------------------------------------------------
+    const admin = await pool
       .request()
       .input("GroupId", sql.NVarChar(50), groupId)
       .input("UserId", sql.NVarChar(100), currentUserId).query(`
         SELECT IsAdmin
         FROM MA_ChatGroupMembers
-        WHERE GroupId = CONVERT(UNIQUEIDENTIFIER,@GroupId)
-          AND UserId = @UserId
-      `);
+        WHERE GroupId=CONVERT(UNIQUEIDENTIFIER,@GroupId)
+        AND UserId=@UserId
+    `);
 
-    if (
-      adminResult.recordset.length === 0 ||
-      adminResult.recordset[0].IsAdmin !== true
-    ) {
+    if (admin.recordset.length === 0 || admin.recordset[0].IsAdmin !== true) {
       return res.status(403).json({
         success: false,
-        message: "Only group admin can add members.",
+        message: "Only admin can add members.",
       });
     }
 
-    // ----------------------------------------------------
-    // Check duplicate member
-    // ----------------------------------------------------
+    //-------------------------------------------------------
+    // Already exists?
+    //-------------------------------------------------------
     const exists = await pool
       .request()
       .input("GroupId", sql.NVarChar(50), groupId)
       .input("UserId", sql.NVarChar(100), userId).query(`
-        SELECT TOP 1 MemberId
+        SELECT TOP 1 *
         FROM MA_ChatGroupMembers
-        WHERE GroupId = CONVERT(UNIQUEIDENTIFIER,@GroupId)
-          AND UserId = @UserId
-      `);
+        WHERE GroupId=CONVERT(UNIQUEIDENTIFIER,@GroupId)
+        AND UserId=@UserId
+    `);
 
-    if (exists.recordset.length > 0) {
+    if (exists.recordset.length) {
       return res.json({
         success: false,
-        message: "User is already a member of this group.",
+        message: "User already exists.",
       });
     }
 
-    // ----------------------------------------------------
+    //-------------------------------------------------------
+    // Find company details of selected user
+    //-------------------------------------------------------
+
+    const company = await pool
+      .request()
+      .input("UserId", sql.NVarChar(100), userId).query(`
+            SELECT TOP 1
+                   DatabaseName,
+                   PropertyCode,
+                   ClientId
+            FROM MA_ChatGroupMembers
+            WHERE UserId=@UserId
+              AND DatabaseName IS NOT NULL
+            ORDER BY AddedDate DESC
+      `);
+
+    let memberDatabase = groupDatabase;
+    let memberPropertyCode = null;
+    let memberClientId = null;
+
+    if (company.recordset.length) {
+      memberDatabase = company.recordset[0].DatabaseName;
+      memberPropertyCode = company.recordset[0].PropertyCode;
+      memberClientId = company.recordset[0].ClientId;
+    }
+
+    console.log("Adding Member");
+    console.log({
+      memberDatabase,
+      memberPropertyCode,
+      memberClientId,
+    });
+
+    //-------------------------------------------------------
     // Insert member
-    // ----------------------------------------------------
+    //-------------------------------------------------------
+
     await pool
       .request()
       .input("GroupId", sql.NVarChar(50), groupId)
       .input("UserId", sql.NVarChar(100), userId)
       .input("AddedBy", sql.NVarChar(100), currentUserId)
-      .input("DatabaseName", sql.NVarChar(200), groupDatabase)
-      .input("PropertyCode", sql.NVarChar(50), loginPropertyCode)
-      .input("ClientId", sql.UniqueIdentifier, loginClientId).query(`
-        INSERT INTO MA_ChatGroupMembers
-        (
-            MemberId,
-            GroupId,
-            UserId,
-            IsAdmin,
-            AddedBy,
-            AddedDate,
-            DatabaseName,
-            PropertyCode,
-            ClientId
-        )
-        VALUES
-        (
-            NEWID(),
-            CONVERT(UNIQUEIDENTIFIER,@GroupId),
-            @UserId,
-            0,
-            @AddedBy,
-            GETDATE(),
-            @DatabaseName,
-            @PropertyCode,
-            @ClientId
-        )
+      .input("DatabaseName", sql.NVarChar(100), memberDatabase)
+      .input("PropertyCode", sql.NVarChar(50), memberPropertyCode)
+      .input("ClientId", sql.UniqueIdentifier, memberClientId).query(`
+            INSERT INTO MA_ChatGroupMembers
+            (
+                MemberId,
+                GroupId,
+                UserId,
+                IsAdmin,
+                AddedBy,
+                AddedDate,
+                DatabaseName,
+                PropertyCode,
+                ClientId
+            )
+            VALUES
+            (
+                NEWID(),
+                CONVERT(UNIQUEIDENTIFIER,@GroupId),
+                @UserId,
+                0,
+                @AddedBy,
+                GETDATE(),
+                @DatabaseName,
+                @PropertyCode,
+                @ClientId
+            )
       `);
 
     return res.json({
@@ -1003,13 +1028,13 @@ router.post("/add-member", async (req, res) => {
       message: "Member added successfully.",
     });
   } catch (err) {
-    console.error("ADD MEMBER ERROR:", err);
+    console.error("ADD MEMBER ERROR");
+    console.error(err);
 
     return res.status(500).json({
       success: false,
       message: err.message,
       detail: err.originalError?.message,
-      stack: err.stack,
     });
   }
 });
