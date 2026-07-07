@@ -1089,16 +1089,17 @@ router.get("/members/:groupId", async (req, res) => {
     }
 
     const { database: currentDb, userId, isAdmin } = decoded;
-
     const { groupId } = req.params;
 
-    // Resolve which DB this group belongs to
+    // Resolve the company database for this group
     const databaseName = await getGroupDatabase(groupId, currentDb);
+
+    console.log("Group:", groupId);
+    console.log("Resolved DB:", databaseName);
+
     pool = await openCommunicationPool();
 
-    // ───────────────────────────────
-    // SECURITY CHECK
-    // ───────────────────────────────
+    // ---------------- SECURITY ----------------
     if (!isAdmin) {
       const access = await pool
         .request()
@@ -1106,8 +1107,8 @@ router.get("/members/:groupId", async (req, res) => {
         .input("UserId", sql.NVarChar(100), userId).query(`
           SELECT 1
           FROM MA_ChatGroupMembers
-          WHERE GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId)
-            AND UserId = @UserId
+          WHERE GroupId = CONVERT(UNIQUEIDENTIFIER,@GroupId)
+            AND UserId=@UserId
         `);
 
       if (access.recordset.length === 0) {
@@ -1118,37 +1119,45 @@ router.get("/members/:groupId", async (req, res) => {
       }
     }
 
-    // ───────────────────────────────
-    // LOAD MEMBERS WITH REAL NAMES
-    // ───────────────────────────────
-    const result = await pool
-      .request()
-      .input("GroupId", sql.NVarChar(50), groupId).query(`
+    // ---------------- MEMBERS ----------------
+    const query = `
         SELECT
             gm.MemberId,
-             gm.UserId,
+            gm.UserId,
+            ISNULL(emp.utnm, gm.UserId) AS UserName,
             gm.IsAdmin,
             gm.AddedDate,
             gm.DatabaseName,
-          s.uti AS UserName
+            gm.PropertyCode
         FROM MA_ChatGroupMembers gm
 
-        LEFT JOIN rh_secut s
-ON CONVERT(VARCHAR(50), s.utunqid) = gm.UserId
+        LEFT JOIN [${databaseName}].dbo.rh_secut emp
+            ON (
+                    CONVERT(VARCHAR(50), emp.utunqid) = gm.UserId
+                 OR emp.uti = gm.UserId
+               )
 
-        WHERE gm.GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId)
+        WHERE gm.GroupId = CONVERT(UNIQUEIDENTIFIER,@GroupId)
 
         ORDER BY
             gm.IsAdmin DESC,
-            s.utnm
-      `);
+            UserName
+    `;
+
+    console.log(query);
+
+    const result = await pool
+      .request()
+      .input("GroupId", sql.NVarChar(50), groupId)
+      .query(query);
 
     return res.json({
       success: true,
       data: result.recordset,
     });
   } catch (err) {
-    console.error("GROUP MEMBERS ERROR:", err);
+    console.error("GROUP MEMBERS ERROR");
+    console.error(err);
 
     return res.status(500).json({
       success: false,
@@ -1156,9 +1165,6 @@ ON CONVERT(VARCHAR(50), s.utunqid) = gm.UserId
       detail: err.originalError?.message,
       stack: err.stack,
     });
-  } finally {
-    // Don't close shared Communication pool - it's reusable
-    // pool is only closed on application shutdown in communicationPool.js
   }
 });
 
