@@ -910,7 +910,7 @@ router.post("/add-member", async (req, res) => {
 
     // Resolve which DB this group belongs to
     const databaseName = await getGroupDatabase(groupId, currentDb);
-    pool = await openPool(databaseName);
+    pool = await openCommunicationPool();
 
     const adminCheck = await pool
       .request()
@@ -974,7 +974,7 @@ router.post("/remove-member", async (req, res) => {
 
     // Resolve which DB this group belongs to
     const databaseName = await getGroupDatabase(groupId, currentDb);
-    pool = await openPool(databaseName);
+    pool = await openCommunicationPool();
 
     const adminCheck = await pool
       .request()
@@ -1039,7 +1039,7 @@ router.post("/delete-group", async (req, res) => {
         ? bodyDatabaseName.trim()
         : await getGroupDatabase(groupId, currentDb);
 
-    pool = await openPool(databaseName);
+    pool = await openCommunicationPool();
 
     const adminCheck = await pool
       .request()
@@ -1110,7 +1110,7 @@ router.get("/members/:groupId", async (req, res) => {
 
     // Resolve which DB this group belongs to
     const databaseName = await getGroupDatabase(groupId, currentDb);
-    pool = await openPool(databaseName);
+    pool = await openCommunicationPool();
 
     // ───────────────────────────────
     // SECURITY CHECK
@@ -1206,7 +1206,7 @@ router.post("/update-task-status", async (req, res) => {
       databaseName = await getGroupDatabase(groupId, currentDb);
     }
 
-    pool = await openPool(databaseName);
+    pool = await openCommunicationPool();
 
     await pool
       .request()
@@ -1593,7 +1593,7 @@ router.get("/messages/:groupId", async (req, res) => {
 
     // Resolve which DB this group belongs to
     const databaseName = await getGroupDatabase(groupId, currentDb);
-    pool = await openPool(databaseName);
+    pool = await openCommunicationPool();
 
     // Verify membership
     const memberCheck = await pool
