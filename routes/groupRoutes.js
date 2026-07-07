@@ -265,7 +265,9 @@ router.post("/create", async (req, res) => {
     const currentDb = decoded.loginDatabase || decoded.database;
 
     const currentPropertyCode =
-      decoded.loginPropertyCode || decoded.propertyCode;
+      decoded.currentPropertyCode ||
+      decoded.loginPropertyCode ||
+      decoded.propertyCode;
 
     const currentClientId = decoded.loginClientId || decoded.clientId;
 
