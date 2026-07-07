@@ -47,8 +47,10 @@ const asUid = (val) => ({ type: sql.NVarChar(50), value: val });
 // operation writes to the EMPLOYEE's company DB, not the logged-in user's DB.
 async function getGroupDatabase(groupId, fallbackDb) {
   let pool;
+  let usingCommunicationPool = false;
+
   try {
-    // MA_ChatGroups is stored in the user's current DB (acts as a routing table)
+    // Try the current working DB first, then fall back to the shared communication DB.
     pool = await openPool(fallbackDb);
     const result = await pool
       .request()
@@ -58,11 +60,32 @@ async function getGroupDatabase(groupId, fallbackDb) {
         WHERE GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId)
       `);
     const dbName = result.recordset[0]?.DatabaseName;
-    return dbName && dbName.trim() !== "" ? dbName.trim() : fallbackDb;
+    if (dbName && dbName.trim() !== "") {
+      return dbName.trim();
+    }
+
+    if (pool) {
+      await pool.close();
+      pool = null;
+    }
+
+    pool = await openCommunicationPool();
+    usingCommunicationPool = true;
+    const commResult = await pool
+      .request()
+      .input("GroupId", sql.NVarChar(50), groupId).query(`
+        SELECT DatabaseName
+        FROM MA_ChatGroups
+        WHERE GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId)
+      `);
+    const commDbName = commResult.recordset[0]?.DatabaseName;
+    return commDbName && commDbName.trim() !== ""
+      ? commDbName.trim()
+      : fallbackDb;
   } catch {
     return fallbackDb;
   } finally {
-    if (pool) await pool.close();
+    if (pool && !usingCommunicationPool) await pool.close();
   }
 }
 
