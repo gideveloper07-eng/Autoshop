@@ -50,7 +50,7 @@ async function getGroupDatabase(groupId, fallbackDb) {
   let usingCommunicationPool = false;
 
   try {
-    // Try the current working DB first, then fall back to the shared communication DB.
+    // Try the current working DB first.
     pool = await openPool(fallbackDb);
     const result = await pool
       .request()
@@ -63,12 +63,18 @@ async function getGroupDatabase(groupId, fallbackDb) {
     if (dbName && dbName.trim() !== "") {
       return dbName.trim();
     }
-
+  } catch (err) {
+    // If the current DB doesn't contain MA_ChatGroups or the query fails,
+    // fall back to the shared communication DB.
+    console.error("getGroupDatabase initial lookup failed:", err.message);
+  } finally {
     if (pool) {
       await pool.close();
       pool = null;
     }
+  }
 
+  try {
     pool = await openCommunicationPool();
     usingCommunicationPool = true;
     const commResult = await pool
