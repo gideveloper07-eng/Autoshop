@@ -1803,6 +1803,8 @@ router.get("/messages/:groupId", async (req, res) => {
     m.TaskId,
     m.TaskDatabase,
     m.MessageTime,
+    (select top 1 PropertyCode from MA_ChatGroupMembers where groupid=m.GroupId) as pcode,
+    (select top 1 DatabaseName from MA_ChatGroupMembers where groupid=m.GroupId) as dbname,
 
     d.DocumentNo,
     d.DocumentType,
@@ -1819,12 +1821,9 @@ FROM MA_GroupChatMessages m
 
 LEFT JOIN MA_ChatDocuments d
 ON d.DocumentId = m.DocumentId
-
 LEFT JOIN MA_ChatTasks t
 ON t.TaskId = m.TaskId
-
 WHERE m.GroupId = CONVERT(uniqueidentifier,@GroupId)
-
 ORDER BY m.MessageTime ASC
       `);
     return res.json({ success: true, data: result.recordset });
