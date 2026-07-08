@@ -811,6 +811,7 @@ router.get("/my-groups", async (req, res) => {
             g.CreatedDate,
             g.LastMessageTime,
             g.DatabaseName,
+            g.PropertyCode,
             (
                 SELECT COUNT(*)
                 FROM MA_ChatGroupMembers gm2
@@ -838,6 +839,7 @@ router.get("/my-groups", async (req, res) => {
               g.CreatedDate,
               g.LastMessageTime,
               g.DatabaseName,
+              g.PropertyCode,
 
               (
                   SELECT COUNT(*)
