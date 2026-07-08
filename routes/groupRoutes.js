@@ -1616,7 +1616,7 @@ router.post("/create-task", async (req, res) => {
       assignedToDatabase, // the DB where the assigned user belongs
     } = req.body;
 
-    // The group's DB (for membership check and inserting the chat message)
+    // The group's DB (for context / task insertion fallback)
     const groupDb = await getGroupDatabase(groupId, currentDb);
 
     // The task DB = assigned user's company DB if provided, otherwise group's DB
@@ -1625,8 +1625,9 @@ router.post("/create-task", async (req, res) => {
         ? assignedToDatabase.trim()
         : groupDb;
 
-    // Verify membership using the group's DB
-    pool = await openPool(groupDb);
+    // Verify membership using the COMMUNICATION DB
+    // (MA_ChatGroupMembers is always stored there)
+    pool = await openCommunicationPool();
     const memberCheck = await pool
       .request()
       .input("GroupId", sql.NVarChar(50), groupId)
@@ -1644,13 +1645,11 @@ router.post("/create-task", async (req, res) => {
       });
     }
 
-    // Close group pool before opening task pool (may be same or different DB)
-    await pool.close();
-    pool = null;
+    // Don't close the communication pool yet — reuse it for the chat message insert below
 
     const taskId = crypto.randomUUID().toUpperCase();
 
-    // Open the task DB (assigned user's company DB)
+    // Insert the task into the task DB (assigned user's company DB)
     const taskPool = await openPool(taskDb);
     try {
       await taskPool
@@ -1697,8 +1696,8 @@ router.post("/create-task", async (req, res) => {
       await taskPool.close();
     }
 
-    // Insert the task card message into the GROUP chat (group's DB)
-    pool = await openPool(groupDb);
+    // Insert the task card message into the GROUP chat via Communication DB
+    // (MA_GroupChatMessages is always stored in the communication DB)
     await pool
       .request()
       .input("GroupId", sql.NVarChar(50), groupId)
@@ -1745,7 +1744,8 @@ router.post("/create-task", async (req, res) => {
       message: err.message,
     });
   } finally {
-    if (pool) await pool.close();
+    // pool is the shared communication pool — do NOT close it
+    pool = null;
   }
 });
 
@@ -1906,13 +1906,14 @@ router.get("/tasks", async (req, res) => {
             t.TaskDescription,
             t.AssignedBy,
             t.AssignedTo,
-            ISNULL(s.uti, t.AssignedTo) AS AssignedToName,
+            ISNULL(s.utnm, t.AssignedTo) AS AssignedToName,
             t.Priority,
             t.Status,
             t.StartDate,
             t.DueDate,
             t.CreatedDate,
-            '${dbName.replace(/'/g, "''")}' AS TaskDatabase
+            '${dbName.replace(/'/g, "''")}' AS TaskDatabase,
+            CASE WHEN t.GroupId IS NOT NULL THEN 'Group' ELSE 'Chat' END AS TaskSource
           FROM MA_ChatTasks t
           LEFT JOIN rh_secut s
             ON CONVERT(VARCHAR(50), s.utunqid) = t.AssignedTo

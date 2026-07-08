@@ -1878,7 +1878,7 @@ VALUES
     // pool is only closed on application shutdown in communicationPool.js
   }
 });
-// ── GET /api/chat/individual-tasks ────────────────────────────────────────────
+// ── GET /api/chat/individual-tasks ───────────────────────────────────────────
 // Returns individual tasks (GroupId=NULL) for the logged-in user
 // from the communication DB — filtered by current company's database name.
 router.get("/get-tasks", async (req, res) => {
@@ -1886,9 +1886,6 @@ router.get("/get-tasks", async (req, res) => {
 
   try {
     const decoded = decodeToken(req);
-    console.log("========== DECODED TOKEN ==========");
-    console.log(decoded);
-    console.log("===================================");
     if (!decoded) {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
@@ -1896,23 +1893,9 @@ router.get("/get-tasks", async (req, res) => {
     const userId = decoded.userId;
     const isAdmin = decoded.isAdmin || false;
     const clientId = decoded.loginClientId || decoded.clientId || null;
-
     const currentDatabase =
       decoded.currentDatabase || decoded.loginDatabase || decoded.database;
-    const currentPropertyCode =
-      decoded.currentPropertyCode ||
-      decoded.loginPropertyCode ||
-      decoded.propertyCode;
 
-    console.log("========== GET TASKS ==========");
-    console.log("userId          :", userId);
-    console.log("isAdmin         :", isAdmin);
-    console.log("currentDatabase :", currentDatabase);
-    console.log("currentProperty :", currentPropertyCode);
-    console.log("clientId        :", clientId);
-    console.log("===============================");
-
-    // Fresh dedicated pool to AUTOSHOP_COMMUNICATION
     pool = await new sql.ConnectionPool({
       user: process.env.DB_USER,
       password: process.env.DB_PASSWORD,
@@ -1922,76 +1905,125 @@ router.get("/get-tasks", async (req, res) => {
       options: { encrypt: false, trustServerCertificate: true },
     }).connect();
 
-    // First, log total row count in the table for debug
-    const countResult = await pool
-      .request()
-      .query(`SELECT COUNT(*) AS Total FROM MA_ChatTasks`);
-    console.log("MA_ChatTasks total rows:", countResult.recordset[0].Total);
-
     let result;
-    console.log("yeh h curretn database:", currentDatabase);
     if (isAdmin) {
-      // Admin sees ALL tasks (optionally filtered by ClientId if set)
       result = await pool
         .request()
-        .input("ClientId", sql.UniqueIdentifier, clientId || null)
         .input("currentDB", sql.NVarChar(50), currentDatabase || null).query(`
           SELECT
-            CAST(TaskId  AS NVARCHAR(50))  AS TaskId,
-            CAST(ChallanId AS NVARCHAR(100)) AS ChallanId,
-            CAST(GroupId AS NVARCHAR(50))  AS GroupId,
-            TaskTitle,
-            TaskDescription,
-            AssignedBy,
-            AssignedTo,
-            AssignedTo AS AssignedToName,
-            Priority,
-            Status,
-            StartDate,
-            DueDate,
-            CreatedDate,
-            DatabaseName,
-            PropertyCode
-          FROM MA_ChatTasks
-          WHERE  DatabaseName=@currentDB
-          ORDER BY CreatedDate DESC;
+            CAST(t.TaskId     AS NVARCHAR(50))  AS TaskId,
+            CAST(t.ChallanId  AS NVARCHAR(100)) AS ChallanId,
+            CAST(t.GroupId    AS NVARCHAR(50))  AS GroupId,
+            t.TaskTitle,
+            t.TaskDescription,
+            t.AssignedBy,
+            t.AssignedTo,
+            t.AssignedTo AS AssignedToName,
+            t.Priority,
+            t.Status,
+            t.StartDate,
+            t.DueDate,
+            t.CreatedDate,
+            t.DatabaseName,
+            t.PropertyCode,
+            CASE
+              WHEN t.GroupId   IS NOT NULL THEN 'Group'
+              WHEN t.ChallanId IS NOT NULL THEN 'Challan'
+              ELSE 'Individual'
+            END AS TaskSource
+          FROM MA_ChatTasks t
+          WHERE t.DatabaseName = @currentDB
+          ORDER BY t.CreatedDate DESC;
         `);
-      console.log("Decoded User:", userId);
-      console.log("Rows returned:", result.recordset.length);
-      console.log(result.recordset);
     } else {
-      // Regular user — see tasks assigned TO them OR created BY them
-      result = await pool.request().input("UserId", sql.NVarChar(100), userId)
-        .query(`
+      result = await pool.request()
+        .input("UserId", sql.NVarChar(100), userId).query(`
           SELECT
-            CAST(TaskId  AS NVARCHAR(50))  AS TaskId,
-            CAST(ChallanId AS NVARCHAR(100)) AS ChallanId,
-            CAST(GroupId AS NVARCHAR(50))  AS GroupId,
-            TaskTitle,
-            TaskDescription,
-            AssignedBy,
-            AssignedTo,
-            AssignedTo AS AssignedToName,
-            Priority,
-            Status,
-            StartDate,
-            DueDate,
-            CreatedDate,
-            DatabaseName,
-            PropertyCode
-          FROM MA_ChatTasks
+            CAST(t.TaskId     AS NVARCHAR(50))  AS TaskId,
+            CAST(t.ChallanId  AS NVARCHAR(100)) AS ChallanId,
+            CAST(t.GroupId    AS NVARCHAR(50))  AS GroupId,
+            t.TaskTitle,
+            t.TaskDescription,
+            t.AssignedBy,
+            t.AssignedTo,
+            t.AssignedTo AS AssignedToName,
+            t.Priority,
+            t.Status,
+            t.StartDate,
+            t.DueDate,
+            t.CreatedDate,
+            t.DatabaseName,
+            t.PropertyCode,
+            CASE
+              WHEN t.GroupId   IS NOT NULL THEN 'Group'
+              WHEN t.ChallanId IS NOT NULL THEN 'Challan'
+              ELSE 'Individual'
+            END AS TaskSource
+          FROM MA_ChatTasks t
           WHERE
-            LOWER(ISNULL(AssignedTo,'')) = LOWER(@UserId)
-            OR LOWER(ISNULL(AssignedBy,'')) = LOWER(@UserId)
-          ORDER BY CreatedDate DESC;
+            LOWER(ISNULL(t.AssignedTo,'')) = LOWER(@UserId)
+            OR LOWER(ISNULL(t.AssignedBy,'')) = LOWER(@UserId)
+          ORDER BY t.CreatedDate DESC;
         `);
     }
-
-    console.log("GET TASKS result count:", result.recordset.length);
 
     return res.json({ success: true, data: result.recordset });
   } catch (err) {
     console.error("GET TASKS ERROR:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  } finally {
+    if (pool) await pool.close();
+  }
+});
+
+// ── GET /api/chat/individual-tasks ────────────────────────────────────────────
+// Returns ONLY direct-chat tasks (GroupId=NULL, ChallanId=NULL)
+router.get("/individual-tasks", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const userId = decoded.userId;
+
+    pool = await openCommunicationPool();
+
+    const result = await pool.request()
+      .input("UserId", sql.NVarChar(100), userId).query(`
+        SELECT
+          CAST(TaskId AS NVARCHAR(50)) AS TaskId,
+          NULL                         AS ChallanId,
+          NULL                         AS GroupId,
+          TaskTitle,
+          TaskDescription,
+          AssignedBy,
+          AssignedTo,
+          AssignedTo AS AssignedToName,
+          Priority,
+          Status,
+          StartDate,
+          DueDate,
+          CreatedDate,
+          DatabaseName,
+          PropertyCode,
+          'Individual' AS TaskSource
+        FROM MA_ChatTasks
+        WHERE
+          GroupId   IS NULL
+          AND ChallanId IS NULL
+          AND (
+            LOWER(ISNULL(AssignedTo,'')) = LOWER(@UserId)
+            OR LOWER(ISNULL(AssignedBy,'')) = LOWER(@UserId)
+          )
+        ORDER BY CreatedDate DESC;
+      `);
+
+    return res.json({ success: true, data: result.recordset });
+  } catch (err) {
+    console.error("GET INDIVIDUAL TASKS ERROR:", err);
     return res.status(500).json({ success: false, message: err.message });
   } finally {
     if (pool) await pool.close();
@@ -2350,4 +2382,40 @@ ORDER BY MessageTime ASC
     // pool is only closed on application shutdown in communicationPool.js
   }
 });
+
+// ── POST /api/chat/update-task-status ────────────────────────────────────────
+// Updates a task's status in MA_ChatTasks (communication DB).
+// Used by the task dashboard for both challan tasks and individual tasks.
+router.post("/update-task-status", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const { taskId, status } = req.body;
+    if (!taskId || !status) {
+      return res.status(400).json({ success: false, message: "taskId and status are required" });
+    }
+
+    pool = await openCommunicationPool();
+
+    await pool.request()
+      .input("TaskId", sql.NVarChar(50), taskId)
+      .input("Status", sql.NVarChar(50), status).query(`
+        UPDATE MA_ChatTasks
+        SET Status = @Status
+        WHERE TaskId = CONVERT(UNIQUEIDENTIFIER, @TaskId)
+      `);
+
+    return res.json({ success: true, message: "Task status updated" });
+  } catch (err) {
+    console.error("UPDATE TASK STATUS ERROR:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  } finally {
+    if (pool) await pool.close();
+  }
+});
+
 module.exports = router;
