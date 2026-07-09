@@ -436,7 +436,7 @@ async function handleChatSend(req, res) {
         .input(
           "databaseName",
           sql.NVarChar(100),
-          receiver.database || finalReceiverDatabase,
+          finalReceiverDatabase || receiver.databaseName,
         )
         .input(
           "propertyCode",
