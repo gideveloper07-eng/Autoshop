@@ -172,6 +172,7 @@ router.get("/my-chats", async (req, res) => {
 SELECT
     c.ChallanId,
     MAX(c.MessageTime) AS LastMessageTime,
+    
     MAX(c.DatabaseName) AS DatabaseName,
     MAX(c.PropertyCode) AS PropertyCode,
     MAX(c.ClientId) AS ClientId
