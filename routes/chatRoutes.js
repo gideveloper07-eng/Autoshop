@@ -380,11 +380,12 @@ async function handleChatSend(req, res) {
           const employeeResult = await employeePool
             .request()
             .input("userId", sql.NVarChar(100), receiverGuid).query(`
-                SELECT TOP 1
-                  utunqid
-                FROM rh_secut
-                WHERE uti = @userId
-              `);
+  SELECT TOP 1
+    utunqid
+  FROM rh_secut
+  WHERE UPPER(LTRIM(RTRIM(uti)))
+        = UPPER(LTRIM(RTRIM(@userId)))
+`);
 
           if (employeeResult.recordset.length === 0) {
             return res.status(404).json({
@@ -401,7 +402,17 @@ async function handleChatSend(req, res) {
         }
       }
 
-      receiver = await findUserByGuid(decoded, receiverGuid);
+      //receiver = await findUserByGuid(decoded, receiverGuid);
+      receiver = await findUserByGuid(
+        {
+          ...decoded,
+          currentDatabase: finalReceiverDatabase,
+          database: finalReceiverDatabase,
+          propertyCode: receiverPropertyCode,
+          loginPropertyCode: receiverPropertyCode,
+        },
+        receiverGuid,
+      );
 
       if (!receiver) {
         return res.status(404).json({
@@ -430,7 +441,7 @@ async function handleChatSend(req, res) {
         .input(
           "propertyCode",
           sql.NVarChar(50),
-          receiver.propertyCode || receiverPropertyCode,
+          receiverPropertyCode || receiver.propertyCode,
         )
         .input("clientId", sql.UniqueIdentifier, receiver.clientId || null)
         .input("addedBy", sql.NVarChar(100), userId).query(`
@@ -494,7 +505,7 @@ async function handleChatSend(req, res) {
       .input(
         "receiverPropertyCode",
         sql.NVarChar(50),
-        receiver?.propertyCode || receiverPropertyCode || null,
+        receiverPropertyCode || receiver?.propertyCode || null,
       )
       .input(
         "clientId",
@@ -628,7 +639,8 @@ async function handleChatSend(req, res) {
         senderPropertyCode,
         receiverUserId: receiver?.userId || null,
         receiverName: receiver?.userName || null,
-        receiverPropertyCode: receiver?.propertyCode || null,
+        receiverPropertyCode:
+          receiverPropertyCode || receiver?.propertyCode || null,
         messageText: messageText || "",
         messageType,
         documentId,
