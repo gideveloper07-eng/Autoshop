@@ -162,7 +162,7 @@ class _ChallanScreenState extends State<ChallanScreen>
         flex: 3,
       ),
       _ColDef(key: 'sp_468', label: l10n.challanNo, flex: 3),
-      _ColDef(key: 'sp_463', label: l10n.customerName, flex: 5),
+      _ColDef(key: 'sp_469', label: l10n.customerName, flex: 5),
     ];
   }
 

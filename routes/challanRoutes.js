@@ -177,6 +177,28 @@ router.get("/retail-incentive", async (req, res) => {
 
     console.log("TOTAL CHALLANS:", challans.length);
 
+    // Enrich challans with customer name from rh_sp_46 → rh_m1 if sp_469 is missing
+    if (challans.length > 0) {
+      const ids = challans.map((c) => `'${String(c.sp_462).replace(/'/g, "''")}'`).join(",");
+      try {
+        const nameResult = await pool.request().query(`
+          SELECT sp_462, (SELECT TOP 1 m1_7 FROM rh_m1 WHERE m1_2 = s.sp_469) AS customerName
+          FROM rh_sp_46 s
+          WHERE sp_462 IN (${ids})
+        `);
+        const nameMap = {};
+        for (const row of nameResult.recordset) {
+          nameMap[String(row.sp_462).toUpperCase()] = row.customerName || '';
+        }
+        challans = challans.map((c) => ({
+          ...c,
+          sp_469: c.sp_469 || nameMap[String(c.sp_462).toUpperCase()] || '',
+        }));
+      } catch (nameErr) {
+        console.error("⚠️ Could not enrich customer names:", nameErr.message);
+      }
+    }
+
     // Admin sees everything
     if (!isAdmin) {
       const memberResult = await pool
