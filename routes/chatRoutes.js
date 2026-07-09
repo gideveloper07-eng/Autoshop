@@ -653,7 +653,7 @@ WHERE ChallanId=@challanId
   AND IsActive=1
 `);
 
-    if (access.recordset.length === 0) {
+    if (!decoded.isAdmin && access.recordset.length === 0) {
       return res.status(403).json({
         success: false,
         message: "Access denied.",
@@ -1936,8 +1936,8 @@ router.get("/get-tasks", async (req, res) => {
           ORDER BY t.CreatedDate DESC;
         `);
     } else {
-      result = await pool.request()
-        .input("UserId", sql.NVarChar(100), userId).query(`
+      result = await pool.request().input("UserId", sql.NVarChar(100), userId)
+        .query(`
           SELECT
             CAST(t.TaskId     AS NVARCHAR(50))  AS TaskId,
             CAST(t.ChallanId  AS NVARCHAR(100)) AS ChallanId,
@@ -1991,7 +1991,8 @@ router.get("/individual-tasks", async (req, res) => {
 
     pool = await openCommunicationPool();
 
-    const result = await pool.request()
+    const result = await pool
+      .request()
       .input("UserId", sql.NVarChar(100), userId).query(`
         SELECT
           CAST(TaskId AS NVARCHAR(50)) AS TaskId,
@@ -2396,12 +2397,15 @@ router.post("/update-task-status", async (req, res) => {
 
     const { taskId, status } = req.body;
     if (!taskId || !status) {
-      return res.status(400).json({ success: false, message: "taskId and status are required" });
+      return res
+        .status(400)
+        .json({ success: false, message: "taskId and status are required" });
     }
 
     pool = await openCommunicationPool();
 
-    await pool.request()
+    await pool
+      .request()
       .input("TaskId", sql.NVarChar(50), taskId)
       .input("Status", sql.NVarChar(50), status).query(`
         UPDATE MA_ChatTasks
