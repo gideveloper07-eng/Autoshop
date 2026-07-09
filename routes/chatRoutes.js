@@ -280,6 +280,7 @@ async function handleChatSend(req, res) {
     // ------------------------------------------------
     // Validation
     // ------------------------------------------------
+    print("challan id ", challanId);
     if (!challanId) {
       return res.status(400).json({
         success: false,
