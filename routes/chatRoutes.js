@@ -223,35 +223,23 @@ ORDER BY LastMessageTime DESC
   }
 });
 // ── POST /api/chat/send ──────────────────────────────────────────────────────
-router.post("/send", async (req, res) => {
+// ── POST /api/chat/send-message ── (alias — same logic, new path) ────────────
+// Both paths handled by a shared handler so existing integrations keep working
+async function handleChatSend(req, res) {
   let pool;
 
   try {
     const decoded = decodeToken(req);
-    console.log("Decoded Token:", decoded);
     if (!decoded) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized",
-      });
+      return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
-    // Permanent sender identity (never changes after login)
-    const senderDatabase = decoded.loginDatabase || decoded.database;
-
-    const senderPropertyCode =
-      decoded.loginPropertyCode || decoded.propertyCode;
-
-    const senderClientId = decoded.loginClientId || decoded.clientId;
-
-    // Current working dealership
-    const currentDatabase = decoded.currentDatabase || decoded.database;
-
-    const currentPropertyCode =
-      decoded.currentPropertyCode || decoded.propertyCode;
-
-    const currentClientId = decoded.currentClientId || decoded.clientId;
-
+    const senderDatabase     = decoded.loginDatabase    || decoded.database;
+    const senderPropertyCode = decoded.loginPropertyCode || decoded.propertyCode;
+    const senderClientId     = decoded.loginClientId    || decoded.clientId;
+    const currentDatabase    = decoded.currentDatabase  || decoded.database;
+    const currentPropertyCode = decoded.currentPropertyCode || decoded.propertyCode;
+    const currentClientId    = decoded.currentClientId  || decoded.clientId;
     const userId = decoded.userId;
     const isAdmin = decoded.isAdmin;
 
@@ -262,17 +250,13 @@ router.post("/send", async (req, res) => {
       messageText = "",
       messageType = "TEXT",
       documentId = null,
-
       receiverUserId,
       receiverName,
       receiverPropertyCode,
     } = req.body;
-    console.log(req.body);
+
     if (!challanId) {
-      return res.status(400).json({
-        success: false,
-        message: "ChallanId is required",
-      });
+      return res.status(400).json({ success: false, message: "ChallanId is required" });
     }
 
     pool = await openCommunicationPool();
@@ -280,169 +264,78 @@ router.post("/send", async (req, res) => {
     //----------------------------------------------------
     // Ensure Sender Member
     //----------------------------------------------------
-
-    await pool
-      .request()
-      .input("challanId", sql.NVarChar(100), challanId)
-      .input("userId", sql.NVarChar(100), userId)
-      .input("userName", sql.NVarChar(200), senderName || userId)
-      .input("propertyCode", sql.NVarChar(20), senderPropertyCode)
-
+    await pool.request()
+      .input("challanId",    sql.NVarChar(100), challanId)
+      .input("userId",       sql.NVarChar(100), userId)
+      .input("userName",     sql.NVarChar(200), senderName || userId)
+      .input("propertyCode", sql.NVarChar(20),  senderPropertyCode)
       .input("databaseName", sql.NVarChar(100), senderDatabase)
-
-      .input("clientId", sql.UniqueIdentifier, senderClientId || null).query(`
-IF NOT EXISTS
-(
-    SELECT 1
-    FROM MA_ChallanChatMembers
-    WHERE ChallanId=@challanId
-      AND UserId=@userId
-      AND PropertyCode=@propertyCode
+      .input("clientId",     sql.UniqueIdentifier, senderClientId || null).query(`
+IF NOT EXISTS (
+    SELECT 1 FROM MA_ChallanChatMembers
+    WHERE ChallanId=@challanId AND UserId=@userId AND PropertyCode=@propertyCode
 )
 BEGIN
-
-INSERT INTO MA_ChallanChatMembers
-(
-    MemberId,
-    ChallanId,
-    UserId,
-    UserName,
-    AddedBy,
-    AddedOn,
-    IsActive,
-    DatabaseName,
-    PropertyCode,
-    ClientId
-)
-VALUES
-(
-    NEWID(),
-    @challanId,
-    @userId,
-    @userName,
-    @userId,
-    GETDATE(),
-    1,
-    @databaseName,
-    @propertyCode,
-    @clientId
-)
-
+  INSERT INTO MA_ChallanChatMembers
+    (MemberId,ChallanId,UserId,UserName,AddedBy,AddedOn,IsActive,DatabaseName,PropertyCode,ClientId)
+  VALUES
+    (NEWID(),@challanId,@userId,@userName,@userId,GETDATE(),1,@databaseName,@propertyCode,@clientId)
 END
 `);
 
     //----------------------------------------------------
-    // Ensure Receiver Member
+    // Resolve receiver GUID
     //----------------------------------------------------
     let finalReceiverPropertyCode = receiverPropertyCode;
 
     if (req.body.receiverDatabase) {
-      const company = await pool
-        .request()
+      const company = await pool.request()
         .input("database", sql.NVarChar(100), req.body.receiverDatabase).query(`
-      SELECT propertycode
-      FROM Cmpy_AutoShop.dbo.MA_ClientMaster
-      WHERE propertydb = @database
-    `);
-
+          SELECT propertycode FROM Cmpy_AutoShop.dbo.MA_ClientMaster WHERE propertydb=@database
+        `);
       finalReceiverPropertyCode = company.recordset[0]?.propertycode || null;
     }
 
     let receiverGuid = receiverUserId;
-    console.log("hello receiverGuid: " + receiverGuid);
-    // Is it already a GUID?
-    const guidRegex =
-      /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+    const guidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
-    if (!guidRegex.test(receiverGuid)) {
-      // receiverUserId contains UserId like ACHOUHAN
-      const employeePool = await openPool(
-        req.body.receiverDatabase ||
-          decoded.currentDatabase ||
-          decoded.loginDatabase,
-      );
-
-      const result = await employeePool
-        .request()
-        .input("userId", sql.NVarChar(50), receiverGuid).query(`
-        SELECT utunqid
-        FROM rh_secut
-        WHERE uti = @userId
-    `);
-
-      await employeePool.close();
-
-      if (result.recordset.length === 0) {
-        return res.status(404).json({
-          success: false,
-          message: "Receiver not found.",
-        });
+    if (receiverGuid && !guidRegex.test(receiverGuid)) {
+      const empPool = await openPool(req.body.receiverDatabase || currentDatabase || senderDatabase);
+      const r = await empPool.request()
+        .input("userId", sql.NVarChar(50), receiverGuid).query(`SELECT utunqid FROM rh_secut WHERE uti=@userId`);
+      await empPool.close();
+      if (r.recordset.length === 0) {
+        return res.status(404).json({ success: false, message: "Receiver not found." });
       }
-
-      receiverGuid = result.recordset[0].utunqid;
+      receiverGuid = r.recordset[0].utunqid;
     }
-    console.log("hello again  receiverGuid: " + receiverGuid);
-    // Existing code remains unchanged
+
     const receiver = await findUserByGuid(decoded, receiverGuid);
-
     if (!receiver) {
-      return res.status(404).json({
-        success: false,
-        message: "Receiver not found.",
-      });
+      return res.status(404).json({ success: false, message: "Receiver not found." });
     }
 
+    //----------------------------------------------------
+    // Ensure Receiver Member
+    //----------------------------------------------------
     if (receiverUserId) {
-      await pool
-        .request()
-        .input("challanId", sql.NVarChar(100), challanId)
-        .input("receiverId", sql.NVarChar(100), receiver.userId)
-        .input(
-          "receiverName",
-          sql.NVarChar(200),
-          receiver.userName || receiver.userId,
-        )
+      await pool.request()
+        .input("challanId",          sql.NVarChar(100), challanId)
+        .input("receiverId",         sql.NVarChar(100), receiver.userId)
+        .input("receiverName",       sql.NVarChar(200), receiver.userName || receiver.userId)
         .input("receiverPropertyCode", sql.NVarChar(20), receiver.propertyCode)
-        .input("databaseName", sql.NVarChar(100), receiver.database)
-        .input("clientId", sql.UniqueIdentifier, receiver.clientId || null)
-        .input("addedBy", sql.NVarChar(100), userId).query(`
-IF NOT EXISTS
-(
-    SELECT 1
-    FROM MA_ChallanChatMembers
-    WHERE ChallanId=@challanId
-      AND UserId=@receiverId
-      AND PropertyCode=@receiverPropertyCode
+        .input("databaseName",       sql.NVarChar(100), receiver.database)
+        .input("clientId",           sql.UniqueIdentifier, receiver.clientId || null)
+        .input("addedBy",            sql.NVarChar(100), userId).query(`
+IF NOT EXISTS (
+    SELECT 1 FROM MA_ChallanChatMembers
+    WHERE ChallanId=@challanId AND UserId=@receiverId AND PropertyCode=@receiverPropertyCode
 )
 BEGIN
-
-INSERT INTO MA_ChallanChatMembers
-(
-    MemberId,
-    ChallanId,
-    UserId,
-    UserName,
-    AddedBy,
-    AddedOn,
-    IsActive,
-    DatabaseName,
-    PropertyCode,
-    ClientId
-)
-VALUES
-(
-    NEWID(),
-    @challanId,
-    @receiverId,
-    @receiverName,
-    @addedBy,
-    GETDATE(),
-    1,
-    @databaseName,
-    @receiverPropertyCode,
-    @clientId
-)
-
+  INSERT INTO MA_ChallanChatMembers
+    (MemberId,ChallanId,UserId,UserName,AddedBy,AddedOn,IsActive,DatabaseName,PropertyCode,ClientId)
+  VALUES
+    (NEWID(),@challanId,@receiverId,@receiverName,@addedBy,GETDATE(),1,@databaseName,@receiverPropertyCode,@clientId)
 END
 `);
     }
@@ -450,160 +343,80 @@ END
     //----------------------------------------------------
     // Security
     //----------------------------------------------------
-
     if (!isAdmin) {
-      const access = await pool
-        .request()
-        .input("challanId", sql.NVarChar(100), challanId)
-        .input("userId", sql.NVarChar(100), userId)
-        .input("propertyCode", sql.NVarChar(20), senderPropertyCode).query(`
-SELECT 1
-FROM MA_ChallanChatMembers
-WHERE ChallanId=@challanId
-AND UserId=@userId
-AND PropertyCode=@propertyCode
-AND IsActive=1
-`);
-
+      const access = await pool.request()
+        .input("challanId",   sql.NVarChar(100), challanId)
+        .input("userId",      sql.NVarChar(100), userId)
+        .input("propertyCode",sql.NVarChar(20),  senderPropertyCode).query(`
+          SELECT 1 FROM MA_ChallanChatMembers
+          WHERE ChallanId=@challanId AND UserId=@userId AND PropertyCode=@propertyCode AND IsActive=1
+        `);
       if (access.recordset.length === 0) {
-        return res.status(403).json({
-          success: false,
-          message: "Access denied.",
-        });
+        return res.status(403).json({ success: false, message: "Access denied." });
       }
     }
 
     //----------------------------------------------------
     // Insert Message
     //----------------------------------------------------
-
-    await pool
-      .request()
-      .input("challanId", sql.NVarChar(100), challanId)
-      .input("senderUserId", sql.NVarChar(100), userId)
-      .input("senderName", sql.NVarChar(200), senderName || userId)
-      .input("messageText", sql.NVarChar(sql.MAX), messageText)
-      .input("messageType", sql.VarChar(20), messageType)
-      .input("documentId", sql.UniqueIdentifier, documentId)
-      .input("databaseName", sql.NVarChar(100), senderDatabase)
-
-      .input("propertyCode", sql.NVarChar(20), senderPropertyCode)
-
+    await pool.request()
+      .input("challanId",          sql.NVarChar(100), challanId)
+      .input("senderUserId",       sql.NVarChar(100), userId)
+      .input("senderName",         sql.NVarChar(200), senderName || userId)
+      .input("messageText",        sql.NVarChar(sql.MAX), messageText)
+      .input("messageType",        sql.VarChar(20), messageType)
+      .input("documentId",         sql.UniqueIdentifier, documentId)
+      .input("databaseName",       sql.NVarChar(100), senderDatabase)
+      .input("propertyCode",       sql.NVarChar(20), senderPropertyCode)
       .input("senderPropertyCode", sql.NVarChar(20), senderPropertyCode)
-
       .input("receiverPropertyCode", sql.NVarChar(20), receiver.propertyCode)
-
-      .input("clientId", sql.UniqueIdentifier, receiver.clientId || null)
-      .input("receiverId", sql.NVarChar(100), receiver.userId).query(`
+      .input("clientId",           sql.UniqueIdentifier, receiver.clientId || null)
+      .input("receiverId",         sql.NVarChar(100), receiver.userId).query(`
 INSERT INTO MA_ChallanChat
-(
-    ChatId,
-    ChallanId,
-    SenderUserId,
-    SenderName,
-    MessageText,
-    MessageTime,
-    IsRead,
-    MessageType,
-    DocumentId,
-    DatabaseName,
-    ReceiverId,
-    PropertyCode,
-    SenderPropertyCode,
-    ReceiverPropertyCode,
-    ClientId
-)
+  (ChatId,ChallanId,SenderUserId,SenderName,MessageText,MessageTime,IsRead,
+   MessageType,DocumentId,DatabaseName,ReceiverId,PropertyCode,
+   SenderPropertyCode,ReceiverPropertyCode,ClientId)
 VALUES
-(
-    NEWID(),
-    @challanId,
-    @senderUserId,
-    @senderName,
-    @messageText,
-    GETDATE(),
-    0,
-    @messageType,
-    @documentId,
-    @databaseName,
-    @receiverId,
-    @propertyCode,
-    @senderPropertyCode,
-    @receiverPropertyCode,
-    @clientId
-)
+  (NEWID(),@challanId,@senderUserId,@senderName,@messageText,GETDATE(),0,
+   @messageType,@documentId,@databaseName,@receiverId,@propertyCode,
+   @senderPropertyCode,@receiverPropertyCode,@clientId)
 `);
-    console.log("============== CHAT SEND ==============");
 
-    console.log("Login DB :", senderDatabase);
-
-    console.log("Current DB :", currentDatabase);
-
-    console.log("Login Property :", senderPropertyCode);
-
-    console.log("Current Property :", currentPropertyCode);
-
-    console.log("Receiver Property :", finalReceiverPropertyCode);
-
-    console.log("=======================================");
     //----------------------------------------------------
-    // Notification
+    // Push Notification
     //----------------------------------------------------
-
     let receivers;
-
     if (receiverUserId) {
-      receivers = [
-        {
-          UserId: receiverUserId,
-        },
-      ];
+      receivers = [{ UserId: receiverUserId }];
     } else {
-      const result = await pool
-        .request()
+      const r = await pool.request()
         .input("challanId", sql.NVarChar(100), challanId)
-        .input("senderId", sql.NVarChar(100), userId).query(`
-SELECT UserId
-FROM MA_ChallanChatMembers
-WHERE ChallanId=@challanId
-AND UserId<>@senderId
-AND IsActive=1
-`);
-
-      receivers = result.recordset;
+        .input("senderId",  sql.NVarChar(100), userId).query(`
+          SELECT UserId FROM MA_ChallanChatMembers
+          WHERE ChallanId=@challanId AND UserId<>@senderId AND IsActive=1
+        `);
+      receivers = r.recordset;
     }
 
     for (const member of receivers) {
       try {
-        await sendPushNotification(
-          pool,
-          member.UserId,
-          senderName || userId,
-          messageText || "New Message",
-          {
-            type: "challan_chat",
-            challanId,
-            challanNo: challanNo || "",
-            senderId: userId,
-          },
+        await sendPushNotification(pool, member.UserId,
+          senderName || userId, messageText || "New Message",
+          { type: "challan_chat", challanId, challanNo: challanNo || "", senderId: userId }
         );
-      } catch (err) {
-        console.error(err.message);
-      }
+      } catch (e) { /* ignore push errors */ }
     }
 
-    return res.json({
-      success: true,
-      message: "Message sent successfully.",
-    });
+    return res.json({ success: true, message: "Message sent successfully." });
   } catch (err) {
-    console.error(err);
-
-    return res.status(500).json({
-      success: false,
-      message: err.message,
-    });
+    console.error("CHAT SEND ERROR:", err);
+    return res.status(500).json({ success: false, message: err.message });
   }
-});
+}
+
+router.post("/send", handleChatSend);
+router.post("/send-message", handleChatSend);
+
 // ── POST /api/chat/mark-read/:challanId ──────────────────────────────────────
 // Marks all messages in a challan as read for the current user
 // (only marks messages sent by OTHER users)
