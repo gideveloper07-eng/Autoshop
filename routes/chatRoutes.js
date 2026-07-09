@@ -668,15 +668,16 @@ WHERE ChallanId=@challanId
       .request()
       .input("challanId", sql.NVarChar(100), challanId)
       .input("userId", sql.NVarChar(100), userId)
+      .input("propertyCode", sql.NVarChar(20), propertyCode) // ADD THIS
       .input("clientId", sql.UniqueIdentifier, clientId || null).query(`
-UPDATE MA_ChallanChat
-SET IsRead = 1
-WHERE ChallanId = @challanId
-  AND ReceiverId = @userId
-  AND ReceiverPropertyCode = @propertyCode
-  AND IsRead = 0
-  AND (@clientId IS NULL OR ClientId=@clientId)
-`);
+    UPDATE MA_ChallanChat
+    SET IsRead = 1
+    WHERE ChallanId = @challanId
+      AND ReceiverId = @userId
+      AND ReceiverPropertyCode = @propertyCode
+      AND IsRead = 0
+      AND (@clientId IS NULL OR ClientId = @clientId)
+  `);
 
     return res.json({
       success: true,
