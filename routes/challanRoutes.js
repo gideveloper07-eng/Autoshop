@@ -1039,7 +1039,96 @@ router.get("/dashboard-stats", async (req, res) => {
     if (pool) await pool.close();
   }
 });
+router.get("/dashboard-branchwise", async (req, res) => {
+  let pool;
 
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { currentDatabase: databaseName } = decoded;
+
+    if (!databaseName) {
+      return res.status(400).json({
+        success: false,
+
+        message: "Database not found in token",
+      });
+    }
+
+    const type = req.query.type?.toString().toLowerCase();
+
+    if (type !== "booking" && type !== "sale") {
+      return res.status(400).json({
+        success: false,
+
+        message: "Type must be booking or sale",
+      });
+    }
+
+    const what =
+      type === "booking" ? "TodayBookingBranchwise" : "TodaySaleBranchwise";
+
+    console.log(`📊 ${what} — DB:`, databaseName);
+
+    pool = await openPool(databaseName);
+
+    const result = await pool
+      .request()
+
+      .input("prefix", sql.NVarChar(50), "")
+
+      .input("what", sql.NVarChar(50), what)
+
+      .input("FromDate", sql.NVarChar(50), "")
+
+      .input("ToDate", sql.NVarChar(50), "")
+
+      .execute("A_SP_FOR_ApplicationChallangrid");
+
+    const branches = (result.recordset ?? []).map((row) => ({
+      branchName: row.branchName ?? row.branchname ?? "Unknown Branch",
+
+      count: Number(row.totalCount ?? row.totalcount ?? 0),
+    }));
+
+    const total = branches.reduce(
+      (sum, branch) => sum + branch.count,
+
+      0,
+    );
+
+    return res.json({
+      success: true,
+
+      data: {
+        type,
+        total,
+        branches,
+      },
+    });
+  } catch (err) {
+    console.error("BRANCHWISE ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+
+      message: "Server Error",
+
+      error: err.message,
+    });
+  } finally {
+    if (pool) {
+      await pool.close();
+    }
+  }
+});
 router.post(
   "/send-admin-push",
 
