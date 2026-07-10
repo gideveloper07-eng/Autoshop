@@ -1102,6 +1102,22 @@ router.get("/dashboard-stats", async (req, res) => {
       .input("ToDate", sql.NVarChar(50), "")
       .execute("A_SP_FOR_ApplicationChallangrid");
 
+    const bookingTrendResult = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "")
+      .input("what", sql.NVarChar(50), "BookingTrend")
+      .input("FromDate", sql.NVarChar(50), "")
+      .input("ToDate", sql.NVarChar(50), "")
+      .execute("A_SP_FOR_ApplicationChallangrid");
+
+    const saleTrendResult = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "")
+      .input("what", sql.NVarChar(50), "SaleTrend")
+      .input("FromDate", sql.NVarChar(50), "")
+      .input("ToDate", sql.NVarChar(50), "")
+      .execute("A_SP_FOR_ApplicationChallangrid");
+
     const todayBooking = bookingToday.recordset?.[0]?.todaybooking ?? 0;
 
     const yesterdayBooking =
@@ -1110,6 +1126,13 @@ router.get("/dashboard-stats", async (req, res) => {
     const todaySale = saleToday.recordset?.[0]?.todaydelivery ?? 0;
 
     const yesterdaySale = saleYesterday.recordset?.[0]?.yesterdaysale ?? 0;
+
+    const bookingTrend = bookingTrendResult.recordset.map((x) =>
+      Number(x.TotalBooking),
+    );
+
+    const saleTrend = saleTrendResult.recordset.map((x) => Number(x.TotalSale));
+
     console.log("Today Booking Row:", bookingToday.recordset?.[0]);
     console.log("Yesterday Booking Row:", bookingYesterday.recordset?.[0]);
 
@@ -1133,10 +1156,11 @@ router.get("/dashboard-stats", async (req, res) => {
       todayBooking,
       yesterdayBooking,
       bookingGrowth,
-
+      bookingTrend,
       todaySale,
       yesterdaySale,
       saleGrowth,
+      saleTrend,
     });
 
     return res.json({
