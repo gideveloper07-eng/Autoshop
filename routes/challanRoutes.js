@@ -1169,10 +1169,11 @@ router.get("/dashboard-stats", async (req, res) => {
         todayBooking,
         yesterdayBooking,
         bookingGrowth,
-
+        bookingTrend,
         todaySale,
         yesterdaySale,
         saleGrowth,
+        saleTrend,
       },
     });
   } catch (err) {
