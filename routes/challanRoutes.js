@@ -977,7 +977,7 @@ router.post("/reject", async (req, res) => {
 // GET /api/challan/dashboard-stats
 // Returns today's booking count and today's sale count
 // ─────────────────────────────────────────────────────────────────────────────
-router.get("/dashboard-stats", async (req, res) => {
+/*router.get("/dashboard-stats", async (req, res) => {
   let pool;
   try {
     const decoded = decodeToken(req);
@@ -1038,7 +1038,130 @@ router.get("/dashboard-stats", async (req, res) => {
   } finally {
     if (pool) await pool.close();
   }
+});*/
+
+router.get("/dashboard-stats", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { currentDatabase: databaseName } = decoded;
+
+    if (!databaseName) {
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
+    }
+
+    console.log("📊 DASHBOARD STATS — DB:", databaseName);
+
+    pool = await openPool(databaseName);
+
+    // ---------- TODAY BOOKING ----------
+    const bookingToday = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "")
+      .input("what", sql.NVarChar(50), "TodayBooking")
+      .input("FromDate", sql.NVarChar(50), "")
+      .input("ToDate", sql.NVarChar(50), "")
+      .execute("A_SP_FOR_ApplicationChallangrid");
+
+    // ---------- YESTERDAY BOOKING ----------
+    const bookingYesterday = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "")
+      .input("what", sql.NVarChar(50), "YesterdayBooking")
+      .input("FromDate", sql.NVarChar(50), "")
+      .input("ToDate", sql.NVarChar(50), "")
+      .execute("A_SP_FOR_ApplicationChallangrid");
+
+    // ---------- TODAY SALE ----------
+    const saleToday = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "")
+      .input("what", sql.NVarChar(50), "TodaySale")
+      .input("FromDate", sql.NVarChar(50), "")
+      .input("ToDate", sql.NVarChar(50), "")
+      .execute("A_SP_FOR_ApplicationChallangrid");
+
+    // ---------- YESTERDAY SALE ----------
+    const saleYesterday = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "")
+      .input("what", sql.NVarChar(50), "YesterdaySale")
+      .input("FromDate", sql.NVarChar(50), "")
+      .input("ToDate", sql.NVarChar(50), "")
+      .execute("A_SP_FOR_ApplicationChallangrid");
+
+    const todayBooking = bookingToday.recordset?.[0]?.todaybooking ?? 0;
+
+    const yesterdayBooking =
+      bookingYesterday.recordset?.[0]?.yesterdaybooking ?? 0;
+
+    const todaySale = saleToday.recordset?.[0]?.todaydelivery ?? 0;
+
+    const yesterdaySale = saleYesterday.recordset?.[0]?.yesterdaysale ?? 0;
+
+    function calculateGrowth(today, yesterday) {
+      if (yesterday === 0) {
+        return today > 0 ? 100 : 0;
+      }
+
+      return Number((((today - yesterday) / yesterday) * 100).toFixed(1));
+    }
+
+    const bookingGrowth = calculateGrowth(todayBooking, yesterdayBooking);
+
+    const saleGrowth = calculateGrowth(todaySale, yesterdaySale);
+
+    console.log("📊 Dashboard Stats");
+
+    console.table({
+      todayBooking,
+      yesterdayBooking,
+      bookingGrowth,
+
+      todaySale,
+      yesterdaySale,
+      saleGrowth,
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        todayBooking,
+        yesterdayBooking,
+        bookingGrowth,
+
+        todaySale,
+        yesterdaySale,
+        saleGrowth,
+      },
+    });
+  } catch (err) {
+    console.error("❌ DASHBOARD STATS ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  } finally {
+    if (pool) {
+      await pool.close();
+    }
+  }
 });
+
 router.get("/dashboard-branchwise", async (req, res) => {
   let pool;
 
