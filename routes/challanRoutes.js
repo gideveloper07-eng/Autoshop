@@ -1110,7 +1110,11 @@ router.get("/dashboard-stats", async (req, res) => {
     const todaySale = saleToday.recordset?.[0]?.todaydelivery ?? 0;
 
     const yesterdaySale = saleYesterday.recordset?.[0]?.yesterdaysale ?? 0;
+    console.log("Today Booking Row:", bookingToday.recordset?.[0]);
+    console.log("Yesterday Booking Row:", bookingYesterday.recordset?.[0]);
 
+    console.log("Today Sale Row:", saleToday.recordset?.[0]);
+    console.log("Yesterday Sale Row:", saleYesterday.recordset?.[0]);
     function calculateGrowth(today, yesterday) {
       if (yesterday === 0) {
         return today > 0 ? 100 : 0;
