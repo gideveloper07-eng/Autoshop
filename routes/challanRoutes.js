@@ -1209,70 +1209,84 @@ router.get("/dashboard-branchwise", async (req, res) => {
     if (!databaseName) {
       return res.status(400).json({
         success: false,
-
         message: "Database not found in token",
       });
     }
 
-    const type = req.query.type?.toString().toLowerCase();
+    const type = (req.query.type || "").toString().toLowerCase();
+    const period = (req.query.period || "today").toString().toLowerCase();
 
-    if (type !== "booking" && type !== "sale") {
+    //----------------------------------------------------
+    // Validation
+    //----------------------------------------------------
+
+    if (!["booking", "sale"].includes(type)) {
       return res.status(400).json({
         success: false,
-
         message: "Type must be booking or sale",
       });
     }
 
-    const what =
-      type === "booking" ? "TodayBookingBranchwise" : "TodaySaleBranchwise";
+    if (!["today", "yesterday"].includes(period)) {
+      return res.status(400).json({
+        success: false,
+        message: "Period must be today or yesterday",
+      });
+    }
 
-    console.log(`📊 ${what} — DB:`, databaseName);
+    //----------------------------------------------------
+    // Decide Stored Procedure Mode
+    //----------------------------------------------------
+
+    let what = "";
+
+    if (type === "booking") {
+      what =
+        period === "today"
+          ? "TodayBookingBranchwise"
+          : "YesterdayBookingBranchwise";
+    } else {
+      what =
+        period === "today" ? "TodaySaleBranchwise" : "YesterdaySaleBranchwise";
+    }
+
+    console.log(
+      `📊 Dashboard Branchwise | Type: ${type} | Period: ${period} | DB: ${databaseName}`,
+    );
 
     pool = await openPool(databaseName);
 
     const result = await pool
       .request()
-
       .input("prefix", sql.NVarChar(50), "")
-
       .input("what", sql.NVarChar(50), what)
-
       .input("FromDate", sql.NVarChar(50), "")
-
       .input("ToDate", sql.NVarChar(50), "")
-
       .execute("A_SP_FOR_ApplicationChallangrid");
 
-    const branches = (result.recordset ?? []).map((row) => ({
+    const branches = (result.recordset || []).map((row) => ({
       branchName: row.branchName ?? row.branchname ?? "Unknown Branch",
 
       count: Number(row.totalCount ?? row.totalcount ?? 0),
     }));
 
-    const total = branches.reduce(
-      (sum, branch) => sum + branch.count,
-
-      0,
-    );
+    const total = branches.reduce((sum, item) => sum + item.count, 0);
 
     return res.json({
       success: true,
-
       data: {
         type,
+        period,
         total,
         branches,
       },
     });
   } catch (err) {
-    console.error("BRANCHWISE ERROR:", err);
+    console.error("❌ Dashboard Branchwise Error:", err);
 
     return res.status(500).json({
       success: false,
-
       message: "Server Error",
-
       error: err.message,
     });
   } finally {
