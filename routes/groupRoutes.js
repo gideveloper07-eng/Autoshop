@@ -189,17 +189,14 @@ ORDER BY r.utnm
       try {
         pool = await openPool(targetDb);
         const result = await pool.request().query(`
-        SELECT
+            SELECT
     CAST(r.utunqid AS NVARCHAR(50)) AS id,
     r.utnm AS name,
     r.BRANCHUNQ AS branchId,
-    ISNULL(b.sp_607,'') AS branchName,
-    NULL AS companyName,
-    NULL AS companyCode,
-    NULL AS [database]
+    ISNULL(b.sp_607,'') AS branchName
 FROM rh_secut r
 LEFT JOIN rh_sp_60 b
-    ON r.BRANCHUNQ = b.sp_602
+       ON r.BRANCHUNQ = b.sp_602
 WHERE ISNULL(r.utnm,'') <> ''
   AND r.utg IS NOT NULL
 ORDER BY r.utnm
@@ -227,13 +224,10 @@ ORDER BY r.utnm
     CAST(r.utunqid AS NVARCHAR(50)) AS id,
     r.utnm AS name,
     r.BRANCHUNQ AS branchId,
-    ISNULL(b.sp_607,'') AS branchName,
-    NULL AS companyName,
-    NULL AS companyCode,
-    NULL AS [database]
+    ISNULL(b.sp_607,'') AS branchName
 FROM rh_secut r
 LEFT JOIN rh_sp_60 b
-    ON r.BRANCHUNQ = b.sp_602
+       ON r.BRANCHUNQ = b.sp_602
 WHERE ISNULL(r.utnm,'') <> ''
   AND r.utg IS NOT NULL
 ORDER BY r.utnm
