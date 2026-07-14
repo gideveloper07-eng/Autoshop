@@ -892,7 +892,7 @@ router.get("/my-groups", async (req, res) => {
       message: err.message,
     });
   } finally {
-    if (pool) await pool.close();
+    //if (pool) await pool.close();
   }
 });
 
@@ -1267,7 +1267,7 @@ router.post("/delete-group", async (req, res) => {
     console.error("DELETE GROUP ERROR:", err);
     return res.status(500).json({ success: false, message: err.message });
   } finally {
-    if (pool) await pool.close();
+    // if (pool) await pool.close();
   }
 });
 router.get("/members/:groupId", async (req, res) => {
@@ -1413,7 +1413,7 @@ router.post("/update-task-status", async (req, res) => {
       message: err.message,
     });
   } finally {
-    if (pool) await pool.close();
+    //if (pool) await pool.close();
   }
 });
 // ── POST /api/group/send-message ──────────────────────────────────────────────
@@ -1848,7 +1848,7 @@ ORDER BY m.MessageTime ASC
       sql: err.originalError?.message,
     });
   } finally {
-    if (pool) await pool.close();
+    // if (pool) await pool.close();
   }
 });
 router.get("/tasks", async (req, res) => {

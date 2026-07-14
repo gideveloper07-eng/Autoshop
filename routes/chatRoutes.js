@@ -110,7 +110,7 @@ async function findUserByGuid(decoded, receiverGuid) {
 
     return null;
   } finally {
-    if (masterPool) await masterPool.close();
+    //if (masterPool) await masterPool.close();
   }
 }
 
@@ -2087,7 +2087,7 @@ router.get("/individual-tasks", async (req, res) => {
     console.error("GET INDIVIDUAL TASKS ERROR:", err);
     return res.status(500).json({ success: false, message: err.message });
   } finally {
-    if (pool) await pool.close();
+    //  if (pool) await pool.close();
   }
 });
 
@@ -2270,7 +2270,7 @@ VALUES
       detail: err.originalError?.message,
     });
   } finally {
-    if (pool) await pool.close();
+    //if (pool) await pool.close();
   }
 });
 router.get("/:challanId", async (req, res) => {
@@ -2478,7 +2478,7 @@ router.post("/update-task-status", async (req, res) => {
     console.error("UPDATE TASK STATUS ERROR:", err);
     return res.status(500).json({ success: false, message: err.message });
   } finally {
-    if (pool) await pool.close();
+    // if (pool) await pool.close();
   }
 });
 
