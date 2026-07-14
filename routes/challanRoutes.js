@@ -7,23 +7,10 @@ const {
   sendPushNotification,
   sendPushToGroup,
 } = require("../utils/pushNotificationHelper");
+const openPool = require("../utils/dynamicPoolManager");
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper: open a dynamic pool to a specific database (same pattern as authController)
 // ─────────────────────────────────────────────────────────────────────────────
-async function openPool(databaseName) {
-  const pool = await new sql.ConnectionPool({
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    server: process.env.DB_HOST,
-    port: parseInt(process.env.DB_PORT || "1433"),
-    database: databaseName,
-    options: {
-      encrypt: false,
-      trustServerCertificate: true,
-    },
-  }).connect();
-  return pool;
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper: decode JWT and extract userId + databaseName
@@ -212,9 +199,9 @@ router.get("/retail-incentive", async (req, res) => {
       error: err.message,
     });
   } finally {
-    if (pool) {
-      await pool.close();
-    }
+    // if (pool) {
+    //   await pool.close();
+    // }
   }
 });
 // ─────────────────────────────────────────────────────────────────────────────
@@ -278,7 +265,7 @@ router.get("/edit/:sp_462", async (req, res) => {
       error: err.message,
     });
   } finally {
-    if (pool) await pool.close();
+    // if (pool) await pool.close();
   }
 });
 
@@ -618,7 +605,7 @@ router.post("/approve", async (req, res) => {
       error: err.message,
     });
   } finally {
-    if (pool) await pool.close();
+    //if (pool) await pool.close();
   }
 });
 
@@ -969,7 +956,7 @@ router.post("/reject", async (req, res) => {
       error: err.message,
     });
   } finally {
-    if (pool) await pool.close();
+    //  if (pool) await pool.close();
   }
 });
 
@@ -1185,9 +1172,9 @@ router.get("/dashboard-stats", async (req, res) => {
       error: err.message,
     });
   } finally {
-    if (pool) {
-      await pool.close();
-    }
+    // if (pool) {
+    //   await pool.close();
+    // }
   }
 });
 
@@ -1290,9 +1277,9 @@ router.get("/dashboard-branchwise", async (req, res) => {
       error: err.message,
     });
   } finally {
-    if (pool) {
-      await pool.close();
-    }
+    // if (pool) {
+    //   await pool.close();
+    // }
   }
 });
 router.post(
@@ -1356,7 +1343,7 @@ router.post(
         message: err.message,
       });
     } finally {
-      if (pool) await pool.close();
+      // if (pool) await pool.close();
     }
   },
 );

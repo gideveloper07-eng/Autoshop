@@ -2,23 +2,24 @@ const jwt = require("jsonwebtoken");
 const { sql } = require("../config/db");
 const { decodeToken } = require("../middleware/authMiddleware");
 const openMasterPool = require("../utils/masterPool");
+const openPool = require("../utils/dynamicPoolManager");
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper: open a dynamic pool to a specific database
 // ─────────────────────────────────────────────────────────────────────────────
-async function openPool(databaseName) {
-  const pool = await new sql.ConnectionPool({
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    server: process.env.DB_HOST,
-    port: parseInt(process.env.DB_PORT || "1433"),
-    database: databaseName,
-    options: {
-      encrypt: false,
-      trustServerCertificate: true,
-    },
-  }).connect();
-  return pool;
-}
+// async function openPool(databaseName) {
+//   const pool = await new sql.ConnectionPool({
+//     user: process.env.DB_USER,
+//     password: process.env.DB_PASSWORD,
+//     server: process.env.DB_HOST,
+//     port: parseInt(process.env.DB_PORT || "1433"),
+//     database: databaseName,
+//     options: {
+//       encrypt: false,
+//       trustServerCertificate: true,
+//     },
+//   }).connect();
+//   return pool;
+// }
 // ─────────────────────────────────────────────────────────────────────────────
 // LOGIN  POST /api/auth/login
 // ─────────────────────────────────────────────────────────────────────────────
@@ -184,7 +185,6 @@ WHERE propertydb = @db
     console.log("✅ DB updated — is_logged_in=1, device:", cleanDeviceId);
 
     // ── DEBUG: print full token payload ─────────────────────────────────────
-    
 
     // Identity (never changes after login)
     const loginDatabase = databaseName;
@@ -274,8 +274,8 @@ WHERE propertydb = @db
       error: err.message,
     });
   } finally {
-    if (pool) await pool.close();
-    if (masterPool) await masterPool.close();
+    // if (pool) await pool.close();
+    //if (masterPool) await masterPool.close();
   }
 };
 const switchDatabase = async (req, res) => {
@@ -424,7 +424,7 @@ const logoutUser = async (req, res) => {
     console.error("❌ LOGOUT ERROR:", err.message);
     return res.status(500).json({ success: false, message: "Server Error" });
   } finally {
-    if (pool) await pool.close();
+    //if (pool) await pool.close();
   }
 };
 

@@ -8,20 +8,20 @@ const { randomUUID } = require("crypto");
 const { decodeToken } = require("../middleware/authMiddleware");
 const { sendPushNotification } = require("../utils/pushNotificationHelper");
 const { getAccessibleDatabases } = require("../utils/databaseAccessHelper");
-
-async function openPool(databaseName) {
-  return await new sql.ConnectionPool({
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    server: process.env.DB_HOST,
-    port: parseInt(process.env.DB_PORT || "1433"),
-    database: databaseName,
-    options: {
-      encrypt: false,
-      trustServerCertificate: true,
-    },
-  }).connect();
-}
+const openPool = require("../utils/dynamicPoolManager");
+// async function openPool(databaseName) {
+//   return await new sql.ConnectionPool({
+//     user: process.env.DB_USER,
+//     password: process.env.DB_PASSWORD,
+//     server: process.env.DB_HOST,
+//     port: parseInt(process.env.DB_PORT || "1433"),
+//     database: databaseName,
+//     options: {
+//       encrypt: false,
+//       trustServerCertificate: true,
+//     },
+//   }).connect();
+// }
 
 async function findUserInDatabase(databaseName, receiverGuid) {
   let pool;
