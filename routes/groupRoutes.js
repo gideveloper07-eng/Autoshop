@@ -4,7 +4,6 @@ const crypto = require("crypto");
 const { sendPushNotification } = require("../utils/pushNotificationHelper");
 const { decodeToken, verifyToken } = require("../middleware/authMiddleware");
 const openCommunicationPool = require("../utils/communicationPool");
-const { resetCommunicationPool } = require("../utils/communicationPool");
 const openMasterPool = require("../utils/masterPool");
 const { getAccessibleDatabases } = require("../utils/databaseAccessHelper");
 
@@ -476,10 +475,90 @@ router.post("/create", async (req, res) => {
   }
 });
 
+router.get("/my-direct-chats", async (req, res) => {
+  let pool;
 
-// ── Helper: run the direct-chats query on a given pool ───────────────────────
-async function _runDirectChatsQuery(pool, { userId, userGuid, propertyCode, clientId, allowedProperties, scope }) {
-  const DIRECT_CHATS_SQL = `
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    //----------------------------------------------------
+    // Permanent Login Identity
+    //----------------------------------------------------
+
+    const userId = decoded.userId;
+
+    const propertyCode = decoded.loginPropertyCode || decoded.propertyCode;
+
+    const database = decoded.loginDatabase || decoded.database;
+
+    const clientId = decoded.loginClientId || decoded.clientId;
+
+    const userGuid = decoded.userGuid;
+
+    // Guard: if userGuid is missing, we cannot run the UUID-typed query safely
+    if (!userGuid) {
+      console.warn("MY DIRECT CHATS — userGuid missing in token, returning empty list");
+      return res.json({ success: true, data: [] });
+    }
+
+    const scope = (req.query.scope || "property").toLowerCase();
+
+    console.log("========== MY DIRECT CHATS ==========");
+    console.log("User :", userId);
+    console.log("UserGuid :", userGuid);
+    console.log("Database :", database);
+    console.log("Property :", propertyCode);
+    console.log("Client :", clientId);
+    console.log("Scope :", scope);
+    console.log("====================================");
+
+    pool = await openCommunicationPool();
+    let allowedProperties = [propertyCode];
+
+    if (decoded.isAdmin) {
+      const masterPool = await openMasterPool();
+
+      try {
+        const access = await masterPool
+          .request()
+          .input("userGuid", sql.UniqueIdentifier, userGuid).query(`
+        SELECT CM.PropertyCode
+        FROM MA_UserDatabaseAccess UA
+        INNER JOIN Cmpy_AutoShop.dbo.MA_ClientMaster CM
+            ON UA.ClientId = CM.Unqid
+        WHERE UA.UserGuid = @userGuid
+      `);
+
+        if (access.recordset.length > 0) {
+          allowedProperties = access.recordset.map((x) => x.PropertyCode);
+        }
+      } catch (masterErr) {
+        console.warn("MY DIRECT CHATS — master lookup failed, using default property:", masterErr.message);
+        // Continue with default allowedProperties
+      } finally {
+        // await masterPool.close();
+      }
+    }
+
+    const result = await pool
+      .request()
+      .input("userId", sql.NVarChar(100), userId)
+      .input("userGuid", sql.UniqueIdentifier, userGuid)
+      .input("propertyCode", sql.NVarChar(50), propertyCode)
+      .input("clientId", sql.UniqueIdentifier, clientId || null)
+      .input(
+        "allowedProperties",
+        sql.NVarChar(sql.MAX),
+        allowedProperties.join(","),
+      )
+      .input("scope", sql.NVarChar(20), scope).query(`
 ;WITH BaseChat AS
 (
     SELECT
@@ -687,113 +766,11 @@ LEFT JOIN Cmpy_AutoShop.dbo.MA_ClientMaster cm
 WHERE c.rn = 1
 
 ORDER BY c.MessageTime DESC;
-`;
-
-  const result = await pool
-    .request()
-    .input("userId", sql.NVarChar(100), userId)
-    .input("userGuid", sql.UniqueIdentifier, userGuid)
-    .input("propertyCode", sql.NVarChar(50), propertyCode)
-    .input("clientId", sql.UniqueIdentifier, clientId || null)
-    .input("allowedProperties", sql.NVarChar(sql.MAX), allowedProperties.join(","))
-    .input("scope", sql.NVarChar(20), scope)
-    .query(DIRECT_CHATS_SQL);
-
-  return result.recordset;
-}
-
-router.get("/my-direct-chats", async (req, res) => {
-  let pool;
-
-  try {
-    const decoded = decodeToken(req);
-
-    if (!decoded) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized",
-      });
-    }
-
-    //----------------------------------------------------
-    // Permanent Login Identity
-    //----------------------------------------------------
-
-    const userId = decoded.userId;
-
-    const propertyCode = decoded.loginPropertyCode || decoded.propertyCode;
-
-    const database = decoded.loginDatabase || decoded.database;
-
-    const clientId = decoded.loginClientId || decoded.clientId;
-
-    const userGuid = decoded.userGuid;
-
-    // Guard: if userGuid is missing, we cannot run the UUID-typed query safely
-    if (!userGuid) {
-      console.warn("MY DIRECT CHATS — userGuid missing in token, returning empty list");
-      return res.json({ success: true, data: [] });
-    }
-
-    const scope = (req.query.scope || "property").toLowerCase();
-
-    console.log("========== MY DIRECT CHATS ==========");
-    console.log("User :", userId);
-    console.log("UserGuid :", userGuid);
-    console.log("Database :", database);
-    console.log("Property :", propertyCode);
-    console.log("Client :", clientId);
-    console.log("Scope :", scope);
-    console.log("====================================");
-
-    pool = await openCommunicationPool();
-    let allowedProperties = [propertyCode];
-
-    if (decoded.isAdmin) {
-      const masterPool = await openMasterPool();
-
-      try {
-        const access = await masterPool
-          .request()
-          .input("userGuid", sql.UniqueIdentifier, userGuid).query(`
-        SELECT CM.PropertyCode
-        FROM MA_UserDatabaseAccess UA
-        INNER JOIN Cmpy_AutoShop.dbo.MA_ClientMaster CM
-            ON UA.ClientId = CM.Unqid
-        WHERE UA.UserGuid = @userGuid
-      `);
-
-        if (access.recordset.length > 0) {
-          allowedProperties = access.recordset.map((x) => x.PropertyCode);
-        }
-      } catch (masterErr) {
-        console.warn("MY DIRECT CHATS — master lookup failed, using default property:", masterErr.message);
-        // Continue with default allowedProperties
-      } finally {
-        // await masterPool.close();
-      }
-    }
-
-    const queryParams = { userId, userGuid, propertyCode, clientId, allowedProperties, scope };
-    let rows;
-
-    try {
-      rows = await _runDirectChatsQuery(pool, queryParams);
-    } catch (queryErr) {
-      // ── Auto-recover from dropped connection ─────────────────────────────
-      if (queryErr.code === "ECONNCLOSED" || queryErr.code === "ECONNRESET" || queryErr.code === "ESOCKET") {
-        console.warn("MY DIRECT CHATS — connection lost (code:", queryErr.code, "), resetting pool and retrying...");
-        await resetCommunicationPool();
-        pool = await openCommunicationPool();
-        rows = await _runDirectChatsQuery(pool, queryParams); // retry once with fresh pool
-      } else {
-        throw queryErr; // re-throw non-connection errors
-      }
-    }
+`);
 
     return res.json({
       success: true,
-      data: rows,
+      data: result.recordset,
     });
   } catch (err) {
     console.error("MY DIRECT CHATS ERROR:", err.message);
@@ -811,7 +788,6 @@ router.get("/my-direct-chats", async (req, res) => {
     // pool is only closed on application shutdown in communicationPool.js
   }
 });
-
 
 // ── GET /api/group/my-groups ──────────────────────────────────────────────────
 router.get("/my-groups", async (req, res) => {

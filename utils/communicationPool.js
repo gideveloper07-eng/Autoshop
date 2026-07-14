@@ -5,13 +5,6 @@ let lastHealthCheck = 0;
 const HEALTH_CHECK_INTERVAL = 60000; // Only check every 60 seconds
 
 async function openCommunicationPool() {
-  // If pool exists but is explicitly disconnected/closing, reset it
-  if (pool && !pool.connected && !pool.connecting) {
-    console.warn("Communication pool found in disconnected state, resetting...");
-    try { await pool.close(); } catch (_) {}
-    pool = null;
-  }
-
   // Check if pool exists and is potentially connected
   if (pool && pool.connected) {
     // Only do health check every 60 seconds to avoid overwhelming the server
@@ -73,18 +66,6 @@ async function openCommunicationPool() {
   }
 }
 
-/**
- * Force-resets the pool so the next call to openCommunicationPool()
- * creates a fresh connection. Call this when you catch ECONNCLOSED.
- */
-async function resetCommunicationPool() {
-  if (pool) {
-    try { await pool.close(); } catch (_) {}
-    pool = null;
-  }
-  lastHealthCheck = 0;
-}
-
 // Graceful shutdown
 process.on("exit", async () => {
   if (pool) {
@@ -111,4 +92,3 @@ process.on("SIGINT", async () => {
 });
 
 module.exports = openCommunicationPool;
-module.exports.resetCommunicationPool = resetCommunicationPool;
