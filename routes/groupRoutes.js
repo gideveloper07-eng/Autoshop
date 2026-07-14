@@ -130,16 +130,17 @@ router.get("/merged-users", verifyToken, async (req, res) => {
       try {
         pool = await openPool(currentDb);
         const result = await pool.request().query(`
-          SELECT
-              CAST(utunqid AS NVARCHAR(50)) AS id,
-              utnm AS name,
-              NULL AS companyName,
-              NULL AS companyCode,
-              NULL AS [database]
-          FROM rh_secut
-          WHERE ISNULL(utnm,'') <> ''
-            AND utg IS NOT NULL
-          ORDER BY utnm
+        SELECT
+    CAST(r.utunqid AS NVARCHAR(50)) AS id,
+    r.utnm AS name,
+    r.BRANCHUNQ AS branchId,
+    ISNULL(b.sp_607,'') AS branchName
+FROM rh_secut r
+LEFT JOIN rh_sp_60 b
+       ON r.BRANCHUNQ = b.sp_602
+WHERE ISNULL(r.utnm,'') <> ''
+  AND r.utg IS NOT NULL
+ORDER BY r.utnm
         `);
         return res.json({
           success: true,
@@ -188,16 +189,20 @@ router.get("/merged-users", verifyToken, async (req, res) => {
       try {
         pool = await openPool(targetDb);
         const result = await pool.request().query(`
-          SELECT
-              CAST(utunqid AS NVARCHAR(50)) AS id,
-              utnm AS name,
-              NULL AS companyName,
-              NULL AS companyCode,
-              NULL AS [database]
-          FROM rh_secut
-          WHERE ISNULL(utnm,'') <> ''
-            AND utg IS NOT NULL
-          ORDER BY utnm
+        SELECT
+    CAST(r.utunqid AS NVARCHAR(50)) AS id,
+    r.utnm AS name,
+    r.BRANCHUNQ AS branchId,
+    ISNULL(b.sp_607,'') AS branchName,
+    NULL AS companyName,
+    NULL AS companyCode,
+    NULL AS [database]
+FROM rh_secut r
+LEFT JOIN rh_sp_60 b
+    ON r.BRANCHUNQ = b.sp_602
+WHERE ISNULL(r.utnm,'') <> ''
+  AND r.utg IS NOT NULL
+ORDER BY r.utnm
         `);
         return res.json({
           success: true,
@@ -218,13 +223,20 @@ router.get("/merged-users", verifyToken, async (req, res) => {
       try {
         pool = await openPool(db.database);
         const result = await pool.request().query(`
-          SELECT
-              CAST(utunqid AS NVARCHAR(50)) AS id,
-              utnm AS name
-          FROM rh_secut
-          WHERE ISNULL(utnm,'') <> ''
-            AND utg IS NOT NULL
-          ORDER BY utnm
+         SELECT
+    CAST(r.utunqid AS NVARCHAR(50)) AS id,
+    r.utnm AS name,
+    r.BRANCHUNQ AS branchId,
+    ISNULL(b.sp_607,'') AS branchName,
+    NULL AS companyName,
+    NULL AS companyCode,
+    NULL AS [database]
+FROM rh_secut r
+LEFT JOIN rh_sp_60 b
+    ON r.BRANCHUNQ = b.sp_602
+WHERE ISNULL(r.utnm,'') <> ''
+  AND r.utg IS NOT NULL
+ORDER BY r.utnm
         `);
 
         for (const user of result.recordset) {
@@ -237,6 +249,9 @@ router.get("/merged-users", verifyToken, async (req, res) => {
               companyName: db.companyName,
               companyCode: db.companyCode,
               database: db.database,
+
+              branchId: user.branchId,
+              branchName: user.branchName,
             });
           }
         }
