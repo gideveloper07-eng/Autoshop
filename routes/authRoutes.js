@@ -12,28 +12,28 @@ const {
 } = require("../controllers/authController");
 
 const { decodeToken, verifyToken } = require("../middleware/authMiddleware");
+const openPool = require("../utils/dynamicPoolManager");
+// async function openPool(databaseName) {
+//   const pool = await new sql.ConnectionPool({
+//     user: process.env.DB_USER,
 
-async function openPool(databaseName) {
-  const pool = await new sql.ConnectionPool({
-    user: process.env.DB_USER,
+//     password: process.env.DB_PASSWORD,
 
-    password: process.env.DB_PASSWORD,
+//     server: process.env.DB_HOST,
 
-    server: process.env.DB_HOST,
+//     port: parseInt(process.env.DB_PORT || "1433"),
 
-    port: parseInt(process.env.DB_PORT || "1433"),
+//     database: databaseName,
 
-    database: databaseName,
+//     options: {
+//       encrypt: false,
 
-    options: {
-      encrypt: false,
+//       trustServerCertificate: true,
+//     },
+//   }).connect();
 
-      trustServerCertificate: true,
-    },
-  }).connect();
-
-  return pool;
-}
+//   return pool;
+// }
 
 async function openCommunicationPool() {
   return await new sql.ConnectionPool({
@@ -106,7 +106,7 @@ router.post("/save-fcm-token", async (req, res) => {
       message: err.message,
     });
   } finally {
-    if (pool) await pool.close();
+   // if (pool) await pool.close();
   }
 });
 router.post("/activity-log", async (req, res) => {
@@ -195,7 +195,7 @@ router.post("/activity-log", async (req, res) => {
       message: err.message,
     });
   } finally {
-    if (pool) await pool.close();
+   // if (pool) await pool.close();
   }
 });
 
