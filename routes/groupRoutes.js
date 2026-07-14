@@ -502,12 +502,6 @@ router.get("/my-direct-chats", async (req, res) => {
 
     const userGuid = decoded.userGuid;
 
-    // Guard: if userGuid is missing, we cannot run the UUID-typed query safely
-    if (!userGuid) {
-      console.warn("MY DIRECT CHATS — userGuid missing in token, returning empty list");
-      return res.json({ success: true, data: [] });
-    }
-
     const scope = (req.query.scope || "property").toLowerCase();
 
     console.log("========== MY DIRECT CHATS ==========");
@@ -539,14 +533,10 @@ router.get("/my-direct-chats", async (req, res) => {
         if (access.recordset.length > 0) {
           allowedProperties = access.recordset.map((x) => x.PropertyCode);
         }
-      } catch (masterErr) {
-        console.warn("MY DIRECT CHATS — master lookup failed, using default property:", masterErr.message);
-        // Continue with default allowedProperties
       } finally {
         // await masterPool.close();
       }
     }
-
     const result = await pool
       .request()
       .input("userId", sql.NVarChar(100), userId)
@@ -773,15 +763,11 @@ ORDER BY c.MessageTime DESC;
       data: result.recordset,
     });
   } catch (err) {
-    console.error("MY DIRECT CHATS ERROR:", err.message);
-    if (err.originalError) {
-      console.error("SQL ERROR:", err.originalError.message);
-    }
-    // Return empty list instead of 500 so the Flutter app shows chats it already has
-    return res.json({
-      success: true,
-      data: [],
-      _error: err.message,
+    console.error("MY DIRECT CHATS ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
     });
   } finally {
     // Don't close shared Communication pool - it's reusable
