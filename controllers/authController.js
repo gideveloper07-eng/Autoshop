@@ -61,11 +61,12 @@ const loginUser = async (req, res) => {
       .input("password", sql.NVarChar, password).query(`
         SELECT TOP 1
           uti,
-           utnm,
+          utnm,
           is_logged_in,
           logged_device_id,
           last_login,
-          utg as utg
+          utg as utg,
+          BRANCHUNQ
         FROM rh_secut
         WHERE uti = @userId
           AND utp = @password
@@ -144,7 +145,9 @@ WHERE propertydb = @db
       console.log("Master lookup skipped:", e.message);
     }
     const isAdmin = String(user.uti).trim().toLowerCase() === "adm";
+    const branchUnq = user.BRANCHUNQ ?? user.branchunq ?? null;
     console.log("✅ User found:", user.uti);
+    console.log("   BRANCHUNQ:", branchUnq);
     console.log("   is_logged_in    :", user.is_logged_in);
     console.log("   logged_device_id:", user.logged_device_id);
     console.log(user);
@@ -180,6 +183,9 @@ WHERE propertydb = @db
 
     console.log("✅ DB updated — is_logged_in=1, device:", cleanDeviceId);
 
+    // ── DEBUG: print full token payload ─────────────────────────────────────
+    
+
     // Identity (never changes after login)
     const loginDatabase = databaseName;
     const loginPropertyCode = propertyCode;
@@ -212,12 +218,20 @@ WHERE propertydb = @db
         userGuid,
         utg: user.UTG || user.utg,
         isAdmin,
+        branchUnq,
       },
       process.env.JWT_SECRET,
       {
         expiresIn: "7d",
       },
     );
+
+    // ── DEBUG: print decoded token payload to server console ─────────────────
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    console.log("========== LOGIN TOKEN PAYLOAD ==========");
+    console.log(JSON.stringify(decoded, null, 2));
+    console.log("=========================================");
+    // ─────────────────────────────────────────────────────────────────────────
 
     return res.json({
       success: true,
@@ -249,6 +263,7 @@ WHERE propertydb = @db
       accessibleDatabases,
       utg: user.UTG || user.utg,
       isAdmin,
+      branchUnq,
       message: "Login Successful",
     });
   } catch (err) {
