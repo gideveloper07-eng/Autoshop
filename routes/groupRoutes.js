@@ -132,6 +132,7 @@ router.get("/merged-users", verifyToken, async (req, res) => {
         const result = await pool.request().query(`
         SELECT
     CAST(r.utunqid AS NVARCHAR(50)) AS id,
+    r.uti AS loginId,
     r.utnm AS name,
     r.BRANCHUNQ AS branchId,
     ISNULL(b.sp_607,'') AS branchName
@@ -191,6 +192,7 @@ ORDER BY r.utnm
         const result = await pool.request().query(`
             SELECT
     CAST(r.utunqid AS NVARCHAR(50)) AS id,
+    r.uti AS loginId,
     r.utnm AS name,
     r.BRANCHUNQ AS branchId,
     ISNULL(b.sp_607,'') AS branchName
@@ -222,6 +224,7 @@ ORDER BY r.utnm
         const result = await pool.request().query(`
          SELECT
     CAST(r.utunqid AS NVARCHAR(50)) AS id,
+    r.uti AS loginId,
     r.utnm AS name,
     r.BRANCHUNQ AS branchId,
     ISNULL(b.sp_607,'') AS branchName
@@ -239,11 +242,11 @@ ORDER BY r.utnm
             seenIds.add(key);
             allUsers.push({
               id: user.id,
+              loginId: user.loginId,
               name: user.name,
               companyName: db.companyName,
               companyCode: db.companyCode,
               database: db.database,
-
               branchId: user.branchId,
               branchName: user.branchName,
             });
