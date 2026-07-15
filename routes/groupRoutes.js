@@ -225,8 +225,8 @@ AND Status='ACTIVE'
     //-------------------------------------------------------
     // Load Pending Requests
     //-------------------------------------------------------
-
-    const requestsResult = await masterPool
+    const compool = await openCommunicationPool();
+    const requestsResult = await compool
       .request()
       .input("UserGuid", sql.UniqueIdentifier, userGuid).query(`
 SELECT
@@ -2231,8 +2231,8 @@ WHERE UserGuid=@UserGuid
     //------------------------------------------
     // Already Pending
     //------------------------------------------
-
-    const pending = await masterPool
+    const compool = await openCommunicationPool();
+    const pending = await compool
       .request()
       .input("FromUserGuid", sql.UniqueIdentifier, userGuid)
       .input("ToUserGuid", sql.UniqueIdentifier, toUserGuid).query(`
@@ -2284,7 +2284,7 @@ AND Status='ACTIVE'
     // Insert Request
     //------------------------------------------
 
-    const insertResult = await masterPool
+    const insertResult = await compool
       .request()
 
       .input("FromUserGuid", sql.UniqueIdentifier, userGuid)
@@ -2411,8 +2411,9 @@ router.get("/chat/requests", verifyToken, async (req, res) => {
     //------------------------------------------
     // Get Pending Requests
     //------------------------------------------
+    const compool = await openCommunicationPool();
 
-    const result = await masterPool
+    const result = await compool
       .request()
       .input("UserGuid", sql.UniqueIdentifier, userGuid).query(`
         SELECT
@@ -2510,7 +2511,7 @@ router.post("/chat/request/accept", verifyToken, async (req, res) => {
       requestGuid,
     ).query(`
                 SELECT *
-                FROM MA_ContactRequests
+                FROM autoshop_communication.dbo.MA_ContactRequests
                 WHERE
                     RequestGuid=@RequestGuid
                     AND Status='PENDING'
@@ -2647,7 +2648,7 @@ router.post("/chat/request/accept", verifyToken, async (req, res) => {
       .input("RequestGuid", sql.UniqueIdentifier, requestGuid)
       .input("ApprovedBy", sql.UniqueIdentifier, userGuid).query(`
 
-                UPDATE MA_ContactRequests
+                UPDATE AUTOSHOP_COMMUNICATION.DBO.MA_ContactRequests
 
                 SET
 
@@ -2731,7 +2732,7 @@ router.post("/chat/request/reject", verifyToken, async (req, res) => {
       requestGuid,
     ).query(`
                 SELECT *
-                FROM MA_ContactRequests
+                FROM AUTOSHOP_COMMUNICATION.DBO.MA_ContactRequests
                 WHERE
                     RequestGuid=@RequestGuid
                 AND
@@ -2770,7 +2771,7 @@ router.post("/chat/request/reject", verifyToken, async (req, res) => {
       .input("RequestGuid", sql.UniqueIdentifier, requestGuid)
       .input("RejectedBy", sql.UniqueIdentifier, userGuid).query(`
 
-                UPDATE MA_ContactRequests
+                UPDATE AUTOSHOP_COMMUNICATION.DBO.MA_ContactRequests
                 SET
 
                     Status='REJECTED',
