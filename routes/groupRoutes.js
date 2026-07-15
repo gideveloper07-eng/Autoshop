@@ -225,7 +225,7 @@ AND Status='ACTIVE'
     //-------------------------------------------------------
     // Load Pending Requests
     //-------------------------------------------------------
-   
+
     const requestsResult = await communicationPool
       .request()
       .input("UserGuid", sql.UniqueIdentifier, userGuid).query(`
@@ -2190,7 +2190,8 @@ router.post("/sendrequest", verifyToken, async (req, res) => {
     //------------------------------------------
     // Find Receiver
     //------------------------------------------
-    const receiver = await masterPool
+
+    const receiver = await compool
       .request()
       .input("UserGuid", sql.UniqueIdentifier, toUserGuid).query(`
                 SELECT TOP 1
