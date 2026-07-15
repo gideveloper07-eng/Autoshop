@@ -143,10 +143,37 @@ WHERE ISNULL(r.utnm,'') <> ''
   AND r.utg IS NOT NULL
 ORDER BY r.utnm
         `);
+        const currentBranchUnq = String(req.user.branchUnq || "");
+
         return res.json({
           success: true,
-          data: result.recordset,
           merged: false,
+          data: result.recordset.map((user) => {
+            const isSameBranch = String(user.branchId) === currentBranchUnq;
+
+            return {
+              // Existing fields (unchanged)
+              id: user.id,
+              loginId: user.loginId,
+              name: user.name,
+
+              companyName: req.user.propertyName || "",
+              companyCode: req.user.propertyCode || "",
+              database: currentDb,
+
+              branchId: user.branchId,
+              branchName: user.branchName,
+
+              // New fields
+              chatAccess: isSameBranch ? "AUTO" : "REQUEST",
+
+              requestStatus: null,
+              isContact: false,
+
+              isSameCompany: true,
+              isSameBranch,
+            };
+          }),
         });
       } finally {
         if (pool) await pool.close();
@@ -203,10 +230,37 @@ WHERE ISNULL(r.utnm,'') <> ''
   AND r.utg IS NOT NULL
 ORDER BY r.utnm
         `);
+        const currentBranchUnq = String(req.user.branchUnq || "");
+
         return res.json({
           success: true,
-          data: result.recordset,
           merged: false,
+          data: result.recordset.map((user) => {
+            const isSameBranch = String(user.branchId) === currentBranchUnq;
+
+            return {
+              // Existing fields
+              id: user.id,
+              loginId: user.loginId,
+              name: user.name,
+
+              companyName,
+              companyCode,
+              database: targetDb,
+
+              branchId: user.branchId,
+              branchName: user.branchName,
+
+              // New fields
+              chatAccess: isSameBranch ? "AUTO" : "REQUEST",
+
+              requestStatus: null,
+              isContact: false,
+
+              isSameCompany: true,
+              isSameBranch,
+            };
+          }),
         });
       } finally {
         if (pool) await pool.close();
@@ -214,47 +268,84 @@ ORDER BY r.utnm
     }
 
     // Multiple dealerships — fetch users from each and merge
+    // Multiple dealerships — fetch users from each and merge
     const allUsers = [];
-    const seenIds = new Set(); // deduplicate by "database:userId"
+    const seenIds = new Set();
+
+    const currentPropertyCode = req.user.propertyCode;
+    const currentBranchUnq = String(req.user.branchUnq || "");
 
     for (const db of accessibleDbs) {
       let pool;
+
       try {
         pool = await openPool(db.database);
+
         const result = await pool.request().query(`
-         SELECT
-    CAST(r.utunqid AS NVARCHAR(50)) AS id,
-    r.uti AS loginId,
-    r.utnm AS name,
-    r.BRANCHUNQ AS branchId,
-    ISNULL(b.sp_607,'') AS branchName
-FROM rh_secut r
-LEFT JOIN rh_sp_60 b
-       ON r.BRANCHUNQ = b.sp_602
-WHERE ISNULL(r.utnm,'') <> ''
-  AND r.utg IS NOT NULL
-ORDER BY r.utnm
-        `);
+      SELECT
+          CAST(r.utunqid AS NVARCHAR(50)) AS id,
+          r.uti AS loginId,
+          r.utnm AS name,
+          r.BRANCHUNQ AS branchId,
+          ISNULL(b.sp_607,'') AS branchName
+      FROM rh_secut r
+      LEFT JOIN rh_sp_60 b
+             ON r.BRANCHUNQ = b.sp_602
+      WHERE ISNULL(r.utnm,'') <> ''
+        AND r.utg IS NOT NULL
+      ORDER BY r.utnm
+    `);
 
         for (const user of result.recordset) {
           const key = `${db.database}:${user.id}`;
-          if (!seenIds.has(key) && user.id) {
-            seenIds.add(key);
-            allUsers.push({
-              id: user.id,
-              loginId: user.loginId,
-              name: user.name,
-              companyName: db.companyName,
-              companyCode: db.companyCode,
-              database: db.database,
-              branchId: user.branchId,
-              branchName: user.branchName,
-            });
+
+          if (seenIds.has(key) || !user.id) continue;
+
+          seenIds.add(key);
+
+          //-------------------------------------------------------
+          // Chat Permission Logic (Phase 1)
+          //-------------------------------------------------------
+
+          const isSameCompany = db.companyCode === currentPropertyCode;
+
+          const isSameBranch = String(user.branchId) === currentBranchUnq;
+
+          let chatAccess = "REQUEST";
+
+          if (isSameCompany && isSameBranch) {
+            chatAccess = "AUTO";
           }
+
+          //-------------------------------------------------------
+          // Future values (Phase 2)
+          //-------------------------------------------------------
+
+          let requestStatus = null;
+          let isContact = false;
+
+          allUsers.push({
+            // Existing fields (DO NOT CHANGE)
+            id: user.id,
+            loginId: user.loginId,
+            name: user.name,
+            companyName: db.companyName,
+            companyCode: db.companyCode,
+            database: db.database,
+            branchId: user.branchId,
+            branchName: user.branchName,
+
+            // New fields
+            chatAccess,
+            requestStatus,
+            isContact,
+            isSameCompany,
+            isSameBranch,
+          });
         }
       } catch (dbErr) {
         console.error(
-          `MERGED-USERS: failed to fetch from ${db.database}:`,
+          `MERGED-USERS: failed to fetch from ${db.database}`,
           dbErr.message,
         );
       } finally {
@@ -265,7 +356,11 @@ ORDER BY r.utnm
     // Sort by name
     allUsers.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
-    return res.json({ success: true, data: allUsers, merged: true });
+    return res.json({
+      success: true,
+      merged: true,
+      data: allUsers,
+    });
   } catch (err) {
     console.error("MERGED-USERS ERROR:", err);
     return res.status(500).json({ success: false, message: err.message });
