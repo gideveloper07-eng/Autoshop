@@ -1,5 +1,5 @@
 const sql = require("mssql");
-const { openCommunicationPool } = require("../config/db");
+const openCommunicationPool = require("../utils/communicationPool");
 
 async function syncUserDirectory(user) {
   const pool = await openCommunicationPool();

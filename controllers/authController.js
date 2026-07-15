@@ -359,6 +359,7 @@ const switchDatabase = async (req, res) => {
         expiresIn: "7d",
       },
     );
+    
     const verify = jwt.verify(token, process.env.JWT_SECRET);
 
     console.log("========== SWITCH DATABASE TOKEN ==========");
