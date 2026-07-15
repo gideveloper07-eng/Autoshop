@@ -120,155 +120,206 @@ router.get("/users", verifyToken, async (req, res) => {
 // Users with single-dealership access get only their own company's users.
 // Requires userGuid in JWT (set during login from MA_MasterUsers).
 router.get("/merged-users", verifyToken, async (req, res) => {
-  const { database: currentDb, userGuid } = req.user;
+  const {
+    database: currentDb,
+    userGuid,
+    propertyCode: currentPropertyCode,
+    propertyName: currentPropertyName,
+  } = req.user;
+
   let masterPool;
 
-  try {
-    // If no userGuid, fall back to single-company user list
-    if (!userGuid) {
-      let pool;
-      try {
-        pool = await openPool(currentDb);
-        const result = await pool.request().query(`
+  // -----------------------------
+  // Helper : Fetch Users
+  // -----------------------------
+  const getUsers = async (databaseName) => {
+    let pool;
+
+    try {
+      pool = await openPool(databaseName);
+
+      const result = await pool.request().query(`
         SELECT
-    CAST(r.utunqid AS NVARCHAR(50)) AS id,
-    r.uti AS loginId,
-    r.utnm AS name,
-    r.BRANCHUNQ AS branchId,
-    ISNULL(b.sp_607,'') AS branchName
-FROM rh_secut r
-LEFT JOIN rh_sp_60 b
-       ON r.BRANCHUNQ = b.sp_602
-WHERE ISNULL(r.utnm,'') <> ''
-  AND r.utg IS NOT NULL
-ORDER BY r.utnm
-        `);
-        return res.json({
-          success: true,
-          data: result.recordset,
-          merged: false,
-        });
-      } finally {
-        if (pool) await pool.close();
-      }
+            CAST(r.utunqid AS NVARCHAR(50)) AS userId,
+            r.uti                         AS loginId,
+            r.utnm                        AS userName,
+            r.BRANCHUNQ                   AS branchUnq,
+            ISNULL(b.sp_607,'')           AS branchName
+        FROM rh_secut r
+        LEFT JOIN rh_sp_60 b
+               ON b.sp_602 = r.BRANCHUNQ
+        WHERE
+            ISNULL(r.utnm,'') <> ''
+            AND r.utg IS NOT NULL
+        ORDER BY r.utnm
+      `);
+
+      return result.recordset;
+    } finally {
+      if (pool) await pool.close();
+    }
+  };
+
+  try {
+    //-----------------------------------------------------
+    // CASE 1 : User does not have UserGuid
+    //-----------------------------------------------------
+
+    if (!userGuid) {
+      const users = await getUsers(currentDb);
+
+      return res.json({
+        success: true,
+        merged: false,
+        data: users.map((user) => ({
+          userId: user.userId,
+          loginId: user.loginId,
+          userName: user.userName,
+
+          propertyCode: currentPropertyCode,
+          propertyName: currentPropertyName,
+
+          database: currentDb,
+
+          branchUnq: user.branchUnq,
+          branchName: user.branchName,
+
+          chatAccess: "AUTO",
+          requestStatus: null,
+          isContact: false,
+        })),
+      });
     }
 
-    // Look up all databases this user has access to
+    //-----------------------------------------------------
+    // Load Accessible Companies
+    //-----------------------------------------------------
+
     masterPool = await new sql.ConnectionPool({
       user: process.env.DB_USER,
       password: process.env.DB_PASSWORD,
       server: process.env.DB_HOST,
       port: parseInt(process.env.DB_PORT || "1433"),
       database: "CMPY_AUTOSHOP",
-      options: { encrypt: false, trustServerCertificate: true },
+      options: {
+        encrypt: false,
+        trustServerCertificate: true,
+      },
     }).connect();
 
     const accessResult = await masterPool
       .request()
       .input("userGuid", sql.UniqueIdentifier, userGuid).query(`
         SELECT
-            CM.unqid      AS clientId,
-            CM.propertycode AS companyCode,
-            CM.propertyname AS companyName,
-            CM.propertydb   AS [database]
+            CM.Unqid          AS clientId,
+            CM.PropertyCode   AS propertyCode,
+            CM.PropertyName   AS propertyName,
+            CM.PropertyDB     AS database
         FROM MA_UserDatabaseAccess UA
-        INNER JOIN MA_ClientMaster CM ON UA.ClientId = CM.unqid
+        INNER JOIN MA_ClientMaster CM
+            ON UA.ClientId = CM.Unqid
         WHERE UA.UserGuid = @userGuid
       `);
 
-    const accessibleDbs = accessResult.recordset;
+    const companies = accessResult.recordset;
 
-    // If only one dealership (or none found), no need to merge
-    if (accessibleDbs.length <= 1) {
-      let pool;
-      const targetDb =
-        accessibleDbs.length === 1 ? accessibleDbs[0].database : currentDb;
-      const companyName =
-        accessibleDbs.length === 1 ? accessibleDbs[0].companyName : null;
-      const companyCode =
-        accessibleDbs.length === 1 ? accessibleDbs[0].companyCode : null;
-      try {
-        pool = await openPool(targetDb);
-        const result = await pool.request().query(`
-            SELECT
-    CAST(r.utunqid AS NVARCHAR(50)) AS id,
-    r.uti AS loginId,
-    r.utnm AS name,
-    r.BRANCHUNQ AS branchId,
-    ISNULL(b.sp_607,'') AS branchName
-FROM rh_secut r
-LEFT JOIN rh_sp_60 b
-       ON r.BRANCHUNQ = b.sp_602
-WHERE ISNULL(r.utnm,'') <> ''
-  AND r.utg IS NOT NULL
-ORDER BY r.utnm
-        `);
-        return res.json({
-          success: true,
-          data: result.recordset,
-          merged: false,
-        });
-      } finally {
-        if (pool) await pool.close();
-      }
+    //-----------------------------------------------------
+    // CASE 2 : Single Company
+    //-----------------------------------------------------
+
+    if (companies.length <= 1) {
+      const company =
+        companies.length === 1
+          ? companies[0]
+          : {
+              propertyCode: currentPropertyCode,
+              propertyName: currentPropertyName,
+              database: currentDb,
+            };
+
+      const users = await getUsers(company.database);
+
+      return res.json({
+        success: true,
+        merged: false,
+        data: users.map((user) => ({
+          userId: user.userId,
+          loginId: user.loginId,
+          userName: user.userName,
+
+          propertyCode: company.propertyCode,
+          propertyName: company.propertyName,
+
+          database: company.database,
+
+          branchUnq: user.branchUnq,
+          branchName: user.branchName,
+
+          chatAccess: "AUTO",
+          requestStatus: null,
+          isContact: false,
+        })),
+      });
     }
 
-    // Multiple dealerships — fetch users from each and merge
+    //-----------------------------------------------------
+    // CASE 3 : Multiple Companies
+    //-----------------------------------------------------
+
     const allUsers = [];
-    const seenIds = new Set(); // deduplicate by "database:userId"
+    const visited = new Set();
 
-    for (const db of accessibleDbs) {
-      let pool;
+    for (const company of companies) {
       try {
-        pool = await openPool(db.database);
-        const result = await pool.request().query(`
-         SELECT
-    CAST(r.utunqid AS NVARCHAR(50)) AS id,
-    r.uti AS loginId,
-    r.utnm AS name,
-    r.BRANCHUNQ AS branchId,
-    ISNULL(b.sp_607,'') AS branchName
-FROM rh_secut r
-LEFT JOIN rh_sp_60 b
-       ON r.BRANCHUNQ = b.sp_602
-WHERE ISNULL(r.utnm,'') <> ''
-  AND r.utg IS NOT NULL
-ORDER BY r.utnm
-        `);
+        const users = await getUsers(company.database);
 
-        for (const user of result.recordset) {
-          const key = `${db.database}:${user.id}`;
-          if (!seenIds.has(key) && user.id) {
-            seenIds.add(key);
-            allUsers.push({
-              id: user.id,
-              loginId: user.loginId,
-              name: user.name,
-              companyName: db.companyName,
-              companyCode: db.companyCode,
-              database: db.database,
-              branchId: user.branchId,
-              branchName: user.branchName,
-            });
-          }
+        for (const user of users) {
+          const key = `${company.database}_${user.userId}`;
+
+          if (visited.has(key)) continue;
+
+          visited.add(key);
+
+          allUsers.push({
+            userId: user.userId,
+            loginId: user.loginId,
+            userName: user.userName,
+
+            propertyCode: company.propertyCode,
+            propertyName: company.propertyName,
+
+            database: company.database,
+
+            branchUnq: user.branchUnq,
+            branchName: user.branchName,
+
+            chatAccess: "AUTO",
+            requestStatus: null,
+            isContact: false,
+          });
         }
-      } catch (dbErr) {
+      } catch (err) {
         console.error(
-          `MERGED-USERS: failed to fetch from ${db.database}:`,
-          dbErr.message,
+          `Unable to load users from ${company.database}`,
+          err.message,
         );
-      } finally {
-        if (pool) await pool.close();
       }
     }
 
-    // Sort by name
-    allUsers.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    allUsers.sort((a, b) => (a.userName || "").localeCompare(b.userName || ""));
 
-    return res.json({ success: true, data: allUsers, merged: true });
+    return res.json({
+      success: true,
+      merged: true,
+      data: allUsers,
+    });
   } catch (err) {
-    console.error("MERGED-USERS ERROR:", err);
-    return res.status(500).json({ success: false, message: err.message });
+    console.error("MERGED USERS ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
   } finally {
     if (masterPool) await masterPool.close();
   }
