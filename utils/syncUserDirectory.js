@@ -46,7 +46,7 @@ PropertyName=@PropertyName,
 PropertyDB=@PropertyDB,
 BranchUnq=@BranchUnq,
 BranchName=@BranchName,
-LastSeen=GETDATE()
+LastLogin=GETDATE()
 
 WHEN NOT MATCHED THEN
 
@@ -59,7 +59,7 @@ PropertyName,
 PropertyDB,
 BranchUnq,
 BranchName,
-LastSeen
+LastLogin
 )
 
 VALUES
