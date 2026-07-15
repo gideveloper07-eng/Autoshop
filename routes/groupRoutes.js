@@ -152,7 +152,6 @@ ORDER BY r.utnm
             const isSameBranch = String(user.branchId) === currentBranchUnq;
 
             return {
-              // Existing fields (unchanged)
               id: user.id,
               loginId: user.loginId,
               name: user.name,
@@ -164,7 +163,6 @@ ORDER BY r.utnm
               branchId: user.branchId,
               branchName: user.branchName,
 
-              // New fields
               chatAccess: isSameBranch ? "AUTO" : "REQUEST",
 
               requestStatus: null,
@@ -204,7 +202,82 @@ ORDER BY r.utnm
       `);
 
     const accessibleDbs = accessResult.recordset;
+    //-------------------------------------------------------
+    // Load Existing Contacts
+    //-------------------------------------------------------
 
+    const contactsResult = await masterPool
+      .request()
+      .input("UserGuid", sql.UniqueIdentifier, userGuid).query(`
+SELECT
+    UserGuidA,
+    UserGuidB
+FROM MA_ChatContacts
+WHERE
+(
+    UserGuidA=@UserGuid
+    OR
+    UserGuidB=@UserGuid
+)
+AND Status='ACTIVE'
+`);
+
+    //-------------------------------------------------------
+    // Load Pending Requests
+    //-------------------------------------------------------
+
+    const requestsResult = await masterPool
+      .request()
+      .input("UserGuid", sql.UniqueIdentifier, userGuid).query(`
+SELECT
+    FromUserGuid,
+    ToUserGuid,
+    Status
+FROM MA_ContactRequests
+WHERE
+(
+    FromUserGuid=@UserGuid
+    OR
+    ToUserGuid=@UserGuid
+)
+AND Status='PENDING'
+`);
+    //-------------------------------------------------------
+    // Contact Lookup
+    //-------------------------------------------------------
+
+    const contactMap = new Map();
+
+    for (const row of contactsResult.recordset) {
+      const otherUser =
+        String(row.UserGuidA).toLowerCase() === String(userGuid).toLowerCase()
+          ? row.UserGuidB
+          : row.UserGuidA;
+
+      contactMap.set(String(otherUser).toLowerCase(), true);
+    }
+
+    //-------------------------------------------------------
+    // Pending Request Lookup
+    //-------------------------------------------------------
+
+    const requestMap = new Map();
+
+    for (const row of requestsResult.recordset) {
+      const otherUser =
+        String(row.FromUserGuid).toLowerCase() ===
+        String(userGuid).toLowerCase()
+          ? row.ToUserGuid
+          : row.FromUserGuid;
+
+      requestMap.set(
+        String(otherUser).toLowerCase(),
+        String(row.FromUserGuid).toLowerCase() ===
+          String(userGuid).toLowerCase()
+          ? "SENT"
+          : "RECEIVED",
+      );
+    }
     // If only one dealership (or none found), no need to merge
     if (accessibleDbs.length <= 1) {
       let pool;
@@ -238,8 +311,19 @@ ORDER BY r.utnm
           data: result.recordset.map((user) => {
             const isSameBranch = String(user.branchId) === currentBranchUnq;
 
+            const userKey = String(user.id).toLowerCase();
+
+            const isContact = contactMap.has(userKey);
+
+            const requestStatus = requestMap.get(userKey) || null;
+
+            let chatAccess = "REQUEST";
+
+            if (isSameBranch || isContact) {
+              chatAccess = "AUTO";
+            }
+
             return {
-              // Existing fields
               id: user.id,
               loginId: user.loginId,
               name: user.name,
@@ -251,11 +335,9 @@ ORDER BY r.utnm
               branchId: user.branchId,
               branchName: user.branchName,
 
-              // New fields
-              chatAccess: isSameBranch ? "AUTO" : "REQUEST",
-
-              requestStatus: null,
-              isContact: false,
+              chatAccess,
+              requestStatus,
+              isContact,
 
               isSameCompany: true,
               isSameBranch,
@@ -311,18 +393,21 @@ ORDER BY r.utnm
 
           const isSameBranch = String(user.branchId) === currentBranchUnq;
 
+          // Lookup this user
+          const userKey = String(user.id).toLowerCase();
+
+          const isContact = contactMap.has(userKey);
+
+          const requestStatus = requestMap.get(userKey) || null;
+
+          // Decide Chat Access
           let chatAccess = "REQUEST";
 
           if (isSameCompany && isSameBranch) {
             chatAccess = "AUTO";
+          } else if (isContact) {
+            chatAccess = "AUTO";
           }
-
-          //-------------------------------------------------------
-          // Future values (Phase 2)
-          //-------------------------------------------------------
-
-          let requestStatus = null;
-          let isContact = false;
 
           allUsers.push({
             // Existing fields (DO NOT CHANGE)
@@ -2050,6 +2135,675 @@ router.get("/tasks", async (req, res) => {
     });
   } finally {
     if (pool) await pool.close();
+  }
+});
+router.post("/chat/request", verifyToken, async (req, res) => {
+  const {
+    userGuid,
+    loginId,
+    database,
+    propertyCode,
+    propertyName,
+    branchUnq,
+    branchName,
+  } = req.user;
+
+  const { toUserGuid, message } = req.body;
+
+  let masterPool;
+
+  try {
+    if (!toUserGuid) {
+      return res.status(400).json({
+        success: false,
+        message: "Receiver is required.",
+      });
+    }
+
+    //------------------------------------------
+    // Cannot send request to yourself
+    //------------------------------------------
+
+    if (userGuid === toUserGuid) {
+      return res.status(400).json({
+        success: false,
+        message: "You cannot send request to yourself.",
+      });
+    }
+
+    //------------------------------------------
+    // Master Database
+    //------------------------------------------
+
+    masterPool = await new sql.ConnectionPool({
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      server: process.env.DB_HOST,
+      port: parseInt(process.env.DB_PORT || "1433"),
+      database: "CMPY_AUTOSHOP",
+      options: {
+        encrypt: false,
+        trustServerCertificate: true,
+      },
+    }).connect();
+
+    //------------------------------------------
+    // Find Receiver
+    //------------------------------------------
+    const receiver = await masterPool
+      .request()
+      .input("UserGuid", sql.UniqueIdentifier, toUserGuid).query(`
+                SELECT TOP 1
+    UserGuid,
+    LoginId,
+    PropertyCode,
+    PropertyName,
+    PropertyDB,
+    BranchUnq,
+    BranchName
+FROM MA_UserDirectory
+WHERE UserGuid=@UserGuid
+            `);
+
+    if (receiver.recordset.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Receiver not found.",
+      });
+    }
+
+    const toUser = receiver.recordset[0];
+
+    //------------------------------------------
+    // Same Branch
+    //------------------------------------------
+
+    if (
+      propertyCode === toUser.PropertyCode &&
+      String(branchUnq) === String(toUser.BranchUnq)
+    ) {
+      return res.json({
+        success: false,
+        message: "User belongs to same branch.",
+      });
+    }
+
+    //------------------------------------------
+    // Already Pending
+    //------------------------------------------
+
+    const pending = await masterPool
+      .request()
+      .input("FromUserGuid", sql.UniqueIdentifier, userGuid)
+      .input("ToUserGuid", sql.UniqueIdentifier, toUserGuid).query(`
+               SELECT TOP 1 RequestGuid
+FROM MA_ContactRequests
+WHERE
+(
+    (FromUserGuid=@FromUserGuid AND ToUserGuid=@ToUserGuid)
+    OR
+    (FromUserGuid=@ToUserGuid AND ToUserGuid=@FromUserGuid)
+)
+AND Status='PENDING'
+            `);
+
+    if (pending.recordset.length) {
+      return res.json({
+        success: false,
+        message: "Request already pending.",
+      });
+    }
+
+    //------------------------------------------
+    // Already Contact
+    //------------------------------------------
+
+    const contact = await masterPool
+      .request()
+      .input("UserA", sql.UniqueIdentifier, userGuid)
+      .input("UserB", sql.UniqueIdentifier, toUserGuid).query(`
+              SELECT TOP 1 ContactGuid
+FROM MA_ChatContacts
+WHERE
+(
+    (UserGuidA=@UserA AND UserGuidB=@UserB)
+    OR
+    (UserGuidA=@UserB AND UserGuidB=@UserA)
+)
+AND Status='ACTIVE'
+            `);
+
+    if (contact.recordset.length) {
+      return res.json({
+        success: false,
+        message: "Already connected.",
+      });
+    }
+
+    //------------------------------------------
+    // Insert Request
+    //------------------------------------------
+
+    const insertResult = await masterPool
+      .request()
+
+      .input("FromUserGuid", sql.UniqueIdentifier, userGuid)
+      .input("FromLoginId", sql.NVarChar, loginId)
+      .input("FromDatabase", sql.NVarChar, database)
+      .input("FromCompanyCode", sql.NVarChar, propertyCode)
+      .input("FromBranchUnq", sql.NVarChar, branchUnq)
+
+      .input("ToUserGuid", sql.UniqueIdentifier, toUserGuid)
+      .input("ToLoginId", sql.NVarChar, toUser.LoginId)
+      .input("ToDatabase", sql.NVarChar, toUser.PropertyDB)
+      .input("ToCompanyCode", sql.NVarChar, toUser.PropertyCode)
+      .input("ToBranchUnq", sql.NVarChar, toUser.BranchUnq)
+      .input("FromCompanyName", sql.NVarChar, propertyName)
+      .input("FromBranchName", sql.NVarChar, branchName)
+
+      .input("ToCompanyName", sql.NVarChar, toUser.PropertyName)
+      .input("ToBranchName", sql.NVarChar, toUser.BranchName)
+      .input("Message", sql.NVarChar, (message || "").trim() || null)
+
+      .input("RequestedBy", sql.UniqueIdentifier, userGuid).query(`
+
+            DECLARE @RequestGuid UNIQUEIDENTIFIER = NEWID();
+
+INSERT INTO MA_ContactRequests
+(
+    RequestGuid,
+    FromUserGuid,
+    FromLoginId,
+    FromDatabase,
+
+    FromCompanyCode,
+    FromCompanyName,
+
+    FromBranchUnq,
+    FromBranchName,
+
+    ToUserGuid,
+    ToLoginId,
+    ToDatabase,
+
+    ToCompanyCode,
+    ToCompanyName,
+
+    ToBranchUnq,
+    ToBranchName,
+
+    RequestMessage,
+
+    RequestedBy
+)
+VALUES
+(
+    @RequestGuid,
+
+    @FromUserGuid,
+    @FromLoginId,
+    @FromDatabase,
+
+    @FromCompanyCode,
+    @FromCompanyName,
+
+    @FromBranchUnq,
+    @FromBranchName,
+
+    @ToUserGuid,
+    @ToLoginId,
+    @ToDatabase,
+
+    @ToCompanyCode,
+    @ToCompanyName,
+
+    @ToBranchUnq,
+    @ToBranchName,
+
+    @Message,
+
+    @RequestedBy
+);
+
+SELECT @RequestGuid AS RequestGuid;
+
+            `);
+
+    return res.status(201).json({
+      success: true,
+      requestGuid: insertResult.recordset[0].RequestGuid,
+      status: "PENDING",
+      message: "Request sent successfully.",
+    });
+  } catch (err) {
+    console.error(err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  } finally {
+    if (masterPool) await masterPool.close();
+  }
+});
+router.get("/chat/requests", verifyToken, async (req, res) => {
+  const { userGuid } = req.user;
+
+  let masterPool;
+
+  try {
+    //------------------------------------------
+    // Connect Master Database
+    //------------------------------------------
+
+    masterPool = await new sql.ConnectionPool({
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      server: process.env.DB_HOST,
+      port: parseInt(process.env.DB_PORT || "1433"),
+      database: "CMPY_AUTOSHOP",
+      options: {
+        encrypt: false,
+        trustServerCertificate: true,
+      },
+    }).connect();
+
+    //------------------------------------------
+    // Get Pending Requests
+    //------------------------------------------
+
+    const result = await masterPool
+      .request()
+      .input("UserGuid", sql.UniqueIdentifier, userGuid).query(`
+        SELECT
+
+            RequestGuid,
+
+            FromUserGuid,
+            FromLoginId,
+            FromDatabase,
+
+            FromCompanyCode,
+            FromCompanyName,
+
+            FromBranchUnq,
+            FromBranchName,
+
+            ToUserGuid,
+            ToLoginId,
+
+            RequestMessage,
+
+            Status,
+
+            RequestedOn
+
+        FROM MA_ContactRequests
+
+        WHERE
+            ToUserGuid = @UserGuid
+            AND Status = 'PENDING'
+
+        ORDER BY RequestedOn DESC
+      `);
+
+    return res.status(200).json({
+      success: true,
+      total: result.recordset.length,
+      data: result.recordset,
+    });
+  } catch (err) {
+    console.error("GET CHAT REQUESTS ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  } finally {
+    if (masterPool) {
+      await masterPool.close();
+    }
+  }
+});
+router.post("/chat/request/accept", verifyToken, async (req, res) => {
+  const { userGuid } = req.user;
+  const { requestGuid } = req.body;
+
+  let masterPool;
+  let transaction;
+
+  try {
+    if (!requestGuid) {
+      return res.status(400).json({
+        success: false,
+        message: "Request Guid is required.",
+      });
+    }
+
+    //----------------------------------------
+    // Master DB
+    //----------------------------------------
+
+    masterPool = await new sql.ConnectionPool({
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      server: process.env.DB_HOST,
+      port: parseInt(process.env.DB_PORT || "1433"),
+      database: "CMPY_AUTOSHOP",
+      options: {
+        encrypt: false,
+        trustServerCertificate: true,
+      },
+    }).connect();
+
+    transaction = new sql.Transaction(masterPool);
+
+    await transaction.begin();
+
+    //----------------------------------------
+    // Find Request
+    //----------------------------------------
+
+    const requestResult = await new sql.Request(transaction).input(
+      "RequestGuid",
+      sql.UniqueIdentifier,
+      requestGuid,
+    ).query(`
+                SELECT *
+                FROM MA_ContactRequests
+                WHERE
+                    RequestGuid=@RequestGuid
+                    AND Status='PENDING'
+            `);
+
+    if (requestResult.recordset.length === 0) {
+      await transaction.rollback();
+
+      return res.status(404).json({
+        success: false,
+        message: "Request not found.",
+      });
+    }
+
+    const request = requestResult.recordset[0];
+
+    //----------------------------------------
+    // Only receiver can accept
+    //----------------------------------------
+
+    if (String(request.ToUserGuid) !== String(userGuid)) {
+      await transaction.rollback();
+
+      return res.status(403).json({
+        success: false,
+        message: "You cannot accept this request.",
+      });
+    }
+
+    //----------------------------------------
+    // Already Contact ?
+    //----------------------------------------
+
+    const contact = await new sql.Request(transaction)
+      .input("UserA", sql.UniqueIdentifier, request.FromUserGuid)
+      .input("UserB", sql.UniqueIdentifier, request.ToUserGuid).query(`
+                SELECT TOP 1 ContactGuid
+                FROM MA_ChatContacts
+                WHERE
+                (
+                    (UserGuidA=@UserA AND UserGuidB=@UserB)
+                    OR
+                    (UserGuidA=@UserB AND UserGuidB=@UserA)
+                )
+                AND Status='ACTIVE'
+            `);
+
+    if (contact.recordset.length) {
+      await transaction.rollback();
+
+      return res.json({
+        success: false,
+        message: "Users are already connected.",
+      });
+    }
+
+    //----------------------------------------
+    // Create Contact
+    //----------------------------------------
+
+    const contactGuid = require("crypto").randomUUID();
+
+    await new sql.Request(transaction)
+
+      .input("ContactGuid", sql.UniqueIdentifier, contactGuid)
+
+      .input("UserGuidA", sql.UniqueIdentifier, request.FromUserGuid)
+      .input("LoginIdA", sql.NVarChar, request.FromLoginId)
+      .input("DatabaseA", sql.NVarChar, request.FromDatabase)
+      .input("CompanyCodeA", sql.NVarChar, request.FromCompanyCode)
+      .input("BranchUnqA", sql.NVarChar, request.FromBranchUnq)
+
+      .input("UserGuidB", sql.UniqueIdentifier, request.ToUserGuid)
+      .input("LoginIdB", sql.NVarChar, request.ToLoginId)
+      .input("DatabaseB", sql.NVarChar, request.ToDatabase)
+      .input("CompanyCodeB", sql.NVarChar, request.ToCompanyCode)
+      .input("BranchUnqB", sql.NVarChar, request.ToBranchUnq)
+
+      .input("CreatedBy", sql.UniqueIdentifier, userGuid).query(`
+
+                INSERT INTO MA_ChatContacts
+                (
+                    ContactGuid,
+
+                    UserGuidA,
+                    LoginIdA,
+                    DatabaseA,
+                    CompanyCodeA,
+                    BranchUnqA,
+
+                    UserGuidB,
+                    LoginIdB,
+                    DatabaseB,
+                    CompanyCodeB,
+                    BranchUnqB,
+
+                    Status,
+
+                    CreatedBy,
+                    CreatedOn
+                )
+
+                VALUES
+                (
+
+                    @ContactGuid,
+
+                    @UserGuidA,
+                    @LoginIdA,
+                    @DatabaseA,
+                    @CompanyCodeA,
+                    @BranchUnqA,
+
+                    @UserGuidB,
+                    @LoginIdB,
+                    @DatabaseB,
+                    @CompanyCodeB,
+                    @BranchUnqB,
+
+                    'ACTIVE',
+
+                    @CreatedBy,
+                    GETDATE()
+
+                )
+
+            `);
+
+    //----------------------------------------
+    // Update Request
+    //----------------------------------------
+
+    await new sql.Request(transaction)
+      .input("RequestGuid", sql.UniqueIdentifier, requestGuid)
+      .input("ApprovedBy", sql.UniqueIdentifier, userGuid).query(`
+
+                UPDATE MA_ContactRequests
+
+                SET
+
+                    Status='ACCEPTED',
+                    ApprovedBy=@ApprovedBy,
+                    ApprovedOn=GETDATE()
+
+                WHERE
+
+                    RequestGuid=@RequestGuid
+
+            `);
+
+    //----------------------------------------
+
+    await transaction.commit();
+
+    return res.json({
+      success: true,
+      message: "Request accepted successfully.",
+      contactGuid,
+    });
+  } catch (err) {
+    if (transaction) await transaction.rollback();
+
+    console.error(err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  } finally {
+    if (masterPool) await masterPool.close();
+  }
+});
+router.post("/chat/request/reject", verifyToken, async (req, res) => {
+  const { userGuid } = req.user;
+  const { requestGuid } = req.body;
+
+  let masterPool;
+  let transaction;
+
+  try {
+    //-----------------------------------------
+    // Validation
+    //-----------------------------------------
+
+    if (!requestGuid) {
+      return res.status(400).json({
+        success: false,
+        message: "Request Guid is required.",
+      });
+    }
+
+    //-----------------------------------------
+    // Master Database
+    //-----------------------------------------
+
+    masterPool = await new sql.ConnectionPool({
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      server: process.env.DB_HOST,
+      port: parseInt(process.env.DB_PORT || "1433"),
+      database: "CMPY_AUTOSHOP",
+      options: {
+        encrypt: false,
+        trustServerCertificate: true,
+      },
+    }).connect();
+
+    transaction = new sql.Transaction(masterPool);
+    await transaction.begin();
+
+    //-----------------------------------------
+    // Find Pending Request
+    //-----------------------------------------
+
+    const requestResult = await new sql.Request(transaction).input(
+      "RequestGuid",
+      sql.UniqueIdentifier,
+      requestGuid,
+    ).query(`
+                SELECT *
+                FROM MA_ContactRequests
+                WHERE
+                    RequestGuid=@RequestGuid
+                AND
+                    Status='PENDING'
+            `);
+
+    if (requestResult.recordset.length === 0) {
+      await transaction.rollback();
+
+      return res.status(404).json({
+        success: false,
+        message: "Request not found.",
+      });
+    }
+
+    const request = requestResult.recordset[0];
+
+    //-----------------------------------------
+    // Only Receiver Can Reject
+    //-----------------------------------------
+
+    if (String(request.ToUserGuid) !== String(userGuid)) {
+      await transaction.rollback();
+
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to reject this request.",
+      });
+    }
+
+    //-----------------------------------------
+    // Reject Request
+    //-----------------------------------------
+
+    await new sql.Request(transaction)
+      .input("RequestGuid", sql.UniqueIdentifier, requestGuid)
+      .input("RejectedBy", sql.UniqueIdentifier, userGuid).query(`
+
+                UPDATE MA_ContactRequests
+                SET
+
+                    Status='REJECTED',
+                    RejectedOn=GETDATE(),
+                    RejectedBy=@RejectedBy
+
+                WHERE
+
+                    RequestGuid=@RequestGuid
+
+            `);
+
+    //-----------------------------------------
+
+    await transaction.commit();
+
+    return res.json({
+      success: true,
+      status: "REJECTED",
+      requestGuid: requestGuid,
+      message: "Request rejected successfully.",
+    });
+  } catch (err) {
+    if (transaction) await transaction.rollback();
+
+    console.error(err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  } finally {
+    if (masterPool) await masterPool.close();
   }
 });
 module.exports = router;
