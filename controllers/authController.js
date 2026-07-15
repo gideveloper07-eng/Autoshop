@@ -233,14 +233,14 @@ WHERE propertydb = @db
     console.log(JSON.stringify(decoded, null, 2));
     console.log("=========================================");
     // ─────────────────────────────────────────────────────────────────────────
-    await syncUserDirectory({
+    /* await syncUserDirectory({
       userGuid,
       userId,
       loginPropertyCode,
       loginPropertyName,
       loginDatabase,
       branchUnq,
-    });
+    });*/
     return res.json({
       success: true,
       token,
@@ -365,7 +365,7 @@ const switchDatabase = async (req, res) => {
     console.log(JSON.stringify(verify, null, 2));
     console.log("===========================================");
 
-    await syncUserDirectory({
+    /*await syncUserDirectory({
       userGuid,
       loginId,
       propertyCode,
@@ -373,7 +373,7 @@ const switchDatabase = async (req, res) => {
       database,
       branchUnq,
       branchName,
-    });
+    });*/
     return res.json({
       success: true,
       token,
