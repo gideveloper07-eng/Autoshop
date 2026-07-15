@@ -2137,7 +2137,7 @@ router.get("/tasks", async (req, res) => {
     if (pool) await pool.close();
   }
 });
-router.post("/chat/request", verifyToken, async (req, res) => {
+router.post("/sendrequest", verifyToken, async (req, res) => {
   const {
     userGuid,
     loginId,
