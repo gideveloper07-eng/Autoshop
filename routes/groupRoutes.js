@@ -205,8 +205,8 @@ ORDER BY r.utnm
     //-------------------------------------------------------
     // Load Existing Contacts
     //-------------------------------------------------------
-
-    const contactsResult = await openCommunicationPool
+    const communicationPool = await openCommunicationPool();
+    const contactsResult = await communicationPool
       .request()
       .input("UserGuid", sql.UniqueIdentifier, userGuid).query(`
 SELECT
