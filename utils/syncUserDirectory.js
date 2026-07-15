@@ -54,6 +54,7 @@ INSERT
 (
 UserGuid,
 LoginId,
+EmployeeName,
 PropertyCode,
 PropertyName,
 PropertyDB,
@@ -65,6 +66,7 @@ LastLogin
 VALUES
 (
 @UserGuid,
+@LoginId,
 @LoginId,
 @propertyCode,
 @PropertyName,
