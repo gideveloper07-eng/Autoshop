@@ -2257,8 +2257,8 @@ AND Status='PENDING'
     //------------------------------------------
     // Already Contact
     //------------------------------------------
-
-    const contact = await openCommunicationPool
+    const communicationPool = await openCommunicationPool();
+    const contact = await communicationPool
       .request()
       .input("UserA", sql.UniqueIdentifier, userGuid)
       .input("UserB", sql.UniqueIdentifier, toUserGuid).query(`
@@ -2548,7 +2548,7 @@ router.post("/chat/request/accept", verifyToken, async (req, res) => {
       .input("UserA", sql.UniqueIdentifier, request.FromUserGuid)
       .input("UserB", sql.UniqueIdentifier, request.ToUserGuid).query(`
                 SELECT TOP 1 ContactGuid
-                FROM MA_ChatContacts
+                FROM AUTOSHOP_COMMUNICATION.DBO.MA_ChatContacts
                 WHERE
                 (
                     (UserGuidA=@UserA AND UserGuidB=@UserB)
@@ -2591,7 +2591,7 @@ router.post("/chat/request/accept", verifyToken, async (req, res) => {
 
       .input("CreatedBy", sql.UniqueIdentifier, userGuid).query(`
 
-                INSERT INTO MA_ChatContacts
+                INSERT INTO AUTOSHOP_COMMUNICATION.DBO.MA_ChatContacts
                 (
                     ContactGuid,
 
