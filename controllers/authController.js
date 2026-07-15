@@ -233,7 +233,15 @@ WHERE propertydb = @db
     console.log(JSON.stringify(decoded, null, 2));
     console.log("=========================================");
     // ─────────────────────────────────────────────────────────────────────────
-
+    await syncUserDirectory({
+      userGuid,
+      loginId,
+      propertyCode,
+      propertyName,
+      database,
+      branchUnq,
+      branchName,
+    });
     return res.json({
       success: true,
       token,
@@ -356,6 +364,7 @@ const switchDatabase = async (req, res) => {
     console.log("========== SWITCH DATABASE TOKEN ==========");
     console.log(JSON.stringify(verify, null, 2));
     console.log("===========================================");
+
     await syncUserDirectory({
       userGuid,
       loginId,
