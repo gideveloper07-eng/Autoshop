@@ -206,7 +206,7 @@ ORDER BY r.utnm
     // Load Existing Contacts
     //-------------------------------------------------------
 
-    const contactsResult = await masterPool
+    const contactsResult = await openCommunicationPool
       .request()
       .input("UserGuid", sql.UniqueIdentifier, userGuid).query(`
 SELECT
@@ -2258,7 +2258,7 @@ AND Status='PENDING'
     // Already Contact
     //------------------------------------------
 
-    const contact = await masterPool
+    const contact = await openCommunicationPool
       .request()
       .input("UserA", sql.UniqueIdentifier, userGuid)
       .input("UserB", sql.UniqueIdentifier, toUserGuid).query(`
