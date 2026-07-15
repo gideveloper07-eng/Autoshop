@@ -235,12 +235,11 @@ WHERE propertydb = @db
     // ─────────────────────────────────────────────────────────────────────────
     await syncUserDirectory({
       userGuid,
-      loginId,
-      propertyCode,
-      propertyName,
-      database,
+      userId,
+      loginPropertyCode,
+      loginPropertyName,
+      loginDatabase,
       branchUnq,
-      branchName,
     });
     return res.json({
       success: true,
@@ -359,7 +358,7 @@ const switchDatabase = async (req, res) => {
         expiresIn: "7d",
       },
     );
-    
+
     const verify = jwt.verify(token, process.env.JWT_SECRET);
 
     console.log("========== SWITCH DATABASE TOKEN ==========");

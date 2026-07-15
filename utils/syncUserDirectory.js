@@ -2,17 +2,33 @@ const sql = require("mssql");
 const openCommunicationPool = require("../utils/communicationPool");
 
 async function syncUserDirectory(user) {
+    const dealershipPool = await openPool(user.loginDatabase);
+
+const branchResult = await dealershipPool
+  .request()
+  .input("BranchUnq", sql.NVarChar, user.branchUnq)
+  .query(`
+      SELECT TOP 1 ISNULL(sp_607,'') AS BranchName
+      FROM rh_sp_60
+      WHERE sp_602 = @BranchUnq
+  `);
+
+const branchName =
+  branchResult.recordset.length > 0
+    ? branchResult.recordset[0].BranchName
+    : "";
   const pool = await openCommunicationPool();
 
   await pool
     .request()
     .input("UserGuid", sql.UniqueIdentifier, user.userGuid)
-    .input("LoginId", sql.NVarChar, user.loginId)
-    .input("PropertyCode", sql.NVarChar, user.propertyCode)
-    .input("PropertyName", sql.NVarChar, user.propertyName)
-    .input("PropertyDB", sql.NVarChar, user.database)
+    .input("LoginId", sql.NVarChar, user.userId)
+    .input("PropertyCode", sql.NVarChar, user.loginPropertyCode)
+    .input("PropertyName", sql.NVarChar, user.loginPropertyName)
+    .input("PropertyDB", sql.NVarChar, user.loginDatabase)
     .input("BranchUnq", sql.NVarChar, user.branchUnq)
-    .input("BranchName", sql.NVarChar, user.branchName).query(`
+    .input("BranchName", sql.NVarChar, branchName)
+    .query(`
 MERGE MA_UserDirectory AS T
 USING
 (
