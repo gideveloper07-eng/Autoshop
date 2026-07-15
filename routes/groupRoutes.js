@@ -225,8 +225,8 @@ AND Status='ACTIVE'
     //-------------------------------------------------------
     // Load Pending Requests
     //-------------------------------------------------------
-    const compool = await openCommunicationPool();
-    const requestsResult = await compool
+   
+    const requestsResult = await communicationPool
       .request()
       .input("UserGuid", sql.UniqueIdentifier, userGuid).query(`
 SELECT
