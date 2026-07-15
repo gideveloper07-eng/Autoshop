@@ -2190,8 +2190,8 @@ router.post("/sendrequest", verifyToken, async (req, res) => {
     //------------------------------------------
     // Find Receiver
     //------------------------------------------
-
-    const receiver = await compool
+    const cp = await openCommunicationPool();
+    const receiver = await cp
       .request()
       .input("UserGuid", sql.UniqueIdentifier, toUserGuid).query(`
                 SELECT TOP 1
