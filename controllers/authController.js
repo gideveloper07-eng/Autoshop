@@ -3,6 +3,7 @@ const { sql } = require("../config/db");
 const { decodeToken } = require("../middleware/authMiddleware");
 const openMasterPool = require("../utils/masterPool");
 const openPool = require("../utils/dynamicPoolManager");
+const syncUserDirectory = require("../utils/syncUserDirectory");
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper: open a dynamic pool to a specific database
 // ─────────────────────────────────────────────────────────────────────────────
@@ -355,6 +356,15 @@ const switchDatabase = async (req, res) => {
     console.log("========== SWITCH DATABASE TOKEN ==========");
     console.log(JSON.stringify(verify, null, 2));
     console.log("===========================================");
+    await syncUserDirectory({
+      userGuid,
+      loginId,
+      propertyCode,
+      propertyName,
+      database,
+      branchUnq,
+      branchName,
+    });
     return res.json({
       success: true,
       token,

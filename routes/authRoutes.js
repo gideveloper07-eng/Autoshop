@@ -4,6 +4,8 @@ const router = express.Router();
 
 const sql = require("mssql");
 
+
+
 const {
   registerUser,
   loginUser,
@@ -106,7 +108,7 @@ router.post("/save-fcm-token", async (req, res) => {
       message: err.message,
     });
   } finally {
-   // if (pool) await pool.close();
+    // if (pool) await pool.close();
   }
 });
 router.post("/activity-log", async (req, res) => {
@@ -195,7 +197,7 @@ router.post("/activity-log", async (req, res) => {
       message: err.message,
     });
   } finally {
-   // if (pool) await pool.close();
+    // if (pool) await pool.close();
   }
 });
 
