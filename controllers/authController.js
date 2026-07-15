@@ -233,14 +233,14 @@ WHERE propertydb = @db
     console.log(JSON.stringify(decoded, null, 2));
     console.log("=========================================");
     // ─────────────────────────────────────────────────────────────────────────
-    /* await syncUserDirectory({
+    await syncUserDirectory({
       userGuid,
       userId,
       loginPropertyCode,
       loginPropertyName,
       loginDatabase,
       branchUnq,
-    });*/
+    });
     return res.json({
       success: true,
       token,
