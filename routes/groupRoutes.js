@@ -2150,7 +2150,13 @@ router.post("/sendrequest", verifyToken, async (req, res) => {
     branchUnq,
     branchName,
   } = req.user;
+  console.log("===== SEND REQUEST =====");
+  console.log(req.user);
 
+  console.log("loginId =", loginId);
+  console.log("userId =", req.user.userId);
+  console.log("uti =", req.user.uti);
+  console.log("========================");
   const { toUserGuid, message } = req.body;
 
   let masterPool;
