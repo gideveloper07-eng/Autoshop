@@ -120,6 +120,9 @@ router.get("/users", verifyToken, async (req, res) => {
 // Users with single-dealership access get only their own company's users.
 // Requires userGuid in JWT (set during login from MA_MasterUsers).
 router.get("/merged-users", verifyToken, async (req, res) => {
+  console.log("Logged In User");
+  console.log(req.user);
+  console.log("Current Branch =", req.user.branchUnq);
   const { database: currentDb, userGuid } = req.user;
   let masterPool;
 
