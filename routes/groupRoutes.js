@@ -144,7 +144,7 @@ WHERE ISNULL(r.utnm,'') <> ''
 ORDER BY r.utnm
         `);
         const currentBranchUnq = String(req.user.branchUnq || "");
-
+        console.log("Current Branch Unique ID:", currentBranchUnq);
         return res.json({
           success: true,
           merged: false,
