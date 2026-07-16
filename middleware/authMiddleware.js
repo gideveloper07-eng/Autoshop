@@ -51,7 +51,8 @@ const verifyToken = (req, res, next) => {
 
       clientId:
         decoded.currentClientId || decoded.loginClientId || decoded.clientId,
-
+      branchUnq: decoded.branchUnq,
+      loginBranchUnq: decoded.branchUnq,
       userGuid: decoded.userGuid,
       utg: decoded.utg,
       isAdmin: decoded.isAdmin || false,
@@ -116,6 +117,8 @@ const decodeToken = (req) => {
 
       clientId:
         decoded.currentClientId || decoded.loginClientId || decoded.clientId,
+      branchUnq: decoded.branchUnq,
+      loginBranchUnq: decoded.branchUnq,
 
       userGuid: decoded.userGuid,
       utg: decoded.utg,
