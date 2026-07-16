@@ -2314,7 +2314,7 @@ AND Status='ACTIVE'
       .input("Message", sql.NVarChar, (message || "").trim() || null)
       .input("RequestedBy", sql.UniqueIdentifier, userGuid).query(`
 
-            DECLARE @RequestGuid UNIQUEIDENTIFIER = NEWID();
+      DECLARE @RequestGuid UNIQUEIDENTIFIER = NEWID();
 
 INSERT INTO MA_ContactRequests
 (
@@ -2404,7 +2404,7 @@ router.get("/chat/requests", verifyToken, async (req, res) => {
 
     const result = await compool
       .request()
-      .input("ToUserGuid", sql.UniqueIdentifier, toUserGuid).query(`
+      .input("ToUserGuid", sql.UniqueIdentifier, userGuid).query(`
         SELECT
 
             RequestGuid,
