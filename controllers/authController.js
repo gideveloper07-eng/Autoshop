@@ -235,7 +235,7 @@ WHERE propertydb = @db
     console.log("=========================================");
     // ─────────────────────────────────────────────────────────────────────────
     await syncUserDirectory({
-      userGuid,
+      userGuid: user.utunqid,
       userId,
       loginPropertyCode,
       loginPropertyName,
