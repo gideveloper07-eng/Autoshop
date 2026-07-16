@@ -352,6 +352,7 @@ const switchDatabase = async (req, res) => {
         userGuid: decoded.userGuid,
         utg: decoded.utg,
         isAdmin: decoded.isAdmin,
+        branchUnq: decoded.branchUnq,
       },
       process.env.JWT_SECRET,
       {
