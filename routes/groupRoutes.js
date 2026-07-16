@@ -2404,38 +2404,27 @@ router.get("/chat/requests", verifyToken, async (req, res) => {
 
     const result = await compool
       .request()
-      .input("ToUserGuid", sql.UniqueIdentifier, userGuid).query(`
-        SELECT
-
-            RequestGuid,
-
-            FromUserGuid,
-            FromLoginId,
-            FromDatabase,
-
-            FromCompanyCode,
-            FromCompanyName,
-
-            FromBranchUnq,
-            FromBranchName,
-
-            ToUserGuid,
-            ToLoginId,
-
-            RequestMessage,
-
-            Status,
-
-            RequestedOn
-
-        FROM MA_ContactRequests
-
-        WHERE
-            ToUserGuid = @UserGuid
-            AND Status = 'PENDING'
-
-        ORDER BY RequestedOn DESC
-      `);
+      .input("UserGuid", sql.UniqueIdentifier, userGuid).query(`
+      SELECT
+          RequestGuid,
+          FromUserGuid,
+          FromLoginId,
+          FromDatabase,
+          FromCompanyCode,
+          FromCompanyName,
+          FromBranchUnq,
+          FromBranchName,
+          ToUserGuid,
+          ToLoginId,
+          RequestMessage,
+          Status,
+          RequestedOn
+      FROM MA_ContactRequests
+      WHERE
+          ToUserGuid = @UserGuid
+          AND Status='PENDING'
+      ORDER BY RequestedOn DESC
+  `);
 
     return res.status(200).json({
       success: true,
