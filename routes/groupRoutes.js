@@ -2297,8 +2297,12 @@ AND Status='ACTIVE'
     const insertResult = await compool
       .request()
 
-      .input("FromUserGuid", sql.UniqueIdentifier, userGuid)
-      .input("FromLoginId", sql.NVarChar, loginId)
+      .input("FromUserGuid", sql.UniqueIdentifier, req.user.userGuid)
+      .input(
+        "FromLoginId",
+        sql.NVarChar,
+        req.user.userId || req.user.uti || loginId,
+      )
       .input("FromDatabase", sql.NVarChar, database)
       .input("FromCompanyCode", sql.NVarChar, propertyCode)
       .input("FromBranchUnq", sql.NVarChar, branchUnq)
