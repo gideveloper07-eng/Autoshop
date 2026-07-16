@@ -64,6 +64,7 @@ const loginUser = async (req, res) => {
         SELECT TOP 1
           uti,
           utnm,
+          utunqid,
           is_logged_in,
           logged_device_id,
           last_login,
@@ -216,7 +217,7 @@ WHERE propertydb = @db
         currentPropertyName,
         currentClientId,
 
-        userGuid: user.userGuid,
+        userGuid: user.utunqid,
         utg: user.UTG || user.utg,
         isAdmin,
         branchUnq,
