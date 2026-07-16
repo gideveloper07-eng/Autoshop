@@ -18,7 +18,7 @@ async function syncUserDirectory(user) {
       ? branchResult.recordset[0].BranchName
       : "";
   const pool = await openCommunicationPool();
-  console.log("syncuserdirectory", user);
+  
   await pool
     .request()
     .input("UserGuid", sql.UniqueIdentifier, user.userGuid)
