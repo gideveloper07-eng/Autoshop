@@ -32,14 +32,18 @@ MERGE MA_UserDirectory AS T
 USING
 (
 SELECT
-    @UserGuid UserGuid
+    @LoginId AS LoginId,
+    @PropertyDB AS PropertyDB
 ) S
 
-ON T.UserGuid=S.UserGuid
+ON
+    T.LoginId = S.LoginId
+AND T.PropertyDB = S.PropertyDB
 
 WHEN MATCHED THEN
 UPDATE SET
 
+UserGuid=@UserGuid,
 LoginId=@LoginId,
 PropertyCode=@PropertyCode,
 PropertyName=@PropertyName,
@@ -68,7 +72,7 @@ VALUES
 @UserGuid,
 @LoginId,
 @LoginId,
-@propertyCode,
+@PropertyCode,
 @PropertyName,
 @PropertyDB,
 @BranchUnq,
