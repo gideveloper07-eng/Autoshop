@@ -1028,7 +1028,7 @@ router.get("/my-groups", async (req, res) => {
     } else {
       result = await pool.request().input("UserId", sql.NVarChar(100), userId)
         .query(`
-          SELECT DISTINCT
+          SELECT 
               g.GroupId,
               g.GroupName,
               g.CreatedDate,
