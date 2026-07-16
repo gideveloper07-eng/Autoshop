@@ -1078,8 +1078,6 @@ router.get("/my-groups", async (req, res) => {
     //if (pool) await pool.close();
   }
 });
-
-// ── POST /api/group/add-member ────────────────────────────────────────────────
 // ── POST /api/group/add-member ────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────
 // POST : /api/group/add-member
