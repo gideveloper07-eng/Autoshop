@@ -216,7 +216,7 @@ WHERE propertydb = @db
         currentPropertyName,
         currentClientId,
 
-        userGuid,
+        userGuid: user.userGuid,
         utg: user.UTG || user.utg,
         isAdmin,
         branchUnq,
@@ -267,7 +267,7 @@ WHERE propertydb = @db
       propertyName: currentPropertyName,
       clientId: currentClientId,
 
-      userGuid,
+      userGuid: user.userGuid,
       accessibleDatabases,
       utg: user.UTG || user.utg,
       isAdmin,
