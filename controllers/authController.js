@@ -349,7 +349,7 @@ const switchDatabase = async (req, res) => {
         currentPropertyCode: db.propertycode,
         currentPropertyName: db.propertyname,
         currentClientId: db.unqid,
-        branchUnq,
+
         userGuid: decoded.userGuid,
         utg: decoded.utg,
         isAdmin: decoded.isAdmin,
