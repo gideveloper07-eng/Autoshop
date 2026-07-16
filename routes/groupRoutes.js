@@ -2434,7 +2434,7 @@ router.get("/chat/requests", verifyToken, async (req, res) => {
 
         ORDER BY RequestedOn DESC
       `);
-    console.log("Hello Chacha", toUserGuid);
+    console.log("Hello Chacha", ToUserGuid);
     return res.status(200).json({
       success: true,
       total: result.recordset.length,
