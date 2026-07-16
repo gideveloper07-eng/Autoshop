@@ -2373,9 +2373,11 @@ SELECT @RequestGuid AS RequestGuid;
     if (masterPool) await masterPool.close();
   }
 });
+
 router.get("/chat/requests", verifyToken, async (req, res) => {
   const { userGuid } = req.user;
-
+  console.log("===== GET CHAT REQUESTS =====");
+  console.log(req.user);
   let masterPool;
 
   try {
