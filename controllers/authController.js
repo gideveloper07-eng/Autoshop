@@ -241,6 +241,7 @@ WHERE propertydb = @db
       loginDatabase,
       branchUnq,
     });
+
     return res.json({
       success: true,
       token,
@@ -348,7 +349,7 @@ const switchDatabase = async (req, res) => {
         currentPropertyCode: db.propertycode,
         currentPropertyName: db.propertyname,
         currentClientId: db.unqid,
-
+        branchUnq,
         userGuid: decoded.userGuid,
         utg: decoded.utg,
         isAdmin: decoded.isAdmin,
