@@ -2143,35 +2143,27 @@ router.get("/tasks", async (req, res) => {
 router.post("/sendrequest", verifyToken, async (req, res) => {
   const {
     userGuid,
-    loginId,
+    userId,
     database,
     propertyCode,
     propertyName,
     branchUnq,
     branchName,
   } = req.user;
-  console.log("===== SEND REQUEST =====");
-  console.log(req.user);
 
-  console.log("loginId =", loginId);
-  console.log("userId =", req.user.userId);
-  console.log("uti =", req.user.uti);
-  console.log("========================");
   const { toUserGuid, message } = req.body;
 
-  let masterPool;
-
   try {
+    //------------------------------------------
+    // Validation
+    //------------------------------------------
+
     if (!toUserGuid) {
       return res.status(400).json({
         success: false,
         message: "Receiver is required.",
       });
     }
-
-    //------------------------------------------
-    // Cannot send request to yourself
-    //------------------------------------------
 
     if (userGuid === toUserGuid) {
       return res.status(400).json({
@@ -2180,49 +2172,40 @@ router.post("/sendrequest", verifyToken, async (req, res) => {
       });
     }
 
-    //------------------------------------------
-    // Master Database
-    //------------------------------------------
-
-    masterPool = await new sql.ConnectionPool({
-      user: process.env.DB_USER,
-      password: process.env.DB_PASSWORD,
-      server: process.env.DB_HOST,
-      port: parseInt(process.env.DB_PORT || "1433"),
-      database: "CMPY_AUTOSHOP",
-      options: {
-        encrypt: false,
-        trustServerCertificate: true,
-      },
-    }).connect();
+    console.log("========== SEND REQUEST ==========");
+    console.log("Sender :", req.user);
 
     //------------------------------------------
-    // Find Receiver
+    // Receiver
     //------------------------------------------
-    const cp = await openCommunicationPool();
-    const receiver = await cp
+
+    const pool = await openCommunicationPool();
+
+    const receiverResult = await pool
       .request()
       .input("UserGuid", sql.UniqueIdentifier, toUserGuid).query(`
-                SELECT TOP 1
-    UserGuid,
-    LoginId,
-    PropertyCode,
-    PropertyName,
-    PropertyDB,
-    BranchUnq,
-    BranchName
-FROM MA_UserDirectory
-WHERE UserGuid=@UserGuid
-            `);
+        SELECT TOP 1
+            UserGuid,
+            LoginId,
+            PropertyDB,
+            PropertyCode,
+            PropertyName,
+            BranchUnq,
+            BranchName
+        FROM MA_UserDirectory
+        WHERE UserGuid=@UserGuid
+    `);
 
-    if (receiver.recordset.length === 0) {
+    if (!receiverResult.recordset.length) {
       return res.status(404).json({
         success: false,
         message: "Receiver not found.",
       });
     }
 
-    const toUser = receiver.recordset[0];
+    const toUser = receiverResult.recordset[0];
+
+    console.log("Receiver :", toUser);
 
     //------------------------------------------
     // Same Branch
@@ -2239,23 +2222,23 @@ WHERE UserGuid=@UserGuid
     }
 
     //------------------------------------------
-    // Already Pending
+    // Pending Request
     //------------------------------------------
-    const compool = await openCommunicationPool();
-    const pending = await compool
+
+    const pending = await pool
       .request()
       .input("FromUserGuid", sql.UniqueIdentifier, userGuid)
       .input("ToUserGuid", sql.UniqueIdentifier, toUserGuid).query(`
-               SELECT TOP 1 RequestGuid
-FROM MA_ContactRequests
-WHERE
-(
-    (FromUserGuid=@FromUserGuid AND ToUserGuid=@ToUserGuid)
-    OR
-    (FromUserGuid=@ToUserGuid AND ToUserGuid=@FromUserGuid)
-)
-AND Status='PENDING'
-            `);
+        SELECT TOP 1 RequestGuid
+        FROM MA_ContactRequests
+        WHERE
+        (
+            (FromUserGuid=@FromUserGuid AND ToUserGuid=@ToUserGuid)
+            OR
+            (FromUserGuid=@ToUserGuid AND ToUserGuid=@FromUserGuid)
+        )
+        AND Status='PENDING'
+    `);
 
     if (pending.recordset.length) {
       return res.json({
@@ -2267,21 +2250,21 @@ AND Status='PENDING'
     //------------------------------------------
     // Already Contact
     //------------------------------------------
-    const communicationPool = await openCommunicationPool();
-    const contact = await communicationPool
+
+    const contact = await pool
       .request()
       .input("UserA", sql.UniqueIdentifier, userGuid)
       .input("UserB", sql.UniqueIdentifier, toUserGuid).query(`
-              SELECT TOP 1 ContactGuid
-FROM MA_ChatContacts
-WHERE
-(
-    (UserGuidA=@UserA AND UserGuidB=@UserB)
-    OR
-    (UserGuidA=@UserB AND UserGuidB=@UserA)
-)
-AND Status='ACTIVE'
-            `);
+        SELECT TOP 1 ContactGuid
+        FROM MA_ChatContacts
+        WHERE
+        (
+            (UserGuidA=@UserA AND UserGuidB=@UserB)
+            OR
+            (UserGuidA=@UserB AND UserGuidB=@UserA)
+        )
+        AND Status='ACTIVE'
+    `);
 
     if (contact.recordset.length) {
       return res.json({
@@ -2291,72 +2274,80 @@ AND Status='ACTIVE'
     }
 
     //------------------------------------------
-    // Insert Request
+    // Debug
     //------------------------------------------
 
-    const insertResult = await compool
+    console.log("FromLoginId :", userId);
+    console.log("ToLoginId   :", toUser.LoginId);
+
+    //------------------------------------------
+    // Insert
+    //------------------------------------------
+
+    const result = await pool
       .request()
+      .input("RequestGuid", sql.UniqueIdentifier, uuidv4())
 
       .input("FromUserGuid", sql.UniqueIdentifier, userGuid)
-      .input("FromLoginId", sql.NVarChar, loginId)
-      .input("FromDatabase", sql.NVarChar, database)
-      .input("FromCompanyCode", sql.NVarChar, propertyCode)
-      .input("FromBranchUnq", sql.NVarChar, branchUnq)
+      .input("FromLoginId", sql.NVarChar(100), userId)
+      .input("FromDatabase", sql.NVarChar(100), database)
+      .input("FromCompanyCode", sql.NVarChar(100), propertyCode)
+      .input("FromBranchUnq", sql.UniqueIdentifier, branchUnq)
 
       .input("ToUserGuid", sql.UniqueIdentifier, toUserGuid)
-      .input("ToLoginId", sql.NVarChar, toUser.LoginId)
-      .input("ToDatabase", sql.NVarChar, toUser.PropertyDB)
-      .input("ToCompanyCode", sql.NVarChar, toUser.PropertyCode)
-      .input("ToBranchUnq", sql.NVarChar, toUser.BranchUnq)
+      .input("ToLoginId", sql.NVarChar(100), toUser.LoginId)
+      .input("ToDatabase", sql.NVarChar(100), toUser.PropertyDB)
+      .input("ToCompanyCode", sql.NVarChar(100), toUser.PropertyCode)
+      .input("ToBranchUnq", sql.UniqueIdentifier, toUser.BranchUnq)
 
-      .input("Message", sql.NVarChar, (message || "").trim() || null)
+      .input("Status", sql.NVarChar(20), "PENDING")
+      .input("RequestMessage", sql.NVarChar(sql.MAX), message || null)
       .input("RequestedBy", sql.UniqueIdentifier, userGuid).query(`
+        INSERT INTO MA_ContactRequests
+        (
+            RequestGuid,
+            FromUserGuid,
+            FromLoginId,
+            FromDatabase,
+            FromCompanyCode,
+            FromBranchUnq,
 
-            DECLARE @RequestGuid UNIQUEIDENTIFIER = NEWID();
+            ToUserGuid,
+            ToLoginId,
+            ToDatabase,
+            ToCompanyCode,
+            ToBranchUnq,
 
-INSERT INTO MA_ContactRequests
-(
-    RequestGuid,
-    FromUserGuid,
-    FromLoginId,
-    FromDatabase,
-    FromCompanyCode,
-    FromBranchUnq,
-    ToUserGuid,
-    ToLoginId,
-    ToDatabase,
-    ToCompanyCode,
-    ToBranchUnq,
-    Status,
-    RequestMessage,
-    RequestedOn,
-    RequestedBy
-)
-VALUES
-(
-    @RequestGuid,
-    @FromUserGuid,
-    @FromLoginId,
-    @FromDatabase,
-    @FromCompanyCode,
-    @FromBranchUnq,
-    @ToUserGuid,
-    @ToLoginId,
-    @ToDatabase,
-    @ToCompanyCode,
-    @ToBranchUnq,
-    'PENDING',
-    @Message,
-    GETDATE(),
-    @RequestedBy
-);
-SELECT @RequestGuid AS RequestGuid;
+            Status,
+            RequestMessage,
+            RequestedOn,
+            RequestedBy
+        )
+        VALUES
+        (
+            @RequestGuid,
+            @FromUserGuid,
+            @FromLoginId,
+            @FromDatabase,
+            @FromCompanyCode,
+            @FromBranchUnq,
 
-            `);
+            @ToUserGuid,
+            @ToLoginId,
+            @ToDatabase,
+            @ToCompanyCode,
+            @ToBranchUnq,
+
+            @Status,
+            @RequestMessage,
+            GETDATE(),
+            @RequestedBy
+        )
+    `);
 
     return res.status(201).json({
       success: true,
-      requestGuid: insertResult.recordset[0].RequestGuid,
+      requestGuid: result.inputParameters?.RequestGuid,
       status: "PENDING",
       message: "Request sent successfully.",
     });
@@ -2367,8 +2358,6 @@ SELECT @RequestGuid AS RequestGuid;
       success: false,
       message: err.message,
     });
-  } finally {
-    if (masterPool) await masterPool.close();
   }
 });
 router.get("/chat/requests", verifyToken, async (req, res) => {
