@@ -241,7 +241,6 @@ WHERE propertydb = @db
       loginDatabase,
       branchUnq,
     });
-
     return res.json({
       success: true,
       token,
