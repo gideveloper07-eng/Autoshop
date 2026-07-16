@@ -216,7 +216,7 @@ WHERE propertydb = @db
         currentPropertyCode,
         currentPropertyName,
         currentClientId,
-
+        //hello world
         userGuid: user.utunqid,
         utg: user.UTG || user.utg,
         isAdmin,
