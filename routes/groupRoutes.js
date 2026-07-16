@@ -2302,13 +2302,8 @@ AND Status='ACTIVE'
       .input("ToDatabase", sql.NVarChar, toUser.PropertyDB)
       .input("ToCompanyCode", sql.NVarChar, toUser.PropertyCode)
       .input("ToBranchUnq", sql.NVarChar, toUser.BranchUnq)
-      .input("FromCompanyName", sql.NVarChar, propertyName)
-      .input("FromBranchName", sql.NVarChar, branchName)
 
-      .input("ToCompanyName", sql.NVarChar, toUser.PropertyName)
-      .input("ToBranchName", sql.NVarChar, toUser.BranchName)
       .input("Message", sql.NVarChar, (message || "").trim() || null)
-
       .input("RequestedBy", sql.UniqueIdentifier, userGuid).query(`
 
             DECLARE @RequestGuid UNIQUEIDENTIFIER = NEWID();
@@ -2319,56 +2314,36 @@ INSERT INTO MA_ContactRequests
     FromUserGuid,
     FromLoginId,
     FromDatabase,
-
     FromCompanyCode,
-    FromCompanyName,
-
     FromBranchUnq,
-    FromBranchName,
-
     ToUserGuid,
     ToLoginId,
     ToDatabase,
-
     ToCompanyCode,
-    ToCompanyName,
-
     ToBranchUnq,
-    ToBranchName,
-
+    Status,
     RequestMessage,
-
+    RequestedOn,
     RequestedBy
 )
 VALUES
 (
     @RequestGuid,
-
     @FromUserGuid,
     @FromLoginId,
     @FromDatabase,
-
     @FromCompanyCode,
-    @FromCompanyName,
-
     @FromBranchUnq,
-    @FromBranchName,
-
     @ToUserGuid,
     @ToLoginId,
     @ToDatabase,
-
     @ToCompanyCode,
-    @ToCompanyName,
-
     @ToBranchUnq,
-    @ToBranchName,
-
+    'PENDING',
     @Message,
-
+    GETDATE(),
     @RequestedBy
 );
-
 SELECT @RequestGuid AS RequestGuid;
 
             `);
