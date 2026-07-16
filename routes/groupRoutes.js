@@ -2402,7 +2402,7 @@ router.get("/chat/requests", verifyToken, async (req, res) => {
 
     const result = await compool
       .request()
-      .input("UserGuid", sql.UniqueIdentifier, toUserGuid).query(`
+      .input("ToUserGuid", sql.UniqueIdentifier, toUserGuid).query(`
         SELECT
 
             RequestGuid,
