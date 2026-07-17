@@ -2785,4 +2785,63 @@ router.post("/chat/request/reject", verifyToken, async (req, res) => {
     if (masterPool) await masterPool.close();
   }
 });
+// ── GET /api/group/my-contacts ────────────────────────────────────────────────
+// Returns all ACTIVE contacts for the current user so the chat list can show
+// accepted contacts even when no messages have been exchanged yet.
+router.get("/my-contacts", verifyToken, async (req, res) => {
+  const { userGuid } = req.user;
+
+  if (!userGuid) {
+    return res.status(400).json({ success: false, message: "userGuid required" });
+  }
+
+  try {
+    const comPool = await openCommunicationPool();
+
+    // Fetch all ACTIVE contacts where this user is either side
+    const result = await comPool
+      .request()
+      .input("UserGuid", sql.UniqueIdentifier, userGuid)
+      .query(`
+        SELECT
+          ContactGuid,
+          UserGuidA,
+          LoginIdA,
+          DatabaseA,
+          CompanyCodeA,
+          UserGuidB,
+          LoginIdB,
+          DatabaseB,
+          CompanyCodeB,
+          Status,
+          CreatedOn
+        FROM MA_ChatContacts
+        WHERE
+          (UserGuidA = @UserGuid OR UserGuidB = @UserGuid)
+          AND Status = 'ACTIVE'
+        ORDER BY CreatedOn DESC
+      `);
+
+    // For each contact, return the "other" user's info
+    const contacts = result.recordset.map((row) => {
+      const iAmA =
+        String(row.UserGuidA).toLowerCase() === String(userGuid).toLowerCase();
+      return {
+        contactGuid: row.ContactGuid,
+        userGuid: iAmA ? row.UserGuidB : row.UserGuidA,
+        loginId: iAmA ? row.LoginIdB : row.LoginIdA,
+        database: iAmA ? row.DatabaseB : row.DatabaseA,
+        companyCode: iAmA ? row.CompanyCodeB : row.CompanyCodeA,
+        status: row.Status,
+        createdOn: row.CreatedOn,
+      };
+    });
+
+    return res.status(200).json({ success: true, data: contacts });
+  } catch (err) {
+    console.error("GET MY-CONTACTS ERROR:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 module.exports = router;
