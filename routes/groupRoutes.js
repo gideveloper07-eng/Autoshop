@@ -2822,6 +2822,38 @@ router.post("/chat/request/reject", verifyToken, async (req, res) => {
     if (masterPool) await masterPool.close();
   }
 });
+router.get("/my-contact-requests", verifyToken, async (req, res) => {
+  let pool;
+
+  try {
+    pool = await openCommunicationPool();
+
+    const result = await pool
+      .request()
+      .input("FromLoginId", sql.NVarChar(100), req.user.userId).query(`
+                SELECT
+                    ToLoginid,
+                    Status,
+                    RequestedOn,
+                    AcceptedOn
+                FROM MA_ContactRequests
+                WHERE FromLoginid = @FromLoginId
+                ORDER BY RequestedOn DESC
+            `);
+
+    return res.json({
+      success: true,
+      data: result.recordset,
+    });
+  } catch (err) {
+    console.error("MY CONTACT REQUESTS ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+});
 // ── GET /api/group/my-contacts ────────────────────────────────────────────────
 // Returns all ACTIVE contacts for the current user so the chat list can show
 // accepted contacts even when no messages have been exchanged yet.
