@@ -2481,6 +2481,49 @@ router.get("/chat/requests", verifyToken, async (req, res) => {
     }
   }
 });
+// ── GET /api/group/chat/request-notifications ─────────────────────────────────
+// Returns recently ACCEPTED or REJECTED requests where the current user was
+// the SENDER (FromUserGuid). Used by the home screen to show toast notifications.
+// Returns rows changed in the last 24 hours — the frontend deduplicates by
+// storing seen RequestGuids in secure storage across sessions.
+router.get("/chat/request-notifications", verifyToken, async (req, res) => {
+  const { userGuid } = req.user;
+  try {
+    const comPool = await openCommunicationPool();
+    const result = await comPool
+      .request()
+      .input("FromUserGuid", sql.UniqueIdentifier, userGuid)
+      .query(`
+        SELECT
+          CAST(RequestGuid AS NVARCHAR(50)) AS RequestGuid,
+          ToLoginId,
+          CAST(ToUserGuid AS NVARCHAR(50)) AS ToUserGuid,
+          Status,
+          AcceptedOn,
+          RejectedOn,
+          CASE
+            WHEN Status = 'ACCEPTED' THEN AcceptedOn
+            WHEN Status = 'REJECTED' THEN RejectedOn
+            ELSE NULL
+          END AS ChangedOn
+        FROM MA_ContactRequests
+        WHERE
+          FromUserGuid = @FromUserGuid
+          AND Status IN ('ACCEPTED', 'REJECTED')
+          AND (
+            (Status = 'ACCEPTED' AND AcceptedOn >= DATEADD(HOUR, -24, GETDATE()))
+            OR
+            (Status = 'REJECTED' AND RejectedOn >= DATEADD(HOUR, -24, GETDATE()))
+          )
+        ORDER BY ChangedOn DESC
+      `);
+    return res.json({ success: true, data: result.recordset });
+  } catch (err) {
+    console.error("REQUEST NOTIFICATIONS ERROR:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 router.post("/chat/request/accept", verifyToken, async (req, res) => {
   const { userGuid } = req.user;
   const { requestGuid } = req.body;
