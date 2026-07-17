@@ -2632,7 +2632,7 @@ router.post("/chat/request/accept", verifyToken, async (req, res) => {
 
                     Status='ACCEPTED',
                     ApprovedBy=@ApprovedBy,
-                    ApprovedOn=GETDATE()
+                    AcceptedOn=GETDATE()
 
                 WHERE
 
