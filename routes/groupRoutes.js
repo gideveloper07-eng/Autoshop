@@ -255,7 +255,12 @@ AND Status='PENDING'
     console.log("Admin userGuid:", userGuid);
     console.log("Contacts found:", contactsResult.recordset.length);
     for (const row of contactsResult.recordset) {
-      console.log("  Contact row - UserGuidA:", row.UserGuidA, "UserGuidB:", row.UserGuidB);
+      console.log(
+        "  Contact row - UserGuidA:",
+        row.UserGuidA,
+        "UserGuidB:",
+        row.UserGuidB,
+      );
       const otherUser =
         String(row.UserGuidA).toLowerCase() === String(userGuid).toLowerCase()
           ? row.UserGuidB
@@ -326,7 +331,15 @@ ORDER BY r.utnm
             const isContact = contactMap.has(userKey);
 
             if (isAdminUser) {
-              console.log(`[ADMIN CHECK] user: ${user.name}, id: ${user.id}, userKey: ${userKey}, isContact: ${isContact}`);
+              console.log("================================");
+              console.log("Logged In User :", req.user.userId);
+              console.log("Target Login   :", user.loginId);
+              console.log("Target Name    :", user.name);
+              console.log("Target GUID    :", user.id);
+              console.log("User Key       :", userKey);
+              console.log("isContact      :", isContact);
+              console.log("requestStatus  :", requestMap.get(userKey));
+              console.log("================================");
             }
 
             const requestStatus = requestMap.get(userKey) || null;
@@ -335,7 +348,7 @@ ORDER BY r.utnm
 
             // For admin: only unlock if contact accepted (isContact)
             // For non-admin: unlock if same branch OR contact accepted
-            if (isAdminUser ? isContact : (isSameBranch || isContact)) {
+            if (isAdminUser ? isContact : isSameBranch || isContact) {
               chatAccess = "AUTO";
             }
 
@@ -416,7 +429,9 @@ ORDER BY r.utnm
           const isContact = contactMap.has(userKey);
 
           if (isAdminUser) {
-            console.log(`[ADMIN MULTI CHECK] user: ${user.name}, id: ${user.id}, userKey: ${userKey}, isContact: ${isContact}`);
+            console.log(
+              `[ADMIN MULTI CHECK] user: ${user.name}, id: ${user.id}, userKey: ${userKey}, isContact: ${isContact}`,
+            );
           }
 
           const requestStatus = requestMap.get(userKey) || null;
@@ -426,7 +441,11 @@ ORDER BY r.utnm
           // For non-admin: unlock if same company+branch OR contact accepted
           let chatAccess = "REQUEST";
 
-          if (isAdminUser ? isContact : ((isSameCompany && isSameBranch) || isContact)) {
+          if (
+            isAdminUser
+              ? isContact
+              : (isSameCompany && isSameBranch) || isContact
+          ) {
             chatAccess = "AUTO";
           }
 
@@ -2810,7 +2829,9 @@ router.get("/my-contacts", verifyToken, async (req, res) => {
   const { userGuid } = req.user;
 
   if (!userGuid) {
-    return res.status(400).json({ success: false, message: "userGuid required" });
+    return res
+      .status(400)
+      .json({ success: false, message: "userGuid required" });
   }
 
   try {
@@ -2819,8 +2840,7 @@ router.get("/my-contacts", verifyToken, async (req, res) => {
     // Fetch all ACTIVE contacts where this user is either side
     const result = await comPool
       .request()
-      .input("UserGuid", sql.UniqueIdentifier, userGuid)
-      .query(`
+      .input("UserGuid", sql.UniqueIdentifier, userGuid).query(`
         SELECT
           ContactGuid,
           UserGuidA,
