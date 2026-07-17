@@ -251,14 +251,20 @@ AND Status='PENDING'
 
     const contactMap = new Map();
 
+    console.log("===== CONTACT MAP BUILD =====");
+    console.log("Admin userGuid:", userGuid);
+    console.log("Contacts found:", contactsResult.recordset.length);
     for (const row of contactsResult.recordset) {
+      console.log("  Contact row - UserGuidA:", row.UserGuidA, "UserGuidB:", row.UserGuidB);
       const otherUser =
         String(row.UserGuidA).toLowerCase() === String(userGuid).toLowerCase()
           ? row.UserGuidB
           : row.UserGuidA;
-
+      console.log("  -> Other user key:", String(otherUser).toLowerCase());
       contactMap.set(String(otherUser).toLowerCase(), true);
     }
+    console.log("contactMap keys:", [...contactMap.keys()]);
+    console.log("=============================");
 
     //-------------------------------------------------------
     // Pending Request Lookup
@@ -318,6 +324,10 @@ ORDER BY r.utnm
             const userKey = String(user.id).toLowerCase();
 
             const isContact = contactMap.has(userKey);
+
+            if (isAdminUser) {
+              console.log(`[ADMIN CHECK] user: ${user.name}, id: ${user.id}, userKey: ${userKey}, isContact: ${isContact}`);
+            }
 
             const requestStatus = requestMap.get(userKey) || null;
 
@@ -404,6 +414,10 @@ ORDER BY r.utnm
           const userKey = String(user.id).toLowerCase();
 
           const isContact = contactMap.has(userKey);
+
+          if (isAdminUser) {
+            console.log(`[ADMIN MULTI CHECK] user: ${user.name}, id: ${user.id}, userKey: ${userKey}, isContact: ${isContact}`);
+          }
 
           const requestStatus = requestMap.get(userKey) || null;
 
