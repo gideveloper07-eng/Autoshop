@@ -147,7 +147,6 @@ WHERE ISNULL(r.utnm,'') <> ''
 ORDER BY r.utnm
         `);
         const currentBranchUnq = String(req.user.branchUnq || "");
-        const isAdminUser = req.user.isAdmin || false;
         console.log("Current Branch Unique ID:", currentBranchUnq);
         return res.json({
           success: true,
@@ -167,8 +166,7 @@ ORDER BY r.utnm
               branchId: user.branchId,
               branchName: user.branchName,
 
-              // Admin always has direct chat access (no lock)
-              chatAccess: (isAdminUser || isSameBranch) ? "AUTO" : "REQUEST",
+              chatAccess: isSameBranch ? "AUTO" : "REQUEST",
 
               requestStatus: null,
               isContact: false,
@@ -325,8 +323,9 @@ ORDER BY r.utnm
 
             let chatAccess = "REQUEST";
 
-            // Admin always has direct chat access (no lock)
-            if (isAdminUser || isSameBranch || isContact) {
+            // For admin: only unlock if contact accepted (isContact)
+            // For non-admin: unlock if same branch OR contact accepted
+            if (isAdminUser ? isContact : (isSameBranch || isContact)) {
               chatAccess = "AUTO";
             }
 
@@ -409,10 +408,11 @@ ORDER BY r.utnm
           const requestStatus = requestMap.get(userKey) || null;
 
           // Decide Chat Access
-          // Admin always has direct chat access (no lock)
+          // For admin: only unlock if contact accepted (isContact)
+          // For non-admin: unlock if same company+branch OR contact accepted
           let chatAccess = "REQUEST";
 
-          if (isAdminUser || (isSameCompany && isSameBranch) || isContact) {
+          if (isAdminUser ? isContact : ((isSameCompany && isSameBranch) || isContact)) {
             chatAccess = "AUTO";
           }
 
