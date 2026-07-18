@@ -2873,23 +2873,27 @@ router.get("/my-contacts", verifyToken, async (req, res) => {
     const result = await comPool
       .request()
       .input("UserGuid", sql.UniqueIdentifier, userGuid).query(`
-        SELECT
-          ContactGuid,
-          UserGuidA,
-          LoginIdA,
-          DatabaseA,
-          CompanyCodeA,
-          UserGuidB,
-          LoginIdB,
-          DatabaseB,
-          CompanyCodeB,
-          Status,
-          CreatedOn
-        FROM MA_ChatContacts
-        WHERE
-          (UserGuidA = @UserGuid OR UserGuidB = @UserGuid)
-          AND Status = 'ACTIVE'
-        ORDER BY CreatedOn DESC
+    SELECT
+    ContactGuid,
+    UserGuidA,
+    LoginIdA,
+    DatabaseA,
+    CompanyCodeA,
+    UserGuidB,
+    LoginIdB,
+    DatabaseB,
+    CompanyCodeB,
+    Status,
+    CreatedOn
+FROM MA_ChatContacts
+WHERE
+(
+    UserGuidA = @UserGuid
+    OR UserGuidB = @UserGuid
+)
+AND Status = 'ACTIVE'
+AND CreatedOn >= DATEADD(DAY, -7, GETDATE())
+ORDER BY CreatedOn DESC;
       `);
 
     // For each contact, return the "other" user's info
