@@ -1259,13 +1259,17 @@ router.get("/dashboard-branchwise", async (req, res) => {
         .query("SELECT sp_602 AS branchId, sp_607 AS branchName FROM rh_sp_60");
       for (const r of branchResult.recordset) {
         if (r.branchName) {
-          branchMap[r.branchName.trim().toLowerCase()] = (r.branchId || "").trim();
+          branchMap[r.branchName.trim().toLowerCase()] = (
+            r.branchId || ""
+          ).trim();
         }
       }
     } catch (_) {}
 
     const branches = (result.recordset || []).map((row) => {
-      const name = (row.branchName ?? row.branchname ?? "Unknown Branch").toString().trim();
+      const name = (row.branchName ?? row.branchname ?? "Unknown Branch")
+        .toString()
+        .trim();
       return {
         branchName: name,
         branchId: branchMap[name.toLowerCase()] ?? "",
@@ -1370,7 +1374,8 @@ router.post(
 // ─────────────────────────────────────────────────────────────────────────────
 router.get("/branch-booking-details", async (req, res) => {
   let pool;
-
+  console.log("========== BRANCH BOOKING DETAILS ==========");
+  console.log(req.query);
   try {
     const decoded = decodeToken(req);
     if (!decoded) {
@@ -1379,23 +1384,31 @@ router.get("/branch-booking-details", async (req, res) => {
 
     const { currentDatabase: databaseName } = decoded;
     if (!databaseName) {
-      return res.status(400).json({ success: false, message: "Database not found in token" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Database not found in token" });
     }
 
-    const period     = (req.query.period     || "today").toString().toLowerCase();
+    const period = (req.query.period || "today").toString().toLowerCase();
     const branchName = (req.query.branchName || "").toString().trim();
 
     if (!["today", "yesterday"].includes(period)) {
-      return res.status(400).json({ success: false, message: "Period must be today or yesterday" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Period must be today or yesterday" });
     }
 
-    const todayStr     = new Date().toLocaleDateString("en-GB");
-    const yesterdayStr = new Date(Date.now() - 86400000).toLocaleDateString("en-GB");
-    const dateStr      = period === "today" ? todayStr : yesterdayStr;
+    const todayStr = new Date().toLocaleDateString("en-GB");
+    const yesterdayStr = new Date(Date.now() - 86400000).toLocaleDateString(
+      "en-GB",
+    );
+    const dateStr = period === "today" ? todayStr : yesterdayStr;
 
     pool = await openPool(databaseName);
 
-    console.log(`📋 Branch Booking Details | branch="${branchName}" | period=${period} | date=${dateStr}`);
+    console.log(
+      `📋 Branch Booking Details | branch="${branchName}" | period=${period} | date=${dateStr}`,
+    );
 
     // Build branch filter — filter using the branch name subquery
     // This is the most reliable approach as it directly joins via sp_607
@@ -1410,9 +1423,10 @@ router.get("/branch-booking-details", async (req, res) => {
       `;
     }
 
-    const request = pool.request()
-      .input("fromdate",   sql.NVarChar(50),  dateStr)
-      .input("todate",     sql.NVarChar(50),  dateStr)
+    const request = pool
+      .request()
+      .input("fromdate", sql.NVarChar(50), dateStr)
+      .input("todate", sql.NVarChar(50), dateStr)
       .input("branchName", sql.NVarChar(200), branchName);
 
     const query = `
@@ -1460,7 +1474,6 @@ router.get("/branch-booking-details", async (req, res) => {
     console.log(`✅ rows returned: ${result.recordset.length}`);
 
     return res.json({ success: true, data: result.recordset || [] });
-
   } catch (err) {
     console.error("❌ Branch Booking Details Error:", err);
     return res.status(500).json({ success: false, message: err.message });
