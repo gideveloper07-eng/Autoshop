@@ -1408,10 +1408,18 @@ router.get("/branch-booking-details", async (req, res) => {
 
     console.log(`📋 Branch Booking Details | branch="${branchName}" | period=${period} | date=${dateStr}`);
 
-    // Step 1: Get all booking rcl_2 IDs for the date range
+    // Use SQL Server native date functions — avoids getformatteddate format issues
+    // yesterday = DATEADD(day,-1, CAST(GETDATE() AS DATE))
+    // today     = CAST(GETDATE() AS DATE)
+    const fromDateSQL = period === "today"
+      ? "CAST(GETDATE() AS DATE)"
+      : "CAST(DATEADD(day,-1,GETDATE()) AS DATE)";
+    const toDateSQL = period === "today"
+      ? "DATEADD(second,-1,DATEADD(day,1,CAST(GETDATE() AS DATE)))"
+      : "DATEADD(second,-1,CAST(GETDATE() AS DATE))";
+
+    // Step 1: Get all booking rcl_2 IDs for the date range using SQL Server dates
     const dateReq = await pool.request()
-      .input("fromdate", sql.NVarChar(50), dateStr)
-      .input("todate",   sql.NVarChar(50), dateStr)
       .query(`
         SELECT rcl_2, rcl_105,
           LTRIM(RTRIM(
@@ -1420,8 +1428,7 @@ router.get("/branch-booking-details", async (req, res) => {
         FROM rh_rcl
         WHERE rcl_66 = 'booking'
           AND rcl_85  = '1900-01-01 00:00:00.000'
-          AND RCL_7 BETWEEN [dbo].[getformatteddate](@fromdate)
-                        AND [dbo].[getformatteddate](@todate)
+          AND CAST(RCL_7 AS DATE) = ${fromDateSQL}
       `);
 
     console.log(`📊 Total bookings in date range: ${dateReq.recordset.length}`);
