@@ -1374,8 +1374,6 @@ router.post(
 // ─────────────────────────────────────────────────────────────────────────────
 router.get("/branch-booking-details", async (req, res) => {
   let pool;
-  console.log("========== BRANCH BOOKING DETAILS ==========");
-  console.log(req.query);
   try {
     const decoded = decodeToken(req);
     if (!decoded) {
@@ -1384,69 +1382,78 @@ router.get("/branch-booking-details", async (req, res) => {
 
     const { currentDatabase: databaseName } = decoded;
     if (!databaseName) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Database not found in token" });
+      return res.status(400).json({ success: false, message: "Database not found in token" });
     }
 
-    const period = (req.query.period || "today").toString().toLowerCase();
+    const period     = (req.query.period     || "today").toString().toLowerCase();
     const branchName = (req.query.branchName || "").toString().trim();
 
     if (!["today", "yesterday"].includes(period)) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Period must be today or yesterday" });
+      return res.status(400).json({ success: false, message: "Period must be today or yesterday" });
     }
 
-    // Reliable DD/MM/YYYY formatter — avoids toLocaleDateString locale bugs
+    // Reliable DD/MM/YYYY formatter
     function fmtDate(d) {
       const dd   = String(d.getDate()).padStart(2, "0");
       const mm   = String(d.getMonth() + 1).padStart(2, "0");
       const yyyy = String(d.getFullYear());
       return `${dd}/${mm}/${yyyy}`;
     }
-    const now = new Date();
+    const now  = new Date();
     const prev = new Date(now);
     prev.setDate(now.getDate() - 1);
     const dateStr = period === "today" ? fmtDate(now) : fmtDate(prev);
 
     pool = await openPool(databaseName);
 
-    console.log(
-      `📋 Branch Booking Details | branch="${branchName}" | period=${period} | date=${dateStr}`,
-    );
+    console.log(`📋 Branch Booking Details | branch="${branchName}" | period=${period} | date=${dateStr}`);
 
-    // Build branch filter — filter using the branch name subquery
-    // This is the most reliable approach as it directly joins via sp_607
-    let branchFilter = "";
-    if (branchName) {
-      branchFilter = `
-        AND (
-          SELECT TOP 1 LTRIM(RTRIM(sp_607))
-          FROM rh_sp_60
-          WHERE sp_602 IN (SELECT rcl_105 FROM rh_rcl WHERE rcl_2 = bo_18)
-        ) = @branchName
-      `;
+    // Step 1: Get all booking rcl_2 IDs for the date range
+    const dateReq = await pool.request()
+      .input("fromdate", sql.NVarChar(50), dateStr)
+      .input("todate",   sql.NVarChar(50), dateStr)
+      .query(`
+        SELECT rcl_2, rcl_105,
+          LTRIM(RTRIM(
+            (SELECT TOP 1 sp_607 FROM rh_sp_60 WHERE sp_602 = rcl_105)
+          )) AS branchDisplayName
+        FROM rh_rcl
+        WHERE rcl_66 = 'booking'
+          AND rcl_85  = '1900-01-01 00:00:00.000'
+          AND RCL_7 BETWEEN [dbo].[getformatteddate](@fromdate)
+                        AND [dbo].[getformatteddate](@todate)
+      `);
+
+    console.log(`📊 Total bookings in date range: ${dateReq.recordset.length}`);
+    const uniqueBranches = [...new Set(dateReq.recordset.map(r => r.branchDisplayName))];
+    console.log(`📊 Distinct branches: ${JSON.stringify(uniqueBranches)}`);
+    console.log(`📊 Searching for: "${branchName}"`);
+
+    // Filter by branch name (case-insensitive, trimmed)
+    const searchName = branchName.toLowerCase().trim();
+    const matchingIds = dateReq.recordset
+      .filter(r => !searchName || (r.branchDisplayName || "").toLowerCase().trim() === searchName)
+      .map(r => r.rcl_2);
+
+    console.log(`📊 Matching booking IDs: ${matchingIds.length}`);
+
+    if (matchingIds.length === 0) {
+      return res.json({ success: true, data: [] });
     }
 
-    const request = pool
-      .request()
-      .input("fromdate", sql.NVarChar(50), dateStr)
-      .input("todate", sql.NVarChar(50), dateStr)
-      .input("branchName", sql.NVarChar(200), branchName);
+    // Step 2: Fetch full booking details for matching IDs
+    // Build parameterized IN clause
+    const idParams = matchingIds.map((_, i) => `@id${i}`).join(", ");
+    const detailReq = pool.request();
+    matchingIds.forEach((id, i) => detailReq.input(`id${i}`, sql.NVarChar(100), String(id)));
 
-    const query = `
+    const detailQuery = `
       SELECT
         (SELECT TOP 1 CONVERT(NVARCHAR(11), rcl_7, 103)
            FROM rh_rcl WHERE rcl_2 = bo_18)                              AS [Receipt Date],
-
         CONVERT(NVARCHAR(11), bo_17, 103)                                AS [Booking Date],
-
         (SELECT TOP 1 sp_607 FROM rh_sp_60
-           WHERE sp_602 IN (
-               SELECT TOP 1 rcl_105 FROM rh_rcl WHERE rcl_2 = bo_18
-           ))                                                             AS [Branch],
-
+           WHERE sp_602 IN (SELECT TOP 1 rcl_105 FROM rh_rcl WHERE rcl_2 = bo_18)) AS [Branch],
         (SELECT TOP 1 m1_7  FROM rh_m1  WHERE m1_2  = bo_23)            AS [Customer Name],
         (SELECT TOP 1 mcm_15 FROM rh_mcm_1 WHERE mcm_14 = bo_20)        AS [SC],
         (SELECT TOP 1 mcm_15 FROM rh_mcm_1 WHERE mcm_14 = bo_21)        AS [TL],
@@ -1461,25 +1468,16 @@ router.get("/branch-booking-details", async (req, res) => {
            FROM rh_sp_46 WHERE sp_469 = bo_23)                           AS [Delivery Date],
         (SELECT TOP 1 hp_7 FROM rh_hp WHERE hp_2 = bo_41)               AS [Finance],
         (SELECT va_29 FROM rh_va WHERE va_18 = bo_18)                    AS [VIN No]
-
       FROM rh_bo_1
-
-      WHERE bo_18 IN (
-        SELECT rcl_2 FROM rh_rcl
-        WHERE rcl_66 = 'booking'
-          AND rcl_85  = '1900-01-01 00:00:00.000'
-          AND RCL_7 BETWEEN [dbo].[getformatteddate](@fromdate)
-                        AND [dbo].[getformatteddate](@todate)
-      )
-      ${branchFilter}
-
+      WHERE bo_18 IN (${idParams})
       ORDER BY bo_17 DESC
     `;
 
-    const result = await request.query(query);
+    const result = await detailReq.query(detailQuery);
     console.log(`✅ rows returned: ${result.recordset.length}`);
 
     return res.json({ success: true, data: result.recordset || [] });
+
   } catch (err) {
     console.error("❌ Branch Booking Details Error:", err);
     return res.status(500).json({ success: false, message: err.message });
