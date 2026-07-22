@@ -1392,6 +1392,7 @@ router.get("/branch-booking-details", async (req, res) => {
 
     const period = (req.query.period || "today").toString().toLowerCase();
     const branchId = (req.query.branchId || "").toString().trim();
+    const branchName = (req.query.branchName || "").toString().trim();
 
     if (!["today", "yesterday"].includes(period)) {
       return res.status(400).json({
@@ -1404,17 +1405,52 @@ router.get("/branch-booking-details", async (req, res) => {
     const yesterdayStr = new Date(Date.now() - 86400000).toLocaleDateString("en-GB");
     const dateStr = period === "today" ? todayStr : yesterdayStr;
 
-    // Apply branch filter only if branchId is supplied
-    const branchFilter = branchId ? "AND rcl_105 = @branchId" : "";
-
     pool = await openPool(databaseName);
+
+    // ── Resolve branchId from name if not directly supplied ───────────────
+    let resolvedId = branchId;
+    if (!resolvedId && branchName) {
+      try {
+        // Try exact match first
+        const r1 = await pool.request()
+          .input("bn", sql.NVarChar(200), branchName)
+          .query("SELECT TOP 1 LTRIM(RTRIM(sp_602)) AS id FROM rh_sp_60 WHERE LTRIM(RTRIM(sp_607)) = LTRIM(RTRIM(@bn))");
+        if (r1.recordset.length > 0) {
+          resolvedId = (r1.recordset[0].id || "").toString().trim();
+        }
+        // LIKE fallback
+        if (!resolvedId) {
+          const r2 = await pool.request()
+            .input("bn2", sql.NVarChar(200), `%${branchName}%`)
+            .query("SELECT TOP 1 LTRIM(RTRIM(sp_602)) AS id FROM rh_sp_60 WHERE sp_607 LIKE @bn2");
+          if (r2.recordset.length > 0) {
+            resolvedId = (r2.recordset[0].id || "").toString().trim();
+          }
+        }
+      } catch (e) {
+        console.error("Branch ID lookup error:", e.message);
+      }
+    }
+
+    console.log(`📋 Branch Booking Details | name="${branchName}" | id="${resolvedId}" | period=${period} | date=${dateStr}`);
+
+    // ── Build branch filter ───────────────────────────────────────────────
+    // If we have a resolved ID, use it; otherwise filter by branch name via sp_607
+    let branchFilter = "";
+    if (resolvedId) {
+      branchFilter = "AND rcl_105 = @branchId";
+    } else if (branchName) {
+      branchFilter = `AND rcl_105 IN (SELECT sp_602 FROM rh_sp_60 WHERE LTRIM(RTRIM(sp_607)) = LTRIM(RTRIM(@branchName)))`;
+    }
 
     const request = pool.request()
       .input("fromdate", sql.NVarChar(50), dateStr)
       .input("todate", sql.NVarChar(50), dateStr);
 
-    if (branchId) {
-      request.input("branchId", sql.NVarChar(50), branchId);
+    if (resolvedId) {
+      request.input("branchId", sql.NVarChar(50), resolvedId);
+    } else if (branchName) {
+      request.input("branchName", sql.NVarChar(200), branchName);
     }
 
     const query = `
@@ -1491,10 +1527,9 @@ router.get("/branch-booking-details", async (req, res) => {
       ORDER BY bo_17 DESC
     `;
 
-    console.log("Branch ID :", branchId);
-    console.log(query);
-
     const result = await request.query(query);
+
+    console.log(`✅ rows returned: ${result.recordset.length}`);
 
     return res.json({
       success: true,
