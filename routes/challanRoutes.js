@@ -1504,10 +1504,29 @@ router.get("/branch-sale-details", async (req, res) => {
     request.input("what", sql.NVarChar(100), "SaleRegisterReport"); // <-- Changed
     request.input("FromDate", sql.NVarChar(20), dateStr);
     request.input("ToDate", sql.NVarChar(20), dateStr);
-    request.input("BranchName", sql.NVarChar(100), branchName);
+    request.input("BranchName", sql.NVarChar(100), branchId);
 
     console.log("Executing SaleRegisterReport...");
+    console.log("===== PARAMETERS =====");
+    console.log("what       =", "SaleRegisterReport");
+    console.log("FromDate   =", dateStr);
+    console.log("ToDate     =", dateStr);
+    console.log("BranchId   =", branchId);
+    console.log("BranchName =", branchName);
 
+    const debug = await pool
+      .request()
+      .input("BranchId", sql.NVarChar(100), branchId).query(`
+      SELECT
+          @BranchId AS PassedBranchId,
+          (
+              SELECT TOP 1 sp_607
+              FROM rh_sp_60
+              WHERE sp_602 = @BranchId
+          ) AS BranchFound
+  `);
+
+    console.log(debug.recordset);
     const result = await request.execute("A_SP_FOR_ApplicationChallangrid");
 
     console.log("Rows Returned :", result.recordset.length);
