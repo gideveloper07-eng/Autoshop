@@ -1395,105 +1395,49 @@ router.get("/branch-booking-details", async (req, res) => {
     }
 
     const period = (req.query.period || "today").toLowerCase().trim();
-
     const branchId = (req.query.branchId || "").trim();
-
     const branchName = (req.query.branchName || "").trim();
 
     console.log("========== BRANCH DETAIL ==========");
-    console.log("Period :", period);
-    console.log("BranchId :", branchId);
-    console.log("BranchName :", branchName);
+    console.log("Period      :", period);
+    console.log("Branch Id   :", branchId);
+    console.log("Branch Name :", branchName);
     console.log("===================================");
 
     pool = await openPool(databaseName);
 
-    const dateResult = await pool
-      .request()
-      .query(
-        period === "today"
-          ? "SELECT CONVERT(NVARCHAR(11),GETDATE(),103) dt"
-          : "SELECT CONVERT(NVARCHAR(11),DATEADD(DAY,-1,GETDATE()),103) dt",
-      );
+    // Today's / Yesterday's date
+    const dateResult = await pool.request().query(
+      period === "today"
+        ? "SELECT CONVERT(NVARCHAR(11), GETDATE(), 103) AS dt"
+        : "SELECT CONVERT(NVARCHAR(11), DATEADD(DAY,-1,GETDATE()),103) AS dt"
+    );
 
     const dateStr = dateResult.recordset[0].dt;
 
+    console.log("From Date :", dateStr);
+    console.log("To Date   :", dateStr);
+
     const request = pool.request();
 
-    request.input("fromdate", sql.NVarChar(50), dateStr);
-    request.input("todate", sql.NVarChar(50), dateStr);
-    request.input("branchId", sql.NVarChar(100), branchId);
-    request.input("branchName", sql.NVarChar(200), branchName);
+    // Stored Procedure Parameters
+    request.input("what", sql.NVarChar(100), "BookingRegisterReport");
+    request.input("FromDate", sql.NVarChar(20), dateStr);
+    request.input("ToDate", sql.NVarChar(20), dateStr);
 
-    const result = await request.query(`
-SELECT
-    (SELECT TOP 1 CONVERT(NVARCHAR(11),rcl_7,103)
-        FROM rh_rcl
-        WHERE rcl_2=bo_18) AS [Receipt Date],
+    // Branch GUID
+    request.input("sp_602", sql.NVarChar(100), branchId);
 
-    CONVERT(NVARCHAR(11),bo_17,103) AS [Booking Date],
+    // Optional parameters
+    request.input("prefix", sql.NVarChar(50), "");
+    request.input("UserId", sql.NVarChar(50), decoded.userId || "");
+    request.input("BranchName", sql.NVarChar(200), branchName);
 
-    (SELECT TOP 1 sp_607
-        FROM rh_sp_60
-        WHERE sp_602 IN
-            (SELECT rcl_105
-             FROM rh_rcl
-             WHERE rcl_2=bo_18)) AS [Branch],
+    console.log("Executing Stored Procedure...");
 
-    (SELECT TOP 1 m1_7 FROM rh_m1 WHERE m1_2=bo_23) AS [Customer Name],
-
-    (SELECT TOP 1 mcm_15 FROM rh_mcm_1 WHERE mcm_14=bo_20) AS [SC],
-
-    (SELECT TOP 1 mcm_15 FROM rh_mcm_1 WHERE mcm_14=bo_21) AS [TL],
-
-    (SELECT TOP 1 SP_207 FROM RH_SP_20 WHERE SP_202=BO_26) AS [Model],
-
-    (SELECT TOP 1 sp_20_3 FROM rh_sp_20_c WHERE sp_20_2=bo_27) AS [Variant],
-
-    (SELECT TOP 1 sp_147 FROM rh_sp_14 WHERE sp_142=bo_28) AS [Color],
-
-    bo_29 AS [Booking Type],
-
-    bo_35 AS [Package],
-
-    bo_43 AS [Remark],
-
-    CONVERT(NVARCHAR(11),bo_32,103) AS [Ex Date],
-
-    (SELECT TOP 1 CONVERT(NVARCHAR(11),sp_597,103)
-        FROM rh_sp_46
-        WHERE sp_469=bo_23) AS [Delivery Date],
-
-    (SELECT TOP 1 hp_7
-        FROM rh_hp
-        WHERE hp_2=bo_41) AS [Finance],
-
-    (SELECT va_29
-        FROM rh_va
-        WHERE va_18=bo_18) AS [VIN No]
-
-FROM rh_bo_1
-
-WHERE bo_18 IN
-(
-    SELECT rcl_2
-    FROM rh_rcl
-    WHERE rcl_66='booking'
-      AND rcl_85='1900-01-01 00:00:00.000'
-      AND RCL_7 BETWEEN
-          dbo.getformatteddate(@fromdate)
-      AND dbo.getformatteddate(@todate)
-)
-
-AND bo_18 IN
-(
-    SELECT rcl_2
-    FROM rh_rcl
-    WHERE rcl_105=@branchId
-)
-
-ORDER BY bo_17 DESC
-`);
+    const result = await request.execute(
+      "A_SP_FOR_ApplicationChallangrid"
+    );
 
     console.log("Rows Returned :", result.recordset.length);
 
@@ -1501,8 +1445,9 @@ ORDER BY bo_17 DESC
       success: true,
       data: result.recordset,
     });
+
   } catch (err) {
-    console.error(err);
+    console.error("Branch Booking Details Error:", err);
 
     return res.status(500).json({
       success: false,
