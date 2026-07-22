@@ -1504,7 +1504,7 @@ router.get("/branch-sale-details", async (req, res) => {
     request.input("what", sql.NVarChar(100), "SaleRegisterReport"); // <-- Changed
     request.input("FromDate", sql.NVarChar(20), dateStr);
     request.input("ToDate", sql.NVarChar(20), dateStr);
-    request.input("sp_602", sql.NVarChar(100), branchId);
+    request.input("BranchName", sql.NVarChar(100), branchName);
 
     console.log("Executing SaleRegisterReport...");
 
