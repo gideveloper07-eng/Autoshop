@@ -1373,6 +1373,9 @@ router.post(
 // Query params: period=today|yesterday, branchName=<display name>
 // ─────────────────────────────────────────────────────────────────────────────
 router.get("/branch-booking-details", async (req, res) => {
+  console.log("========= REQUEST =========");
+  console.log(req.query);
+  console.log("===========================");
   let pool;
   try {
     const decoded = decodeToken(req);
@@ -1382,35 +1385,43 @@ router.get("/branch-booking-details", async (req, res) => {
 
     const { currentDatabase: databaseName } = decoded;
     if (!databaseName) {
-      return res.status(400).json({ success: false, message: "Database not found in token" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Database not found in token" });
     }
 
-    const period     = (req.query.period     || "today").toString().toLowerCase();
+    const period = (req.query.period || "today").toString().toLowerCase();
     const branchName = (req.query.branchName || "").toString().trim();
 
     if (!["today", "yesterday"].includes(period)) {
-      return res.status(400).json({ success: false, message: "Period must be today or yesterday" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Period must be today or yesterday" });
     }
 
     pool = await openPool(databaseName);
 
     // Get the exact date string from SQL Server itself in DD/MM/YYYY format
     // This guarantees the same format getformatteddate() expects
-    const dateRow = await pool.request().query(
-      period === "today"
-        ? "SELECT CONVERT(NVARCHAR(11), GETDATE(), 103) AS dt"
-        : "SELECT CONVERT(NVARCHAR(11), DATEADD(day,-1,GETDATE()), 103) AS dt"
-    );
+    const dateRow = await pool
+      .request()
+      .query(
+        period === "today"
+          ? "SELECT CONVERT(NVARCHAR(11), GETDATE(), 103) AS dt"
+          : "SELECT CONVERT(NVARCHAR(11), DATEADD(day,-1,GETDATE()), 103) AS dt",
+      );
     const dateStr = dateRow.recordset[0].dt;
 
-    console.log(`📋 Branch Booking Details | branch="${branchName}" | period=${period} | date=${dateStr}`);
+    console.log(
+      `📋 Branch Booking Details | branch="${branchName}" | period=${period} | date=${dateStr}`,
+    );
 
     // Use your exact working query with the branch name filter added
-    const result = await pool.request()
-      .input("fromdate",   sql.NVarChar(50),  dateStr)
-      .input("todate",     sql.NVarChar(50),  dateStr)
-      .input("branchName", sql.NVarChar(200), branchName)
-      .query(`
+    const result = await pool
+      .request()
+      .input("fromdate", sql.NVarChar(50), dateStr)
+      .input("todate", sql.NVarChar(50), dateStr)
+      .input("branchName", sql.NVarChar(200), branchName).query(`
         SELECT
           (SELECT TOP 1 CONVERT(NVARCHAR(11),rcl_7,103) FROM rh_rcl WHERE rcl_2=bo_18) AS [Receipt Date],
           CONVERT(NVARCHAR(11),bo_17,103) AS [Booking Date],
@@ -1448,7 +1459,6 @@ router.get("/branch-booking-details", async (req, res) => {
 
     console.log(`✅ rows returned: ${result.recordset.length}`);
     return res.json({ success: true, data: result.recordset || [] });
-
   } catch (err) {
     console.error("❌ Branch Booking Details Error:", err);
     return res.status(500).json({ success: false, message: err.message });
