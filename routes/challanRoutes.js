@@ -1406,12 +1406,14 @@ router.get("/branch-booking-details", async (req, res) => {
 
     pool = await openPool(databaseName);
 
-    // Today's / Yesterday's date
-    const dateResult = await pool.request().query(
-      period === "today"
-        ? "SELECT CONVERT(NVARCHAR(11), GETDATE(), 103) AS dt"
-        : "SELECT CONVERT(NVARCHAR(11), DATEADD(DAY,-1,GETDATE()),103) AS dt"
-    );
+    // Get today's / yesterday's date
+    const dateResult = await pool
+      .request()
+      .query(
+        period === "today"
+          ? "SELECT CONVERT(NVARCHAR(11), GETDATE(), 103) AS dt"
+          : "SELECT CONVERT(NVARCHAR(11), DATEADD(DAY,-1,GETDATE()),103) AS dt",
+      );
 
     const dateStr = dateResult.recordset[0].dt;
 
@@ -1420,24 +1422,16 @@ router.get("/branch-booking-details", async (req, res) => {
 
     const request = pool.request();
 
-    // Stored Procedure Parameters
+    // Only pass parameters that exist in the Stored Procedure
+    request.input("prefix", sql.NVarChar(50), "");
     request.input("what", sql.NVarChar(100), "BookingRegisterReport");
     request.input("FromDate", sql.NVarChar(20), dateStr);
     request.input("ToDate", sql.NVarChar(20), dateStr);
-
-    // Branch GUID
     request.input("sp_602", sql.NVarChar(100), branchId);
-
-    // Optional parameters
-    request.input("prefix", sql.NVarChar(50), "");
-    request.input("UserId", sql.NVarChar(50), decoded.userId || "");
-    request.input("BranchName", sql.NVarChar(200), branchName);
 
     console.log("Executing Stored Procedure...");
 
-    const result = await request.execute(
-      "A_SP_FOR_ApplicationChallangrid"
-    );
+    const result = await request.execute("A_SP_FOR_ApplicationChallangrid");
 
     console.log("Rows Returned :", result.recordset.length);
 
@@ -1445,7 +1439,6 @@ router.get("/branch-booking-details", async (req, res) => {
       success: true,
       data: result.recordset,
     });
-
   } catch (err) {
     console.error("Branch Booking Details Error:", err);
 
@@ -1453,6 +1446,8 @@ router.get("/branch-booking-details", async (req, res) => {
       success: false,
       message: err.message,
     });
+  } finally {
+    // if (pool) await pool.close();
   }
 });
 
