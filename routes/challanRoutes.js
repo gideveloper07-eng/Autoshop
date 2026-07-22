@@ -1450,5 +1450,81 @@ router.get("/branch-booking-details", async (req, res) => {
     // if (pool) await pool.close();
   }
 });
+router.get("/branch-sale-details", async (req, res) => {
+  let pool;
 
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { currentDatabase: databaseName } = decoded;
+
+    if (!databaseName) {
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
+    }
+
+    const period = (req.query.period || "today").toLowerCase().trim();
+    const branchId = (req.query.branchId || "").trim();
+    const branchName = (req.query.branchName || "").trim();
+
+    console.log("========== SALE DETAIL ==========");
+    console.log("Period      :", period);
+    console.log("Branch Id   :", branchId);
+    console.log("Branch Name :", branchName);
+    console.log("================================");
+
+    pool = await openPool(databaseName);
+
+    // Today's / Yesterday's Date
+    const dateResult = await pool
+      .request()
+      .query(
+        period === "today"
+          ? "SELECT CONVERT(NVARCHAR(11), GETDATE(), 103) AS dt"
+          : "SELECT CONVERT(NVARCHAR(11), DATEADD(DAY,-1,GETDATE()),103) AS dt",
+      );
+
+    const dateStr = dateResult.recordset[0].dt;
+
+    console.log("From Date :", dateStr);
+    console.log("To Date   :", dateStr);
+
+    const request = pool.request();
+
+    request.input("prefix", sql.NVarChar(50), "");
+    request.input("what", sql.NVarChar(100), "SaleRegisterReport"); // <-- Changed
+    request.input("FromDate", sql.NVarChar(20), dateStr);
+    request.input("ToDate", sql.NVarChar(20), dateStr);
+    request.input("sp_602", sql.NVarChar(100), branchId);
+
+    console.log("Executing SaleRegisterReport...");
+
+    const result = await request.execute("A_SP_FOR_ApplicationChallangrid");
+
+    console.log("Rows Returned :", result.recordset.length);
+
+    return res.json({
+      success: true,
+      data: result.recordset,
+    });
+  } catch (err) {
+    console.error("Branch Sale Details Error:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  } finally {
+    // if (pool) await pool.close();
+  }
+});
 module.exports = router;
