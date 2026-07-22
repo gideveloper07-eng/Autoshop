@@ -1365,184 +1365,105 @@ router.post(
 );
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/challan/branch-booking-details
-// Returns full booking detail rows for a specific branch & period
-// Query params: period=today|yesterday, branchId=<sp_602>
+// Returns booking detail rows for a specific branch & period
+// Query params: period=today|yesterday, branchName=<display name>
 // ─────────────────────────────────────────────────────────────────────────────
 router.get("/branch-booking-details", async (req, res) => {
   let pool;
 
   try {
     const decoded = decodeToken(req);
-
     if (!decoded) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized",
-      });
+      return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
     const { currentDatabase: databaseName } = decoded;
-
     if (!databaseName) {
-      return res.status(400).json({
-        success: false,
-        message: "Database not found in token",
-      });
+      return res.status(400).json({ success: false, message: "Database not found in token" });
     }
 
-    const period = (req.query.period || "today").toString().toLowerCase();
-    const branchId = (req.query.branchId || "").toString().trim();
+    const period     = (req.query.period     || "today").toString().toLowerCase();
     const branchName = (req.query.branchName || "").toString().trim();
 
     if (!["today", "yesterday"].includes(period)) {
-      return res.status(400).json({
-        success: false,
-        message: "Period must be today or yesterday",
-      });
+      return res.status(400).json({ success: false, message: "Period must be today or yesterday" });
     }
 
-    const todayStr = new Date().toLocaleDateString("en-GB");
+    const todayStr     = new Date().toLocaleDateString("en-GB");
     const yesterdayStr = new Date(Date.now() - 86400000).toLocaleDateString("en-GB");
-    const dateStr = period === "today" ? todayStr : yesterdayStr;
+    const dateStr      = period === "today" ? todayStr : yesterdayStr;
 
     pool = await openPool(databaseName);
 
-    // ── Resolve branchId from name if not directly supplied ───────────────
-    let resolvedId = branchId;
-    if (!resolvedId && branchName) {
-      try {
-        // Try exact match first
-        const r1 = await pool.request()
-          .input("bn", sql.NVarChar(200), branchName)
-          .query("SELECT TOP 1 LTRIM(RTRIM(sp_602)) AS id FROM rh_sp_60 WHERE LTRIM(RTRIM(sp_607)) = LTRIM(RTRIM(@bn))");
-        if (r1.recordset.length > 0) {
-          resolvedId = (r1.recordset[0].id || "").toString().trim();
-        }
-        // LIKE fallback
-        if (!resolvedId) {
-          const r2 = await pool.request()
-            .input("bn2", sql.NVarChar(200), `%${branchName}%`)
-            .query("SELECT TOP 1 LTRIM(RTRIM(sp_602)) AS id FROM rh_sp_60 WHERE sp_607 LIKE @bn2");
-          if (r2.recordset.length > 0) {
-            resolvedId = (r2.recordset[0].id || "").toString().trim();
-          }
-        }
-      } catch (e) {
-        console.error("Branch ID lookup error:", e.message);
-      }
-    }
+    console.log(`📋 Branch Booking Details | branch="${branchName}" | period=${period} | date=${dateStr}`);
 
-    console.log(`📋 Branch Booking Details | name="${branchName}" | id="${resolvedId}" | period=${period} | date=${dateStr}`);
-
-    // ── Build branch filter ───────────────────────────────────────────────
-    // If we have a resolved ID, use it; otherwise filter by branch name via sp_607
+    // Build branch filter — filter using the branch name subquery
+    // This is the most reliable approach as it directly joins via sp_607
     let branchFilter = "";
-    if (resolvedId) {
-      branchFilter = "AND rcl_105 = @branchId";
-    } else if (branchName) {
-      branchFilter = `AND rcl_105 IN (SELECT sp_602 FROM rh_sp_60 WHERE LTRIM(RTRIM(sp_607)) = LTRIM(RTRIM(@branchName)))`;
+    if (branchName) {
+      branchFilter = `
+        AND (
+          SELECT TOP 1 LTRIM(RTRIM(sp_607))
+          FROM rh_sp_60
+          WHERE sp_602 IN (SELECT rcl_105 FROM rh_rcl WHERE rcl_2 = bo_18)
+        ) = @branchName
+      `;
     }
 
     const request = pool.request()
-      .input("fromdate", sql.NVarChar(50), dateStr)
-      .input("todate", sql.NVarChar(50), dateStr);
-
-    if (resolvedId) {
-      request.input("branchId", sql.NVarChar(50), resolvedId);
-    } else if (branchName) {
-      request.input("branchName", sql.NVarChar(200), branchName);
-    }
+      .input("fromdate",   sql.NVarChar(50),  dateStr)
+      .input("todate",     sql.NVarChar(50),  dateStr)
+      .input("branchName", sql.NVarChar(200), branchName);
 
     const query = `
       SELECT
         (SELECT TOP 1 CONVERT(NVARCHAR(11), rcl_7, 103)
-         FROM rh_rcl
-         WHERE rcl_2 = bo_18) AS [Receipt Date],
+           FROM rh_rcl WHERE rcl_2 = bo_18)                              AS [Receipt Date],
 
-        CONVERT(NVARCHAR(11), bo_17, 103) AS [Booking Date],
+        CONVERT(NVARCHAR(11), bo_17, 103)                                AS [Booking Date],
 
-        (SELECT TOP 1 sp_607
-         FROM rh_sp_60
-         WHERE sp_602 = (
-             SELECT TOP 1 rcl_105
-             FROM rh_rcl
-             WHERE rcl_2 = bo_18
-         )) AS [Branch],
+        (SELECT TOP 1 sp_607 FROM rh_sp_60
+           WHERE sp_602 IN (
+               SELECT TOP 1 rcl_105 FROM rh_rcl WHERE rcl_2 = bo_18
+           ))                                                             AS [Branch],
 
-        (SELECT TOP 1 m1_7
-         FROM rh_m1
-         WHERE m1_2 = bo_23) AS [Customer Name],
-
-        (SELECT TOP 1 mcm_15
-         FROM rh_mcm_1
-         WHERE mcm_14 = bo_20) AS [SC],
-
-        (SELECT TOP 1 mcm_15
-         FROM rh_mcm_1
-         WHERE mcm_14 = bo_21) AS [TL],
-
-        (SELECT TOP 1 SP_207
-         FROM RH_SP_20
-         WHERE SP_202 = BO_26) AS [Model],
-
-        (SELECT TOP 1 sp_20_3
-         FROM rh_sp_20_c
-         WHERE sp_20_2 = bo_27) AS [Variant],
-
-        (SELECT TOP 1 sp_147
-         FROM rh_sp_14
-         WHERE sp_142 = bo_28) AS [Color],
-
-        bo_29 AS [Booking Type],
-        bo_35 AS [Package],
-        bo_43 AS [Remark],
-
-        CONVERT(NVARCHAR(11), bo_32, 103) AS [Ex Date],
-
+        (SELECT TOP 1 m1_7  FROM rh_m1  WHERE m1_2  = bo_23)            AS [Customer Name],
+        (SELECT TOP 1 mcm_15 FROM rh_mcm_1 WHERE mcm_14 = bo_20)        AS [SC],
+        (SELECT TOP 1 mcm_15 FROM rh_mcm_1 WHERE mcm_14 = bo_21)        AS [TL],
+        (SELECT TOP 1 SP_207 FROM RH_SP_20 WHERE SP_202 = BO_26)        AS [Model],
+        (SELECT TOP 1 sp_20_3 FROM rh_sp_20_c WHERE sp_20_2 = bo_27)    AS [Variant],
+        (SELECT TOP 1 sp_147 FROM rh_sp_14 WHERE sp_142 = bo_28)        AS [Color],
+        bo_29                                                             AS [Booking Type],
+        bo_35                                                             AS [Package],
+        bo_43                                                             AS [Remark],
+        CONVERT(NVARCHAR(11), bo_32, 103)                                AS [Ex Date],
         (SELECT TOP 1 CONVERT(NVARCHAR(11), sp_597, 103)
-         FROM rh_sp_46
-         WHERE sp_469 = bo_23) AS [Delivery Date],
-
-        (SELECT TOP 1 hp_7
-         FROM rh_hp
-         WHERE hp_2 = bo_41) AS [Finance],
-
-        (SELECT va_29
-         FROM rh_va
-         WHERE va_18 = bo_18) AS [VIN No]
+           FROM rh_sp_46 WHERE sp_469 = bo_23)                           AS [Delivery Date],
+        (SELECT TOP 1 hp_7 FROM rh_hp WHERE hp_2 = bo_41)               AS [Finance],
+        (SELECT va_29 FROM rh_va WHERE va_18 = bo_18)                    AS [VIN No]
 
       FROM rh_bo_1
 
-      WHERE bo_18 IN
-      (
-          SELECT rcl_2
-          FROM rh_rcl
-          WHERE rcl_66 = 'booking'
-            AND rcl_85 = '1900-01-01 00:00:00.000'
-            AND RCL_7 BETWEEN [dbo].[getformatteddate](@fromdate)
-                          AND [dbo].[getformatteddate](@todate)
-            ${branchFilter}
+      WHERE bo_18 IN (
+        SELECT rcl_2 FROM rh_rcl
+        WHERE rcl_66 = 'booking'
+          AND rcl_85  = '1900-01-01 00:00:00.000'
+          AND RCL_7 BETWEEN [dbo].[getformatteddate](@fromdate)
+                        AND [dbo].[getformatteddate](@todate)
       )
+      ${branchFilter}
 
       ORDER BY bo_17 DESC
     `;
 
     const result = await request.query(query);
-
     console.log(`✅ rows returned: ${result.recordset.length}`);
 
-    return res.json({
-      success: true,
-      data: result.recordset || [],
-    });
+    return res.json({ success: true, data: result.recordset || [] });
 
   } catch (err) {
     console.error("❌ Branch Booking Details Error:", err);
-
-    return res.status(500).json({
-      success: false,
-      message: err.message,
-    });
+    return res.status(500).json({ success: false, message: err.message });
   }
 });
 
