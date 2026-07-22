@@ -1398,11 +1398,17 @@ router.get("/branch-booking-details", async (req, res) => {
         .json({ success: false, message: "Period must be today or yesterday" });
     }
 
-    const todayStr = new Date().toLocaleDateString("en-GB");
-    const yesterdayStr = new Date(Date.now() - 86400000).toLocaleDateString(
-      "en-GB",
-    );
-    const dateStr = period === "today" ? todayStr : yesterdayStr;
+    // Reliable DD/MM/YYYY formatter — avoids toLocaleDateString locale bugs
+    function fmtDate(d) {
+      const dd   = String(d.getDate()).padStart(2, "0");
+      const mm   = String(d.getMonth() + 1).padStart(2, "0");
+      const yyyy = String(d.getFullYear());
+      return `${dd}/${mm}/${yyyy}`;
+    }
+    const now = new Date();
+    const prev = new Date(now);
+    prev.setDate(now.getDate() - 1);
+    const dateStr = period === "today" ? fmtDate(now) : fmtDate(prev);
 
     pool = await openPool(databaseName);
 
