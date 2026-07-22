@@ -1422,7 +1422,7 @@ router.get("/branch-booking-details", async (req, res) => {
 
     request.input("fromdate", sql.NVarChar(50), dateStr);
     request.input("todate", sql.NVarChar(50), dateStr);
-    request.input("branchId", sql.UniqueIdentifier, branchId);
+    request.input("branchId", sql.NVarChar(100), branchId);
     request.input("branchName", sql.NVarChar(200), branchName);
 
     const result = await request.query(`
