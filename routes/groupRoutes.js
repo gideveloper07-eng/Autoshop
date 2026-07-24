@@ -89,18 +89,34 @@ router.get("/users", verifyToken, async (req, res) => {
     pool = await openPool(req.user.database);
 
     const result = await pool.request().query(`
-      SELECT
-          CAST(utunqid AS NVARCHAR(50)) AS id,
-          utnm AS name
-      FROM rh_secut
-      WHERE ISNULL(utnm,'') <> ''
-        AND utg IS NOT NULL
-      ORDER BY utnm
+SELECT
+    CAST(r.utunqid AS NVARCHAR(50)) AS id,
+    r.uti AS loginId,
+    r.utnm AS name,
+    r.BRANCHUNQ AS branchId,
+    ISNULL(b.sp_607,'') AS branchName
+FROM rh_secut r
+LEFT JOIN rh_sp_60 b
+    ON r.BRANCHUNQ = b.sp_602
+WHERE ISNULL(r.utnm,'') <> ''
+AND r.utg IS NOT NULL
+ORDER BY r.utnm
     `);
 
     return res.json({
       success: true,
-      data: result.recordset,
+      data: result.recordset.map((user) => ({
+        id: user.id,
+        loginId: user.loginId,
+        name: user.name,
+
+        companyName: req.user.propertyName || "",
+        companyCode: req.user.propertyCode || "",
+        database: req.user.database,
+
+        branchId: user.branchId,
+        branchName: user.branchName,
+      })),
     });
   } catch (err) {
     console.error("GET USERS ERROR:", err);
