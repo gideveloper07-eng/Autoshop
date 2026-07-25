@@ -1550,37 +1550,27 @@ router.get("/members/:groupId", async (req, res) => {
 
     // ---------------- MEMBERS ----------------
     const query = `
-SELECT
-    gm.MemberId,
-    gm.UserId,
-    ISNULL(emp.utnm, gm.UserId) AS UserName,
-    gm.IsAdmin,
-    gm.AddedDate,
-    gm.DatabaseName,
-    gm.PropertyCode,
+        SELECT
+            gm.MemberId,
+            gm.UserId,
+            ISNULL(emp.utnm, gm.UserId) AS UserName,
+            gm.IsAdmin,
+            gm.AddedDate,
+            gm.DatabaseName,
+            gm.PropertyCode
+        FROM MA_ChatGroupMembers gm
 
-    ISNULL(prop.PropertyName, gm.PropertyCode) AS CompanyName,
-    ISNULL(br.sp_607, '') AS BranchName
+        LEFT JOIN [${databaseName}].dbo.rh_secut emp
+            ON (
+                    CONVERT(VARCHAR(50), emp.utunqid) = gm.UserId
+                 OR emp.uti = gm.UserId
+               )
 
-FROM MA_ChatGroupMembers gm
+        WHERE gm.GroupId = CONVERT(UNIQUEIDENTIFIER,@GroupId)
 
-LEFT JOIN [${databaseName}].dbo.rh_secut emp
-    ON (
-        CONVERT(VARCHAR(50), emp.utunqid) = gm.UserId
-        OR emp.uti = gm.UserId
-    )
-
-LEFT JOIN MA_PropertyMaster prop
-    ON prop.PropertyCode = gm.PropertyCode
-
-LEFT JOIN [${databaseName}].dbo.rh_sp_60 br
-    ON br.sp_602 = emp.BRANCHUNQ
-
-WHERE gm.GroupId = CONVERT(UNIQUEIDENTIFIER,@GroupId)
-
-ORDER BY
-    gm.IsAdmin DESC,
-    UserName;
+        ORDER BY
+            gm.IsAdmin DESC,
+            UserName
     `;
 
     console.log(query);
