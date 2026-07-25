@@ -1505,9 +1505,7 @@ router.post("/delete-group", async (req, res) => {
   }
 });
 router.get("/members/:groupId", async (req, res) => {
-  let communicationPool;
-  let companyPool;
-  let masterPool;
+  let pool;
 
   try {
     const decoded = decodeToken(req);
@@ -1522,21 +1520,17 @@ router.get("/members/:groupId", async (req, res) => {
     const { database: currentDb, userId, isAdmin } = decoded;
     const { groupId } = req.params;
 
-    // Resolve company database for this group
+    // Resolve the company database for this group
     const databaseName = await getGroupDatabase(groupId, currentDb);
 
     console.log("Group:", groupId);
     console.log("Resolved DB:", databaseName);
 
-    // Communication DB
-    communicationPool = await openCommunicationPool();
+    pool = await openCommunicationPool();
 
-    // Company DB
-    companyPool = await openPool(databaseName);
-
-    // Security
+    // ---------------- SECURITY ----------------
     if (!isAdmin) {
-      const access = await communicationPool
+      const access = await pool
         .request()
         .input("GroupId", sql.NVarChar(50), groupId)
         .input("UserId", sql.NVarChar(100), userId).query(`
@@ -1554,36 +1548,8 @@ router.get("/members/:groupId", async (req, res) => {
       }
     }
 
-    // Get Company Name from CMPY_AUTOSHOP
-    masterPool = await new sql.ConnectionPool({
-      user: process.env.DB_USER,
-      password: process.env.DB_PASSWORD,
-      server: process.env.DB_HOST,
-      port: parseInt(process.env.DB_PORT || "1433"),
-      database: "CMPY_AUTOSHOP",
-      options: {
-        encrypt: false,
-        trustServerCertificate: true,
-      },
-    }).connect();
-
-    const companyResult = await masterPool
-      .request()
-      .input("db", sql.NVarChar(100), databaseName).query(`
-        SELECT TOP 1 propertyname
-        FROM MA_ClientMaster
-        WHERE propertydb=@db
-      `);
-
-    const companyName =
-      companyResult.recordset.length > 0
-        ? companyResult.recordset[0].propertyname
-        : databaseName;
-
-    // Members
-    const result = await communicationPool
-      .request()
-      .input("GroupId", sql.NVarChar(50), groupId).query(`
+    // ---------------- MEMBERS ----------------
+    const query = `
         SELECT
             gm.MemberId,
             gm.UserId,
@@ -1591,35 +1557,32 @@ router.get("/members/:groupId", async (req, res) => {
             gm.IsAdmin,
             gm.AddedDate,
             gm.DatabaseName,
-            gm.PropertyCode,
-            ISNULL(br.sp_607,'') AS BranchName
-
+            gm.PropertyCode
         FROM MA_ChatGroupMembers gm
 
         LEFT JOIN [${databaseName}].dbo.rh_secut emp
             ON (
-                CONVERT(VARCHAR(50), emp.utunqid) = gm.UserId
-                OR emp.uti = gm.UserId
-            )
-
-        LEFT JOIN [${databaseName}].dbo.rh_sp_60 br
-            ON br.sp_602 = emp.BRANCHUNQ
+                    CONVERT(VARCHAR(50), emp.utunqid) = gm.UserId
+                 OR emp.uti = gm.UserId
+               )
 
         WHERE gm.GroupId = CONVERT(UNIQUEIDENTIFIER,@GroupId)
 
         ORDER BY
             gm.IsAdmin DESC,
             UserName
-      `);
+    `;
 
-    const members = result.recordset.map((m) => ({
-      ...m,
-      CompanyName: companyName,
-    }));
+    console.log(query);
+
+    const result = await pool
+      .request()
+      .input("GroupId", sql.NVarChar(50), groupId)
+      .query(query);
 
     return res.json({
       success: true,
-      data: members,
+      data: result.recordset,
     });
   } catch (err) {
     console.error("GROUP MEMBERS ERROR");
@@ -1631,10 +1594,6 @@ router.get("/members/:groupId", async (req, res) => {
       detail: err.originalError?.message,
       stack: err.stack,
     });
-  } finally {
-    if (communicationPool) await communicationPool.close();
-    if (companyPool) await companyPool.close();
-    if (masterPool) await masterPool.close();
   }
 });
 
