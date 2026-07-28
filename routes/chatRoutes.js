@@ -306,8 +306,11 @@ async function handleChatSend(req, res) {
     // ------------------------------------------------
     // Open communication database
     // ------------------------------------------------
+    console.log("STEP 1");
+
     pool = await openCommunicationPool();
 
+    console.log("STEP 2");
     // ------------------------------------------------
     // Ensure sender is a challan member
     // ------------------------------------------------
@@ -403,6 +406,7 @@ async function handleChatSend(req, res) {
       }
 
       //receiver = await findUserByGuid(decoded, receiverGuid);
+      console.log("STEP 3");
       receiver = await findUserByGuid(
         {
           ...decoded,
@@ -413,6 +417,7 @@ async function handleChatSend(req, res) {
         },
         receiverGuid,
       );
+      console.log("STEP 4");
 
       if (!receiver) {
         return res.status(404).json({
@@ -424,6 +429,7 @@ async function handleChatSend(req, res) {
       // ----------------------------------------------
       // Ensure direct-chat receiver is a member
       // ----------------------------------------------
+      console.log("STEP 5");
       await pool
         .request()
         .input("challanId", sql.NVarChar(100), challanId)
@@ -483,7 +489,7 @@ async function handleChatSend(req, res) {
           END
         `);
     }
-
+    console.log("STEP 6");
     // ------------------------------------------------
     // Insert message
     // ------------------------------------------------
