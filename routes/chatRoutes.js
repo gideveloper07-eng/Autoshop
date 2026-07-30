@@ -803,7 +803,7 @@ router.get(
         .input("receiverPropertyCode", sql.NVarChar(50), receiverPropertyCode)
         .query(`
             SELECT
-                CAST(c.ChatId AS NVARCHAR(50)) AS ChatId,
+                LOWER(CAST(c.ChatId AS NVARCHAR(50))) AS ChatId,
                 c.SenderUserId,
                 c.SenderName,
                 c.SenderPropertyCode,
@@ -872,9 +872,16 @@ router.get(
                 AND ISNULL(IsRead,0)=0
         `);
 
+      const data = result.recordset.map((row) => ({
+        ...row,
+        MessageTime: row.MessageTime
+          ? `${row.MessageTime.getFullYear()}-${String(row.MessageTime.getMonth() + 1).padStart(2, "0")}-${String(row.MessageTime.getDate()).padStart(2, "0")} ${String(row.MessageTime.getHours()).padStart(2, "0")}:${String(row.MessageTime.getMinutes()).padStart(2, "0")}:${String(row.MessageTime.getSeconds()).padStart(2, "0")}.${String(row.MessageTime.getMilliseconds()).padStart(3, "0")}`
+          : null,
+      }));
+
       return res.json({
         success: true,
-        data: result.recordset,
+        data,
       });
     } catch (err) {
       console.error("GET DIRECT MESSAGES ERROR:", err);
