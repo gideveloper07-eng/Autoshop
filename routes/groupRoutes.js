@@ -164,6 +164,7 @@ ORDER BY r.utnm
         `);
         const currentBranchUnq = String(req.user.branchUnq || "");
         console.log("Current Branch Unique ID:", currentBranchUnq);
+        console.log("hello", user.branchId);
         return res.json({
           success: true,
           merged: false,
