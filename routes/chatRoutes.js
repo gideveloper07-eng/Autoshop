@@ -27,8 +27,9 @@ async function findUserInDatabase(databaseName, receiverGuid) {
   let pool;
 
   try {
+    console.log("OPENING DB:", databaseName);
     pool = await openPool(databaseName);
-
+    console.log("DB OPENED");
     const result = await pool
       .request()
       .input("guid", sql.UniqueIdentifier, receiverGuid).query(`
@@ -43,7 +44,7 @@ async function findUserInDatabase(databaseName, receiverGuid) {
     if (result.recordset.length === 0) {
       return null;
     }
-
+    console.log("QUERY FINISHED");
     return result.recordset[0];
   } finally {
     if (pool) await pool.close();
@@ -265,6 +266,7 @@ async function handleChatSend(req, res) {
     // Request values
     // ------------------------------------------------
     const {
+      chatId: clientChatId,
       challanId,
       challanNo,
       messageText,
@@ -493,8 +495,10 @@ async function handleChatSend(req, res) {
     // ------------------------------------------------
     // Insert message
     // ------------------------------------------------
-    const chatId = randomUUID();
-
+    const chatId = (clientChatId || randomUUID()).toLowerCase();
+    if (!clientChatId) {
+      console.warn("Client did not send chatId. Backend generated one.");
+    }
     await pool
       .request()
       .input("chatId", sql.UniqueIdentifier, chatId)
@@ -812,7 +816,7 @@ router.get(
                 c.MessageText,
                 c.MessageType,
                 c.DocumentId,
-               CONVERT(VARCHAR(23), c.MessageTime, 121) AS MessageTime,
+                CONVERT(VARCHAR(23), c.MessageTime, 121) AS MessageTime,
                 c.IsRead,
                 CAST(c.TaskId AS NVARCHAR(50)) AS TaskId,
 
@@ -859,6 +863,10 @@ router.get(
 
       console.log("Raw:", row.MessageTime);
       console.log("Type:", typeof row.MessageTime);
+      console.log("Instance:", row.MessageTime instanceof Date);
+      console.log("toString():", row.MessageTime.toString());
+      console.log("toISOString():", row.MessageTime.toISOString());
+      console.log("Timezone Offset:", row.MessageTime.getTimezoneOffset());
 
       console.log("======================");
       // Mark incoming messages as read
