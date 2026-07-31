@@ -812,7 +812,7 @@ router.get(
                 c.MessageText,
                 c.MessageType,
                 c.DocumentId,
-                c.MessageTime,
+               CONVERT(VARCHAR(23), c.MessageTime, 121) AS MessageTime,
                 c.IsRead,
                 CAST(c.TaskId AS NVARCHAR(50)) AS TaskId,
 
@@ -853,7 +853,14 @@ router.get(
 
             ORDER BY c.MessageTime ASC
         `);
+      console.log("===== DATE DEBUG =====");
 
+      const row = result.recordset[0];
+
+      console.log("Raw:", row.MessageTime);
+      console.log("Type:", typeof row.MessageTime);
+
+      console.log("======================");
       // Mark incoming messages as read
       await pool
         .request()
@@ -872,16 +879,9 @@ router.get(
                 AND ISNULL(IsRead,0)=0
         `);
 
-      const data = result.recordset.map((row) => ({
-        ...row,
-        MessageTime: row.MessageTime
-          ? `${row.MessageTime.getFullYear()}-${String(row.MessageTime.getMonth() + 1).padStart(2, "0")}-${String(row.MessageTime.getDate()).padStart(2, "0")} ${String(row.MessageTime.getHours()).padStart(2, "0")}:${String(row.MessageTime.getMinutes()).padStart(2, "0")}:${String(row.MessageTime.getSeconds()).padStart(2, "0")}.${String(row.MessageTime.getMilliseconds()).padStart(3, "0")}`
-          : null,
-      }));
-
       return res.json({
         success: true,
-        data,
+        data: result.recordset,
       });
     } catch (err) {
       console.error("GET DIRECT MESSAGES ERROR:", err);
