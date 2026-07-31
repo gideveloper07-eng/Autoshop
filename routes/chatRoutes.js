@@ -857,18 +857,7 @@ router.get(
 
             ORDER BY c.MessageTime ASC
         `);
-      console.log("===== DATE DEBUG =====");
 
-      const row = result.recordset[0];
-
-      console.log("Raw:", row.MessageTime);
-      console.log("Type:", typeof row.MessageTime);
-      console.log("Instance:", row.MessageTime instanceof Date);
-      console.log("toString():", row.MessageTime.toString());
-      console.log("toISOString():", row.MessageTime.toISOString());
-      console.log("Timezone Offset:", row.MessageTime.getTimezoneOffset());
-
-      console.log("======================");
       // Mark incoming messages as read
       await pool
         .request()
