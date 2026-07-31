@@ -164,7 +164,6 @@ ORDER BY r.utnm
         `);
         const currentBranchUnq = String(req.user.branchUnq || "");
         console.log("Current Branch Unique ID:", currentBranchUnq);
-        console.log("hello", user.branchId);
         return res.json({
           success: true,
           merged: false,
@@ -268,25 +267,14 @@ AND Status='PENDING'
 
     const contactMap = new Map();
 
-    console.log("===== CONTACT MAP BUILD =====");
-    console.log("Admin userGuid:", userGuid);
-    console.log("Contacts found:", contactsResult.recordset.length);
     for (const row of contactsResult.recordset) {
-      console.log(
-        "  Contact row - UserGuidA:",
-        row.UserGuidA,
-        "UserGuidB:",
-        row.UserGuidB,
-      );
       const otherUser =
         String(row.UserGuidA).toLowerCase() === String(userGuid).toLowerCase()
           ? row.UserGuidB
           : row.UserGuidA;
-      console.log("  -> Other user key:", String(otherUser).toLowerCase());
+
       contactMap.set(String(otherUser).toLowerCase(), true);
     }
-    console.log("contactMap keys:", [...contactMap.keys()]);
-    console.log("=============================");
 
     //-------------------------------------------------------
     // Pending Request Lookup
@@ -335,38 +323,22 @@ WHERE ISNULL(r.utnm,'') <> ''
 ORDER BY r.utnm
         `);
         const currentBranchUnq = String(req.user.branchUnq || "");
-        const isAdminUser = req.user.isAdmin || false;
 
         return res.json({
           success: true,
           merged: false,
           data: result.recordset.map((user) => {
             const isSameBranch = String(user.branchId) === currentBranchUnq;
-            console.log("current branch", currentBranchUnq);
-            console.log("Hello", user.branchId);
+
             const userKey = String(user.id).toLowerCase();
 
             const isContact = contactMap.has(userKey);
-
-            if (isAdminUser) {
-              console.log("================================");
-              console.log("Logged In User :", req.user.userId);
-              console.log("Target Login   :", user.loginId);
-              console.log("Target Name    :", user.name);
-              console.log("Target GUID    :", user.id);
-              console.log("User Key       :", userKey);
-              console.log("isContact      :", isContact);
-              console.log("requestStatus  :", requestMap.get(userKey));
-              console.log("================================");
-            }
 
             const requestStatus = requestMap.get(userKey) || null;
 
             let chatAccess = "REQUEST";
 
-            // For admin: only unlock if contact accepted (isContact)
-            // For non-admin: unlock if same branch OR contact accepted
-            if (isAdminUser ? isContact : isSameBranch || isContact) {
+            if (isSameBranch || isContact) {
               chatAccess = "AUTO";
             }
 
@@ -403,7 +375,6 @@ ORDER BY r.utnm
 
     const currentPropertyCode = req.user.propertyCode;
     const currentBranchUnq = String(req.user.branchUnq || "");
-    const isAdminUser = req.user.isAdmin || false;
 
     for (const db of accessibleDbs) {
       let pool;
@@ -446,24 +417,14 @@ ORDER BY r.utnm
 
           const isContact = contactMap.has(userKey);
 
-          if (isAdminUser) {
-            console.log(
-              `[ADMIN MULTI CHECK] user: ${user.name}, id: ${user.id}, userKey: ${userKey}, isContact: ${isContact}`,
-            );
-          }
-
           const requestStatus = requestMap.get(userKey) || null;
 
           // Decide Chat Access
-          // For admin: only unlock if contact accepted (isContact)
-          // For non-admin: unlock if same company+branch OR contact accepted
           let chatAccess = "REQUEST";
 
-          if (
-            isAdminUser
-              ? isContact
-              : (isSameCompany && isSameBranch) || isContact
-          ) {
+          if (isSameCompany && isSameBranch) {
+            chatAccess = "AUTO";
+          } else if (isContact) {
             chatAccess = "AUTO";
           }
 
@@ -511,6 +472,387 @@ ORDER BY r.utnm
     if (masterPool) await masterPool.close();
   }
 });
+// ── GET /api/group/merged-users ───────────────────────────────────────────────
+// Returns users from ALL dealerships the current user has access to.
+// Each user entry includes { id, name, companyName, companyCode, database }.
+// Users with single-dealership access get only their own company's users.
+// Requires userGuid in JWT (set during login from MA_MasterUsers).
+// router.get("/merged-users", verifyToken, async (req, res) => {
+//   console.log("Logged In User");
+//   console.log(req.user);
+//   console.log("Current Branch =", req.user.branchUnq);
+//   const { database: currentDb, userGuid } = req.user;
+//   let masterPool;
+
+//   try {
+//     // If no userGuid, fall back to single-company user list
+//     if (!userGuid) {
+//       let pool;
+//       try {
+//         pool = await openPool(currentDb);
+//         const result = await pool.request().query(`
+//         SELECT
+//     CAST(r.utunqid AS NVARCHAR(50)) AS id,
+//     r.uti AS loginId,
+//     r.utnm AS name,
+//     r.BRANCHUNQ AS branchId,
+//     ISNULL(b.sp_607,'') AS branchName
+// FROM rh_secut r
+// LEFT JOIN rh_sp_60 b
+//        ON r.BRANCHUNQ = b.sp_602
+// WHERE ISNULL(r.utnm,'') <> ''
+//   AND r.utg IS NOT NULL
+// ORDER BY r.utnm
+//         `);
+//         const currentBranchUnq = String(req.user.branchUnq || "");
+//         console.log("Current Branch Unique ID:", currentBranchUnq);
+//         console.log("hello", user.branchId);
+//         return res.json({
+//           success: true,
+//           merged: false,
+//           data: result.recordset.map((user) => {
+//             const isSameBranch = String(user.branchId) === currentBranchUnq;
+
+//             return {
+//               id: user.id,
+//               loginId: user.loginId,
+//               name: user.name,
+
+//               companyName: req.user.propertyName || "",
+//               companyCode: req.user.propertyCode || "",
+//               database: currentDb,
+
+//               branchId: user.branchId,
+//               branchName: user.branchName,
+
+//               chatAccess: isSameBranch ? "AUTO" : "REQUEST",
+
+//               requestStatus: null,
+//               isContact: false,
+
+//               isSameCompany: true,
+//               isSameBranch,
+//             };
+//           }),
+//         });
+//       } finally {
+//         if (pool) await pool.close();
+//       }
+//     }
+
+//     // Look up all databases this user has access to
+//     masterPool = await new sql.ConnectionPool({
+//       user: process.env.DB_USER,
+//       password: process.env.DB_PASSWORD,
+//       server: process.env.DB_HOST,
+//       port: parseInt(process.env.DB_PORT || "1433"),
+//       database: "CMPY_AUTOSHOP",
+//       options: { encrypt: false, trustServerCertificate: true },
+//     }).connect();
+
+//     const accessResult = await masterPool
+//       .request()
+//       .input("userGuid", sql.UniqueIdentifier, userGuid).query(`
+//         SELECT
+//             CM.unqid      AS clientId,
+//             CM.propertycode AS companyCode,
+//             CM.propertyname AS companyName,
+//             CM.propertydb   AS [database]
+//         FROM MA_UserDatabaseAccess UA
+//         INNER JOIN MA_ClientMaster CM ON UA.ClientId = CM.unqid
+//         WHERE UA.UserGuid = @userGuid
+//       `);
+
+//     const accessibleDbs = accessResult.recordset;
+//     //-------------------------------------------------------
+//     // Load Existing Contacts
+//     //-------------------------------------------------------
+//     const communicationPool = await openCommunicationPool();
+//     const contactsResult = await communicationPool
+//       .request()
+//       .input("UserGuid", sql.UniqueIdentifier, userGuid).query(`
+// SELECT
+//     UserGuidA,
+//     UserGuidB
+// FROM MA_ChatContacts
+// WHERE
+// (
+//     UserGuidA=@UserGuid
+//     OR
+//     UserGuidB=@UserGuid
+// )
+// AND Status='ACTIVE'
+// `);
+
+//     //-------------------------------------------------------
+//     // Load Pending Requests
+//     //-------------------------------------------------------
+
+//     const requestsResult = await communicationPool
+//       .request()
+//       .input("UserGuid", sql.UniqueIdentifier, userGuid).query(`
+// SELECT
+//     FromUserGuid,
+//     ToUserGuid,
+//     Status
+// FROM MA_ContactRequests
+// WHERE
+// (
+//     FromUserGuid=@UserGuid
+//     OR
+//     ToUserGuid=@UserGuid
+// )
+// AND Status='PENDING'
+// `);
+//     //-------------------------------------------------------
+//     // Contact Lookup
+//     //-------------------------------------------------------
+
+//     const contactMap = new Map();
+
+//     console.log("===== CONTACT MAP BUILD =====");
+//     console.log("Admin userGuid:", userGuid);
+//     console.log("Contacts found:", contactsResult.recordset.length);
+//     for (const row of contactsResult.recordset) {
+//       console.log(
+//         "  Contact row - UserGuidA:",
+//         row.UserGuidA,
+//         "UserGuidB:",
+//         row.UserGuidB,
+//       );
+//       const otherUser =
+//         String(row.UserGuidA).toLowerCase() === String(userGuid).toLowerCase()
+//           ? row.UserGuidB
+//           : row.UserGuidA;
+//       console.log("  -> Other user key:", String(otherUser).toLowerCase());
+//       contactMap.set(String(otherUser).toLowerCase(), true);
+//     }
+//     console.log("contactMap keys:", [...contactMap.keys()]);
+//     console.log("=============================");
+
+//     //-------------------------------------------------------
+//     // Pending Request Lookup
+//     //-------------------------------------------------------
+
+//     const requestMap = new Map();
+
+//     for (const row of requestsResult.recordset) {
+//       const otherUser =
+//         String(row.FromUserGuid).toLowerCase() ===
+//         String(userGuid).toLowerCase()
+//           ? row.ToUserGuid
+//           : row.FromUserGuid;
+
+//       requestMap.set(
+//         String(otherUser).toLowerCase(),
+//         String(row.FromUserGuid).toLowerCase() ===
+//           String(userGuid).toLowerCase()
+//           ? "SENT"
+//           : "RECEIVED",
+//       );
+//     }
+//     // If only one dealership (or none found), no need to merge
+//     if (accessibleDbs.length <= 1) {
+//       let pool;
+//       const targetDb =
+//         accessibleDbs.length === 1 ? accessibleDbs[0].database : currentDb;
+//       const companyName =
+//         accessibleDbs.length === 1 ? accessibleDbs[0].companyName : null;
+//       const companyCode =
+//         accessibleDbs.length === 1 ? accessibleDbs[0].companyCode : null;
+//       try {
+//         pool = await openPool(targetDb);
+//         const result = await pool.request().query(`
+//             SELECT
+//     CAST(r.utunqid AS NVARCHAR(50)) AS id,
+//     r.uti AS loginId,
+//     r.utnm AS name,
+//     r.BRANCHUNQ AS branchId,
+//     ISNULL(b.sp_607,'') AS branchName
+// FROM rh_secut r
+// LEFT JOIN rh_sp_60 b
+//        ON r.BRANCHUNQ = b.sp_602
+// WHERE ISNULL(r.utnm,'') <> ''
+//   AND r.utg IS NOT NULL
+// ORDER BY r.utnm
+//         `);
+//         const currentBranchUnq = String(req.user.branchUnq || "");
+//         const isAdminUser = req.user.isAdmin || false;
+
+//         return res.json({
+//           success: true,
+//           merged: false,
+//           data: result.recordset.map((user) => {
+//             const isSameBranch = String(user.branchId) === currentBranchUnq;
+//             console.log("current branch", currentBranchUnq);
+//             console.log("Hello", user.branchId);
+//             const userKey = String(user.id).toLowerCase();
+
+//             const isContact = contactMap.has(userKey);
+
+//             if (isAdminUser) {
+//               console.log("================================");
+//               console.log("Logged In User :", req.user.userId);
+//               console.log("Target Login   :", user.loginId);
+//               console.log("Target Name    :", user.name);
+//               console.log("Target GUID    :", user.id);
+//               console.log("User Key       :", userKey);
+//               console.log("isContact      :", isContact);
+//               console.log("requestStatus  :", requestMap.get(userKey));
+//               console.log("================================");
+//             }
+
+//             const requestStatus = requestMap.get(userKey) || null;
+
+//             let chatAccess = "REQUEST";
+
+//             // For admin: only unlock if contact accepted (isContact)
+//             // For non-admin: unlock if same branch OR contact accepted
+//             if (isAdminUser ? isContact : isSameBranch || isContact) {
+//               chatAccess = "AUTO";
+//             }
+
+//             return {
+//               id: user.id,
+//               loginId: user.loginId,
+//               name: user.name,
+
+//               companyName,
+//               companyCode,
+//               database: targetDb,
+
+//               branchId: user.branchId,
+//               branchName: user.branchName,
+
+//               chatAccess,
+//               requestStatus,
+//               isContact,
+
+//               isSameCompany: true,
+//               isSameBranch,
+//             };
+//           }),
+//         });
+//       } finally {
+//         if (pool) await pool.close();
+//       }
+//     }
+
+//     // Multiple dealerships — fetch users from each and merge
+//     // Multiple dealerships — fetch users from each and merge
+//     const allUsers = [];
+//     const seenIds = new Set();
+
+//     const currentPropertyCode = req.user.propertyCode;
+//     const currentBranchUnq = String(req.user.branchUnq || "");
+//     const isAdminUser = req.user.isAdmin || false;
+
+//     for (const db of accessibleDbs) {
+//       let pool;
+
+//       try {
+//         pool = await openPool(db.database);
+
+//         const result = await pool.request().query(`
+//       SELECT
+//           CAST(r.utunqid AS NVARCHAR(50)) AS id,
+//           r.uti AS loginId,
+//           r.utnm AS name,
+//           r.BRANCHUNQ AS branchId,
+//           ISNULL(b.sp_607,'') AS branchName
+//       FROM rh_secut r
+//       LEFT JOIN rh_sp_60 b
+//              ON r.BRANCHUNQ = b.sp_602
+//       WHERE ISNULL(r.utnm,'') <> ''
+//         AND r.utg IS NOT NULL
+//       ORDER BY r.utnm
+//     `);
+
+//         for (const user of result.recordset) {
+//           const key = `${db.database}:${user.id}`;
+
+//           if (seenIds.has(key) || !user.id) continue;
+
+//           seenIds.add(key);
+
+//           //-------------------------------------------------------
+//           // Chat Permission Logic (Phase 1)
+//           //-------------------------------------------------------
+
+//           const isSameCompany = db.companyCode === currentPropertyCode;
+
+//           const isSameBranch = String(user.branchId) === currentBranchUnq;
+
+//           // Lookup this user
+//           const userKey = String(user.id).toLowerCase();
+
+//           const isContact = contactMap.has(userKey);
+
+//           if (isAdminUser) {
+//             console.log(
+//               `[ADMIN MULTI CHECK] user: ${user.name}, id: ${user.id}, userKey: ${userKey}, isContact: ${isContact}`,
+//             );
+//           }
+
+//           const requestStatus = requestMap.get(userKey) || null;
+
+//           // Decide Chat Access
+//           // For admin: only unlock if contact accepted (isContact)
+//           // For non-admin: unlock if same company+branch OR contact accepted
+//           let chatAccess = "REQUEST";
+
+//           if (
+//             isAdminUser
+//               ? isContact
+//               : (isSameCompany && isSameBranch) || isContact
+//           ) {
+//             chatAccess = "AUTO";
+//           }
+
+//           allUsers.push({
+//             // Existing fields (DO NOT CHANGE)
+//             id: user.id,
+//             loginId: user.loginId,
+//             name: user.name,
+//             companyName: db.companyName,
+//             companyCode: db.companyCode,
+//             database: db.database,
+//             branchId: user.branchId,
+//             branchName: user.branchName,
+
+//             // New fields
+//             chatAccess,
+//             requestStatus,
+//             isContact,
+//             isSameCompany,
+//             isSameBranch,
+//           });
+//         }
+//       } catch (dbErr) {
+//         console.error(
+//           `MERGED-USERS: failed to fetch from ${db.database}`,
+//           dbErr.message,
+//         );
+//       } finally {
+//         if (pool) await pool.close();
+//       }
+//     }
+
+//     // Sort by name
+//     allUsers.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+//     return res.json({
+//       success: true,
+//       merged: true,
+//       data: allUsers,
+//     });
+//   } catch (err) {
+//     console.error("MERGED-USERS ERROR:", err);
+//     return res.status(500).json({ success: false, message: err.message });
+//   } finally {
+//     if (masterPool) await masterPool.close();
+//   }
+// });
 
 // ── POST /api/group/create ────────────────────────────────────────────────────
 router.post("/create", async (req, res) => {
