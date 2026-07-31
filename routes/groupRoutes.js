@@ -342,7 +342,8 @@ ORDER BY r.utnm
           merged: false,
           data: result.recordset.map((user) => {
             const isSameBranch = String(user.branchId) === currentBranchUnq;
-
+            console.log("current branch", currentBranchUnq);
+            console.log("Hello", user.branchId);
             const userKey = String(user.id).toLowerCase();
 
             const isContact = contactMap.has(userKey);
