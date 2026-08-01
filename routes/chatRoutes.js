@@ -609,39 +609,43 @@ async function handleChatSend(req, res) {
     // ------------------------------------------------
     // Send push notifications
     // ------------------------------------------------
-    for (const member of notificationUsers) {
-      try {
-        await sendPushNotification(
-          pool,
-          member.UserId,
-          senderName || userId,
-          messageText || "New message",
-          {
-            type: "challan_chat",
-            chatId,
-            challanId,
-            challanNo: challanNo?.toString() || "",
-            senderId: userId?.toString() || "",
-            senderName: senderName?.toString() || "",
-            senderPropertyCode: senderPropertyCode?.toString() || "",
-            receiverPropertyCode: member.PropertyCode?.toString() || "",
-          },
-        );
-      } catch (notificationError) {
-        console.error("PUSH NOTIFICATION ERROR:", notificationError.message);
-      }
-    }
-    // Send push notification only for direct chat
     if (receiver) {
-      await sendChatNotification({
-        receiverUserId: receiver.userId,
-        receiverPropertyCode: receiverPropertyCode || receiver.propertyCode,
-
-        senderId: userId,
-        senderName: senderName,
-
-        message: messageText || "New message",
-      });
+      // Direct chat — use MA_UserDevices (sendChatNotification only)
+      try {
+        await sendChatNotification({
+          receiverUserId: receiver.userId,
+          receiverPropertyCode: receiverPropertyCode || receiver.propertyCode,
+          senderId: userId,
+          senderName: senderName,
+          message: messageText || "New message",
+        });
+      } catch (notificationError) {
+        console.error("DIRECT CHAT NOTIFICATION ERROR:", notificationError.message);
+      }
+    } else {
+      // Challan/group chat — use app_user_devices (sendPushNotification)
+      for (const member of notificationUsers) {
+        try {
+          await sendPushNotification(
+            pool,
+            member.UserId,
+            senderName || userId,
+            messageText || "New message",
+            {
+              type: "challan_chat",
+              chatId,
+              challanId,
+              challanNo: challanNo?.toString() || "",
+              senderId: userId?.toString() || "",
+              senderName: senderName?.toString() || "",
+              senderPropertyCode: senderPropertyCode?.toString() || "",
+              receiverPropertyCode: member.PropertyCode?.toString() || "",
+            },
+          );
+        } catch (notificationError) {
+          console.error("GROUP CHAT NOTIFICATION ERROR:", notificationError.message);
+        }
+      }
     }
     console.log("MESSAGE SENT:", chatId);
 
