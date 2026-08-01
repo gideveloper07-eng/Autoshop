@@ -9,6 +9,7 @@ const { decodeToken } = require("../middleware/authMiddleware");
 const { sendPushNotification } = require("../utils/pushNotificationHelper");
 const { getAccessibleDatabases } = require("../utils/databaseAccessHelper");
 const openPool = require("../utils/dynamicPoolManager");
+const { sendChatNotification } = require("../services/notificationService");
 // async function openPool(databaseName) {
 //   return await new sql.ConnectionPool({
 //     user: process.env.DB_USER,
@@ -630,7 +631,18 @@ async function handleChatSend(req, res) {
         console.error("PUSH NOTIFICATION ERROR:", notificationError.message);
       }
     }
+    // Send push notification only for direct chat
+    if (receiver) {
+      await sendChatNotification({
+        receiverUserId: receiver.userId,
+        receiverPropertyCode: receiverPropertyCode || receiver.propertyCode,
 
+        senderId: userId,
+        senderName: senderName,
+
+        message: messageText || "New message",
+      });
+    }
     console.log("MESSAGE SENT:", chatId);
 
     // ------------------------------------------------
