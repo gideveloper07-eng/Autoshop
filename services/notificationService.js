@@ -34,23 +34,27 @@ async function sendChatNotification({
 
     console.log("Sending notification to", tokens.length, "device(s)");
 
-    const payload = {
-      notification: {
-        title: senderName,
-        body: message,
-      },
-
-      data: {
-        type: "DIRECT_CHAT",
-        senderId,
-        receiverId: receiverUserId,
-        propertyCode: receiverPropertyCode,
-      },
-    };
-
+    // Data-only payload — no notification block so FCM does NOT auto-show a
+    // system notification. Flutter's onMessage / background handler shows
+    // exactly ONE local notification, preventing duplicates.
     const response = await admin.messaging().sendEachForMulticast({
       tokens,
-      ...payload,
+      data: {
+        type: "DIRECT_CHAT",
+        title: senderName,
+        body: message,
+        senderId: String(senderId ?? ""),
+        receiverId: String(receiverUserId ?? ""),
+        propertyCode: String(receiverPropertyCode ?? ""),
+      },
+      android: {
+        priority: "high",
+        ttl: 86400000,
+      },
+      apns: {
+        headers: { "apns-priority": "10" },
+        payload: { aps: { contentAvailable: true } },
+      },
     });
 
     console.log("Success:", response.successCount);
