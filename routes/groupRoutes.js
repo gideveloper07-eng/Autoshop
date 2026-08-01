@@ -1437,6 +1437,7 @@ router.get("/my-groups", async (req, res) => {
                   SELECT COUNT(*)
                   FROM MA_ChatGroupMembers gm2
                   WHERE gm2.GroupId = g.GroupId
+                    AND LOWER(gm2.UserId) <> LOWER(@UserId)
               ) AS MemberCount,
 
               (
@@ -1447,13 +1448,16 @@ router.get("/my-groups", async (req, res) => {
               ) AS LastMessage
 
           FROM MA_ChatGroups g
-          INNER JOIN MA_ChatGroupMembers gm
-              ON gm.GroupId = g.GroupId
-
           WHERE ISNULL(g.IsActive,1)=1
-            AND (
-                 LOWER(gm.UserId)=LOWER(@UserId)
-                 OR LOWER(g.CreatedBy)=LOWER(@UserId)
+            AND EXISTS
+            (
+                SELECT 1
+                FROM MA_ChatGroupMembers gm
+                WHERE gm.GroupId = g.GroupId
+                  AND (
+                       LOWER(gm.UserId) = LOWER(@UserId)
+                       OR LOWER(g.CreatedBy) = LOWER(@UserId)
+                  )
             )
 
           ORDER BY ISNULL(g.LastMessageTime,g.CreatedDate) DESC
