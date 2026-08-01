@@ -409,6 +409,7 @@ const switchDatabase = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 const logoutUser = async (req, res) => {
   let pool;
+  let commPool;
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -425,11 +426,13 @@ const logoutUser = async (req, res) => {
       return res.status(401).json({ success: false, message: "Invalid token" });
     }
 
-    const { userId, loginDatabase: databaseName } = decoded;
+    const { userId, loginDatabase: databaseName, loginPropertyCode } = decoded;
+    const { fcmToken } = req.body || {};
+
     console.log("🚪 LOGOUT — userId:", userId, "db:", databaseName);
 
+    // ── 1. Clear login flag in company DB ────────────────────────────────────
     pool = await openPool(databaseName);
-
     await pool.request().input("userId", sql.NVarChar, userId).query(`
         UPDATE rh_secut
         SET
@@ -437,8 +440,44 @@ const logoutUser = async (req, res) => {
           logged_device_id = NULL
         WHERE uti = @userId
       `);
-
     console.log("✅ DB updated — is_logged_in=0 for:", userId);
+
+    // ── 2. Deactivate device token in MA_UserDevices ──────────────────────────
+    // If the FCM token is provided, deactivate only that device.
+    // Otherwise deactivate ALL devices for this user (full sign-out).
+    try {
+      const { sql: sqlLib } = require("../config/db");
+      const openCommPool = require("../utils/communicationPool");
+      commPool = await openCommPool();
+
+      if (fcmToken && fcmToken.trim() !== "") {
+        await commPool
+          .request()
+          .input("deviceToken", sqlLib.NVarChar(sqlLib.MAX), fcmToken.trim())
+          .input("userId", sqlLib.NVarChar(100), userId).query(`
+            UPDATE MA_UserDevices
+            SET IsActive = 0, LastUpdated = GETDATE()
+            WHERE DeviceToken = @deviceToken
+              AND UserId = @userId
+          `);
+        console.log("✅ FCM token deactivated for device:", fcmToken.substring(0, 20));
+      } else {
+        // No specific token supplied — deactivate all devices for this user
+        await commPool
+          .request()
+          .input("userId", sqlLib.NVarChar(100), userId)
+          .input("propertyCode", sqlLib.NVarChar(50), loginPropertyCode || "").query(`
+            UPDATE MA_UserDevices
+            SET IsActive = 0, LastUpdated = GETDATE()
+            WHERE UserId = @userId
+              AND (@propertyCode = '' OR PropertyCode = @propertyCode)
+          `);
+        console.log("✅ All FCM tokens deactivated for user:", userId);
+      }
+    } catch (fcmErr) {
+      // Don't fail the logout if token cleanup fails
+      console.error("⚠️ FCM token cleanup error:", fcmErr.message);
+    }
 
     return res.json({ success: true, message: "Logout successful" });
   } catch (err) {
