@@ -4,8 +4,6 @@ const router = express.Router();
 
 const sql = require("mssql");
 
-
-
 const {
   registerUser,
   loginUser,
@@ -69,9 +67,13 @@ router.post("/save-fcm-token", async (req, res) => {
       });
     }
 
-    const { database: databaseName, userId } = decoded;
+    const userId = decoded.userId;
 
-    const { token } = req.body;
+    const propertyCode = decoded.loginPropertyCode || decoded.propertyCode;
+
+    const databaseName = decoded.currentDatabase || decoded.loginDatabase;
+
+    const { token, platform, deviceModel, appVersion } = req.body;
 
     if (!token) {
       return res.status(400).json({
@@ -80,35 +82,83 @@ router.post("/save-fcm-token", async (req, res) => {
       });
     }
 
-    pool = await openPool(databaseName);
+    pool = await openCommunicationPool();
 
-    // DELETE all old tokens for this user, then insert the new one.
-    // This ensures 1 user = 1 token = 1 notification (no duplicates).
     await pool
       .request()
-      .input("user_id", sql.NVarChar, userId)
-      .input("fcm_token", sql.NVarChar(sql.MAX), token).query(`
-        -- Remove all existing tokens for this user
-        DELETE FROM app_user_devices
-        WHERE user_id = @user_id;
+      .input("userId", sql.NVarChar(100), userId)
+      .input("propertyCode", sql.NVarChar(50), propertyCode)
+      .input("databaseName", sql.NVarChar(100), databaseName)
+      .input("deviceToken", sql.NVarChar(sql.MAX), token)
+      .input("platform", sql.NVarChar(20), platform || "android")
+      .input("deviceModel", sql.NVarChar(100), deviceModel || "")
+      .input("appVersion", sql.NVarChar(20), appVersion || "").query(`
+IF EXISTS
+(
+    SELECT 1
+    FROM MA_UserDevices
+    WHERE DeviceToken=@deviceToken
+)
+BEGIN
 
-        -- Insert the fresh token
-        INSERT INTO app_user_devices (user_id, fcm_token)
-        VALUES (@user_id, @fcm_token);
-      `);
+    UPDATE MA_UserDevices
+    SET
+        UserId=@userId,
+        PropertyCode=@propertyCode,
+        DatabaseName=@databaseName,
+        Platform=@platform,
+        DeviceModel=@deviceModel,
+        AppVersion=@appVersion,
+        IsActive=1,
+        LastUpdated=GETDATE()
+
+    WHERE DeviceToken=@deviceToken;
+
+END
+ELSE
+BEGIN
+
+    INSERT INTO MA_UserDevices
+    (
+        UserId,
+        PropertyCode,
+        DatabaseName,
+        DeviceToken,
+        Platform,
+        DeviceModel,
+        AppVersion,
+        IsActive,
+        CreatedOn,
+        LastUpdated
+    )
+    VALUES
+    (
+        @userId,
+        @propertyCode,
+        @databaseName,
+        @deviceToken,
+        @platform,
+        @deviceModel,
+        @appVersion,
+        1,
+        GETDATE(),
+        GETDATE()
+    );
+
+END
+`);
 
     return res.json({
       success: true,
+      message: "FCM token saved.",
     });
   } catch (err) {
-    console.error("SAVE FCM ERROR:", err.message);
+    console.error("SAVE FCM TOKEN ERROR:", err);
 
     return res.status(500).json({
       success: false,
       message: err.message,
     });
-  } finally {
-    // if (pool) await pool.close();
   }
 });
 router.post("/activity-log", async (req, res) => {
