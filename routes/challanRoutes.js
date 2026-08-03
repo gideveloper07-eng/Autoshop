@@ -1302,6 +1302,95 @@ router.get("/dashboard-branchwise", async (req, res) => {
     // }
   }
 });
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/dashboard-modelwise
+// Returns model-wise booking or sale counts for today or yesterday.
+// Query params: type = booking | sale, period = today | yesterday
+// SP modes: TodayBookingModelwise | YesterdayBookingModelwise |
+//           TodaySaleModelwise    | YesterdaySaleModelwise
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/dashboard-modelwise", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const { currentDatabase: databaseName } = decoded;
+
+    if (!databaseName) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Database not found in token" });
+    }
+
+    const type = (req.query.type || "").toString().toLowerCase();
+    const period = (req.query.period || "today").toString().toLowerCase();
+
+    if (!["booking", "sale"].includes(type)) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Type must be booking or sale" });
+    }
+
+    if (!["today", "yesterday"].includes(period)) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Period must be today or yesterday" });
+    }
+
+    let what = "";
+    if (type === "booking") {
+      what =
+        period === "today"
+          ? "TodayBookingModelwise"
+          : "YesterdayBookingModelwise";
+    } else {
+      what =
+        period === "today" ? "TodaySaleModelwise" : "YesterdaySaleModelwise";
+    }
+
+    console.log(
+      `📊 Dashboard Modelwise | Type: ${type} | Period: ${period} | DB: ${databaseName}`,
+    );
+
+    pool = await openPool(databaseName);
+
+    const result = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "")
+      .input("what", sql.NVarChar(50), what)
+      .input("FromDate", sql.NVarChar(50), "")
+      .input("ToDate", sql.NVarChar(50), "")
+      .execute("A_SP_FOR_ApplicationChallangrid");
+
+    const models = (result.recordset || []).map((row) => ({
+      modelName: (row.ModelName ?? row.modelname ?? "Unknown Model")
+        .toString()
+        .trim(),
+      count: Number(row.totalCount ?? row.totalcount ?? 0),
+    }));
+
+    const total = models.reduce((sum, item) => sum + item.count, 0);
+
+    return res.json({
+      success: true,
+      data: { type, period, total, models },
+    });
+  } catch (err) {
+    console.error("❌ Dashboard Modelwise Error:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+});
+
 router.post(
   "/send-admin-push",
 
