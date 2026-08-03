@@ -2353,7 +2353,7 @@ router.get("/messages/:groupId", async (req, res) => {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
-    const { database: currentDb, userId } = decoded;
+    const { database: currentDb, userId, userGuid, isAdmin } = decoded;
     const { groupId } = req.params;
     const escapedCurrentDb = currentDb
       ? currentDb.replace(/]/g, "]]")
@@ -2366,21 +2366,31 @@ router.get("/messages/:groupId", async (req, res) => {
     // MA_ChatGroupMembers and MA_GroupChatMessages are stored there
     pool = await openCommunicationPool();
 
-    // Verify membership
-    const memberCheck = await pool
-      .request()
-      .input("GroupId", sql.NVarChar(50), groupId)
-      .input("UserId", sql.NVarChar(100), userId).query(`
-      SELECT *
-      FROM MA_ChatGroupMembers
-      WHERE GroupId = CONVERT(UNIQUEIDENTIFIER,@GroupId)
-      AND LOWER(UserId)=LOWER(@UserId)
-`);
+    // Verify membership — check both login ID and userGuid (members may be
+    // stored by GUID when added via the user picker), admins bypass the check.
+    if (!isAdmin) {
+      const memberCheck = await pool
+        .request()
+        .input("GroupId", sql.NVarChar(50), groupId)
+        .input("UserId", sql.NVarChar(100), userId)
+        .input("UserGuid", sql.NVarChar(50), userGuid || null).query(`
+        SELECT TOP 1 1
+        FROM MA_ChatGroupMembers
+        WHERE GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId)
+          AND (
+              LOWER(UserId) = LOWER(@UserId)
+              OR (
+                  @UserGuid IS NOT NULL
+                  AND LOWER(UserId) = LOWER(@UserGuid)
+              )
+          )
+      `);
 
-    console.log("Member Check:", memberCheck.recordset);
+      console.log("Member Check:", memberCheck.recordset);
 
-    if (memberCheck.recordset.length === 0) {
-      return res.status(403).json({ success: false, message: "Access denied" });
+      if (memberCheck.recordset.length === 0) {
+        return res.status(403).json({ success: false, message: "Access denied" });
+      }
     }
 
     const result = await pool
