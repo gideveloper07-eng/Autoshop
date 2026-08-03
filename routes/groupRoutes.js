@@ -1354,7 +1354,6 @@ ORDER BY c.MessageTime DESC;
     // pool is only closed on application shutdown in communicationPool.js
   }
 });
-
 // ── GET /api/group/my-groups ──────────────────────────────────────────────────
 router.get("/my-groups", async (req, res) => {
   let pool;
