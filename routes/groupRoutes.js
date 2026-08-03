@@ -2368,7 +2368,16 @@ router.get("/messages/:groupId", async (req, res) => {
 
     // Verify membership — check both login ID and userGuid (members may be
     // stored by GUID when added via the user picker), admins bypass the check.
+    console.log(`[GROUP MESSAGES] groupId=${groupId} userId=${userId} userGuid=${userGuid} isAdmin=${isAdmin}`);
+
     if (!isAdmin) {
+      // Debug: dump all members stored for this group
+      const allMembers = await pool
+        .request()
+        .input("GroupId", sql.NVarChar(50), groupId)
+        .query(`SELECT UserId, IsAdmin, DatabaseName FROM MA_ChatGroupMembers WHERE GroupId = CONVERT(UNIQUEIDENTIFIER, @GroupId)`);
+      console.log(`[GROUP MESSAGES] All stored members for group:`, allMembers.recordset);
+
       const memberCheck = await pool
         .request()
         .input("GroupId", sql.NVarChar(50), groupId)
