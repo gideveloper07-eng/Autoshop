@@ -1132,102 +1132,110 @@ router.get("/my-direct-chats", async (req, res) => {
 ;WITH AllowedProperties AS
 (
     SELECT LTRIM(RTRIM(value)) AS PropertyCode
-    FROM STRING_SPLIT(@allowedProperties,',')
+    FROM STRING_SPLIT(@allowedProperties, ',')
 ),
 
-NormalizedChat AS
+BaseChat AS
 (
     SELECT
 
         CASE
-            WHEN UPPER(SenderUserId)=UPPER(@userId)
-                 OR SenderUserId=@userGuid
+            WHEN
+                UPPER(SenderUserId)=UPPER(@userId)
             THEN ReceiverId
             ELSE SenderUserId
         END AS OtherUserId,
 
         CASE
-            WHEN UPPER(SenderUserId)=UPPER(@userId)
-                 OR SenderUserId=@userGuid
+            WHEN
+                UPPER(SenderUserId)=UPPER(@userId)
             THEN ReceiverPropertyCode
             ELSE SenderPropertyCode
-        END AS OtherProperty,
+        END AS OtherPropertyCode,
 
         CASE
-            WHEN UPPER(SenderUserId)=UPPER(@userId)
-                 OR SenderUserId=@userGuid
+            WHEN
+                UPPER(SenderUserId)=UPPER(@userId)
             THEN SenderPropertyCode
             ELSE ReceiverPropertyCode
-        END AS MyProperty,
+        END AS MyPropertyCode,
+
+        SenderUserId,
+        ReceiverId,
+
+        SenderPropertyCode,
+        ReceiverPropertyCode,
 
         MessageText,
         MessageTime,
         MessageType,
-        SenderUserId,
-        ReceiverId,
-        SenderPropertyCode,
-        ReceiverPropertyCode,
-        IsRead
+        IsRead,
+        ClientId
 
     FROM MA_ChallanChat c
 
     WHERE
+
     (
         (
             UPPER(SenderUserId)=UPPER(@userId)
-            OR SenderUserId=@userGuid
+            AND EXISTS
+            (
+                SELECT 1
+                FROM AllowedProperties p
+                WHERE p.PropertyCode=c.SenderPropertyCode
+            )
         )
+
         OR
+
         (
             UPPER(ReceiverId)=UPPER(@userId)
-            OR ReceiverId=@userGuid
+            AND EXISTS
+            (
+                SELECT 1
+                FROM AllowedProperties p
+                WHERE p.PropertyCode=c.ReceiverPropertyCode
+            )
         )
     )
 
     AND
     (
-        SenderPropertyCode IN
-        (
-            SELECT PropertyCode
-            FROM AllowedProperties
-        )
-        OR
-        ReceiverPropertyCode IN
-        (
-            SELECT PropertyCode
-            FROM AllowedProperties
-        )
+        @clientId IS NULL
+        OR c.ClientId=@clientId
     )
 ),
 
 LatestChat AS
 (
-    SELECT *,
-           ROW_NUMBER() OVER
-           (
-               PARTITION BY
-                    UPPER(OtherUserId),
-                    OtherProperty
-               ORDER BY MessageTime DESC
-           ) rn
-    FROM NormalizedChat
+    SELECT
+        *,
+        ROW_NUMBER() OVER
+        (
+            PARTITION BY
+                UPPER(OtherUserId),
+                OtherPropertyCode
+            ORDER BY MessageTime DESC
+        ) AS rn
+    FROM BaseChat
 )
 
 SELECT
 
     l.OtherUserId AS UserId,
 
-    m.UserName,
+    ISNULL(m.UserName, l.OtherUserId) AS UserName,
 
-    l.OtherProperty AS PropertyCode,
+    l.OtherPropertyCode AS PropertyCode,
 
-    m.DatabaseName,
+    ISNULL(m.DatabaseName, '') AS DatabaseName,
 
-    cm.PropertyName,
+    ISNULL(cm.PropertyName, l.OtherPropertyCode) AS CompanyName,
 
     l.MessageText,
 
-    l.MessageTime,
+    l.MessageTime AS LastMessageTime,
 
     l.MessageType,
 
@@ -1237,24 +1245,35 @@ SELECT
         SELECT COUNT(*)
         FROM MA_ChallanChat x
         WHERE
+
             UPPER(x.SenderUserId)=UPPER(l.OtherUserId)
-            AND x.SenderPropertyCode=l.OtherProperty
-            AND x.ReceiverPropertyCode=l.MyProperty
+
+            AND x.SenderPropertyCode=l.OtherPropertyCode
+
+            AND x.ReceiverPropertyCode=l.MyPropertyCode
+
             AND x.IsRead=0
+
+            AND
+            (
+                @clientId IS NULL
+                OR x.ClientId=@clientId
+            )
     ) AS UnreadCount
 
 FROM LatestChat l
 
 LEFT JOIN MA_ChallanChatMembers m
        ON UPPER(m.UserId)=UPPER(l.OtherUserId)
-      AND m.PropertyCode=l.OtherProperty
+      AND m.PropertyCode=l.OtherPropertyCode
 
 LEFT JOIN Cmpy_AutoShop.dbo.MA_ClientMaster cm
-       ON cm.PropertyCode=l.OtherProperty
+       ON cm.PropertyCode=l.OtherPropertyCode
 
-WHERE rn=1
+WHERE
+    l.rn=1
 
-ORDER BY l.MessageTime DESC;
+ORDER BY LastMessageTime DESC;
 `);
 
     return res.json({
