@@ -1140,11 +1140,11 @@ router.get("/my-direct-chats", async (req, res) => {
                 AND
                 (
                     EXISTS
-(
-    SELECT 1
-    FROM STRING_SPLIT(@allowedProperties, ',') p
-    WHERE LTRIM(RTRIM(p.value)) = SenderPropertyCode
-)
+                    (
+                        SELECT 1
+                        FROM STRING_SPLIT(@allowedProperties, ',') p
+                        WHERE LTRIM(RTRIM(p.value)) = SenderPropertyCode
+                    )
                     OR SenderPropertyCode=@propertyCode
                 )
             )
@@ -1159,12 +1159,12 @@ router.get("/my-direct-chats", async (req, res) => {
                  OR SenderUserId = CONVERT(NVARCHAR(50), @userGuid))
                 AND
                 (
-                   EXISTS
-(
-    SELECT 1
-    FROM STRING_SPLIT(@allowedProperties, ',') p
-    WHERE LTRIM(RTRIM(p.value)) = SenderPropertyCode
-)
+                    EXISTS
+                    (
+                        SELECT 1
+                        FROM STRING_SPLIT(@allowedProperties, ',') p
+                        WHERE LTRIM(RTRIM(p.value)) = SenderPropertyCode
+                    )
                     OR SenderPropertyCode=@propertyCode
                 )
             )
@@ -1183,7 +1183,6 @@ router.get("/my-direct-chats", async (req, res) => {
     FROM MA_ChallanChat
 
     WHERE
-
     (
         (
             SenderUserId=@userId
@@ -1191,12 +1190,12 @@ router.get("/my-direct-chats", async (req, res) => {
         )
         AND
         (
-           EXISTS
-(
-    SELECT 1
-    FROM STRING_SPLIT(@allowedProperties, ',') p
-    WHERE LTRIM(RTRIM(p.value)) = SenderPropertyCode
-)
+            EXISTS
+            (
+                SELECT 1
+                FROM STRING_SPLIT(@allowedProperties, ',') p
+                WHERE LTRIM(RTRIM(p.value)) = SenderPropertyCode
+            )
             OR SenderPropertyCode=@propertyCode
         )
     )
@@ -1210,12 +1209,12 @@ router.get("/my-direct-chats", async (req, res) => {
         )
         AND
         (
-           EXISTS
-(
-    SELECT 1
-    FROM STRING_SPLIT(@allowedProperties, ',') p
-    WHERE LTRIM(RTRIM(p.value)) = ReceiverPropertyCode
-)
+            EXISTS
+            (
+                SELECT 1
+                FROM STRING_SPLIT(@allowedProperties, ',') p
+                WHERE LTRIM(RTRIM(p.value)) = ReceiverPropertyCode
+            )
             OR ReceiverPropertyCode=@propertyCode
         )
     )
@@ -1231,11 +1230,7 @@ ChatList AS
            (
                PARTITION BY
                     OtherUserId,
-                    CASE
-                        WHEN @scope='all'
-                        THEN ''
-                        ELSE OtherPropertyCode
-                    END
+                    OtherPropertyCode
                ORDER BY MessageTime DESC
            ) rn
     FROM BaseChat
@@ -1247,23 +1242,11 @@ SELECT
 
     m.UserName,
 
-    CASE
-        WHEN @scope='all'
-        THEN agg.PropertyCodes
-        ELSE m.PropertyCode
-    END AS PropertyCode,
+    m.PropertyCode,
 
-    CASE
-        WHEN @scope='all'
-        THEN agg.DatabaseNames
-        ELSE m.DatabaseName
-    END AS DatabaseName,
+    m.DatabaseName,
 
-    CASE
-        WHEN @scope='all'
-        THEN agg.CompanyNames
-        ELSE cm.PropertyName
-    END AS CompanyName,
+    cm.PropertyName AS CompanyName,
 
     c.MessageText,
 
@@ -1280,17 +1263,9 @@ SELECT
             x.SenderUserId = c.OtherUserId
             AND x.ReceiverId = @userId
             AND x.IsRead = 0
-            AND
-            (
-                @scope='all'
-                OR
-                (
-                    x.SenderPropertyCode = c.OtherPropertyCode
-                    AND x.ReceiverPropertyCode = @propertyCode
-                )
-            )
-            AND
-            (@clientId IS NULL OR x.ClientId=@clientId)
+            AND x.SenderPropertyCode = c.OtherPropertyCode
+            AND x.ReceiverPropertyCode = @propertyCode
+            AND (@clientId IS NULL OR x.ClientId=@clientId)
     ) AS UnreadCount
 
 FROM ChatList c
@@ -1304,31 +1279,8 @@ OUTER APPLY
     FROM MA_ChallanChatMembers
     WHERE
         UserId = c.OtherUserId
-        AND
-        (
-            @scope='all'
-            OR PropertyCode=c.OtherPropertyCode
-        )
+        AND PropertyCode = c.OtherPropertyCode
 ) m
-
-OUTER APPLY
-(
-    SELECT
-        STRING_AGG(PropertyCode, ', ') AS PropertyCodes,
-        STRING_AGG(DatabaseName, ', ') AS DatabaseNames,
-        STRING_AGG(PropertyName, ', ') AS CompanyNames
-    FROM
-    (
-        SELECT DISTINCT
-            mm.PropertyCode,
-            mm.DatabaseName,
-            cm.PropertyName
-        FROM MA_ChallanChatMembers mm
-        INNER JOIN Cmpy_AutoShop.dbo.MA_ClientMaster cm
-            ON cm.PropertyCode = mm.PropertyCode
-        WHERE mm.UserId = c.OtherUserId
-    ) d
-) agg
 
 LEFT JOIN Cmpy_AutoShop.dbo.MA_ClientMaster cm
     ON cm.PropertyCode = m.PropertyCode
