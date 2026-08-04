@@ -1102,7 +1102,7 @@ router.get("/my-direct-chats", async (req, res) => {
       try {
         const access = await masterPool
           .request()
-          .input("userGuid", sql.UniqueIdentifier, userGuid).query(`
+          .input("userGuid", sql.NVarChar(50), userGuid).query(`
         SELECT CM.PropertyCode
         FROM MA_UserDatabaseAccess UA
         INNER JOIN Cmpy_AutoShop.dbo.MA_ClientMaster CM
