@@ -1139,23 +1139,32 @@ BaseChat AS
 (
     SELECT
 
+        -------------------------------------------------------------
+        -- Other User
+        -------------------------------------------------------------
         CASE
-            WHEN
-                UPPER(SenderUserId)=UPPER(@userId)
+            WHEN UPPER(SenderUserId) = UPPER(@userId)
+                 OR SenderUserId = CONVERT(NVARCHAR(50), @userGuid)
             THEN ReceiverId
             ELSE SenderUserId
         END AS OtherUserId,
 
+        -------------------------------------------------------------
+        -- Other User Property
+        -------------------------------------------------------------
         CASE
-            WHEN
-                UPPER(SenderUserId)=UPPER(@userId)
+            WHEN UPPER(SenderUserId) = UPPER(@userId)
+                 OR SenderUserId = CONVERT(NVARCHAR(50), @userGuid)
             THEN ReceiverPropertyCode
             ELSE SenderPropertyCode
         END AS OtherPropertyCode,
 
+        -------------------------------------------------------------
+        -- My Property
+        -------------------------------------------------------------
         CASE
-            WHEN
-                UPPER(SenderUserId)=UPPER(@userId)
+            WHEN UPPER(SenderUserId) = UPPER(@userId)
+                 OR SenderUserId = CONVERT(NVARCHAR(50), @userGuid)
             THEN SenderPropertyCode
             ELSE ReceiverPropertyCode
         END AS MyPropertyCode,
@@ -1169,55 +1178,58 @@ BaseChat AS
         MessageText,
         MessageTime,
         MessageType,
-        IsRead,
-        ClientId
+        IsRead
 
     FROM MA_ChallanChat c
 
     WHERE
-
     (
+        ---------------------------------------------------------
+        -- I SENT THE MESSAGE
+        ---------------------------------------------------------
         (
-            UPPER(SenderUserId)=UPPER(@userId)
+            (
+                UPPER(SenderUserId)=UPPER(@userId)
+                OR SenderUserId=CONVERT(NVARCHAR(50),@userGuid)
+            )
             AND EXISTS
             (
                 SELECT 1
                 FROM AllowedProperties p
-                WHERE p.PropertyCode=c.SenderPropertyCode
+                WHERE p.PropertyCode = c.ReceiverPropertyCode
             )
         )
 
         OR
 
+        ---------------------------------------------------------
+        -- I RECEIVED THE MESSAGE
+        ---------------------------------------------------------
         (
-            UPPER(ReceiverId)=UPPER(@userId)
+            (
+                UPPER(ReceiverId)=UPPER(@userId)
+                OR ReceiverId=CONVERT(NVARCHAR(50),@userGuid)
+            )
             AND EXISTS
             (
                 SELECT 1
                 FROM AllowedProperties p
-                WHERE p.PropertyCode=c.ReceiverPropertyCode
+                WHERE p.PropertyCode = c.SenderPropertyCode
             )
         )
-    )
-
-    AND
-    (
-        @clientId IS NULL
-        OR c.ClientId=@clientId
     )
 ),
 
 LatestChat AS
 (
-    SELECT
-        *,
-        ROW_NUMBER() OVER
-        (
-            PARTITION BY
-                UPPER(OtherUserId),
-                OtherPropertyCode
-            ORDER BY MessageTime DESC
-        ) AS rn
+    SELECT *,
+           ROW_NUMBER() OVER
+           (
+               PARTITION BY
+                    UPPER(OtherUserId),
+                    OtherPropertyCode
+               ORDER BY MessageTime DESC
+           ) AS rn
     FROM BaseChat
 )
 
@@ -1229,9 +1241,9 @@ SELECT
 
     l.OtherPropertyCode AS PropertyCode,
 
-    ISNULL(m.DatabaseName, '') AS DatabaseName,
+    ISNULL(m.DatabaseName,'') AS DatabaseName,
 
-    ISNULL(cm.PropertyName, l.OtherPropertyCode) AS CompanyName,
+    ISNULL(cm.PropertyName,l.OtherPropertyCode) AS CompanyName,
 
     l.MessageText,
 
@@ -1250,15 +1262,15 @@ SELECT
 
             AND x.SenderPropertyCode=l.OtherPropertyCode
 
+            AND
+            (
+                UPPER(x.ReceiverId)=UPPER(@userId)
+                OR x.ReceiverId=CONVERT(NVARCHAR(50),@userGuid)
+            )
+
             AND x.ReceiverPropertyCode=l.MyPropertyCode
 
             AND x.IsRead=0
-
-            AND
-            (
-                @clientId IS NULL
-                OR x.ClientId=@clientId
-            )
     ) AS UnreadCount
 
 FROM LatestChat l
@@ -1273,7 +1285,8 @@ LEFT JOIN Cmpy_AutoShop.dbo.MA_ClientMaster cm
 WHERE
     l.rn=1
 
-ORDER BY LastMessageTime DESC;
+ORDER BY
+    LastMessageTime DESC;
 `);
 
     return res.json({
