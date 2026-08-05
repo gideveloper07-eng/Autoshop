@@ -21,14 +21,16 @@ const challanRoutes = require("./routes/challanRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const groupRoutes = require("./routes/groupRoutes");
 const chatRoutes = require("./routes/chatRoutes");
+const aiRoutes = require("./routes/aiRoutes");
+const { initializeEntityCache } = require("./services/entityLoader");
 const app = express();
 
 // ── MIDDLEWARE ───────────────────────────────────────
 const _corsOptions = {
-  origin: true,           // reflect the request origin (allows any origin)
+  origin: true, // reflect the request origin (allows any origin)
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
   optionsSuccessStatus: 200,
 };
 
@@ -48,6 +50,7 @@ app.use("/api/challan", challanRoutes);
 app.use("/api", notificationRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/group", groupRoutes);
+app.use("/api/ai", aiRoutes);
 // ── HEALTH CHECK ─────────────────────────────────────
 app.get("/", (_, res) => {
   res.json({
@@ -185,20 +188,40 @@ const PORT = process.env.PORT || 5000;
 
 (async () => {
   try {
-    // ── DEFAULT DB CONNECTION ────────────────────
+    //--------------------------------------------------
+    // Default Database Connection
+    //--------------------------------------------------
+
     await getPool();
 
     console.log("✅ SQL Server Connected");
 
-    // ── INIT DB ──────────────────────────────────
+    //--------------------------------------------------
+    // Initialize Database
+    //--------------------------------------------------
+
     await initDb();
 
-    // ── START SERVER ─────────────────────────────
+    //--------------------------------------------------
+    // Load AI Entity Cache
+    //--------------------------------------------------
+
+    await initializeEntityCache();
+
+    console.log("✅ AI Entity Cache Initialized");
+
+    //--------------------------------------------------
+    // Start Server
+    //--------------------------------------------------
+
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
     });
 
-    // ── SELF PING ────────────────────────────────
+    //--------------------------------------------------
+    // Self Ping
+    //--------------------------------------------------
+
     const RENDER_URL = process.env.RENDER_URL || `http://localhost:${PORT}`;
 
     setInterval(
