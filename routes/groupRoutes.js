@@ -1319,7 +1319,7 @@ router.get("/my-groups", async (req, res) => {
       });
     }
 
-    const { userId, isAdmin } = decoded;
+    const { userId, userGuid, isAdmin } = decoded;
 
     // Always use Communication DB
     pool = await openCommunicationPool();
@@ -1373,7 +1373,11 @@ router.get("/my-groups", async (req, res) => {
         ORDER BY ISNULL(g.LastMessageTime,g.CreatedDate) DESC
       `);
     } else {
-      result = await pool.request().input("UserId", sql.NVarChar(100), userId)
+      // Use userGuid (utunqid) to match against member.id stored in MA_ChatGroupMembers
+      // member.id is the GUID from utunqid, not the login ID
+      const userIdentifier = userGuid || userId;
+      
+      result = await pool.request().input("UserIdentifier", sql.NVarChar(100), userIdentifier)
         .query(`
           SELECT 
               g.GroupId,
@@ -1387,7 +1391,7 @@ router.get("/my-groups", async (req, res) => {
                   SELECT COUNT(*)
                   FROM MA_ChatGroupMembers gm2
                   WHERE gm2.GroupId = g.GroupId
-                    AND LOWER(gm2.UserId) <> LOWER(@UserId)
+                    AND LOWER(gm2.UserId) <> LOWER(@UserIdentifier)
               ) AS MemberCount,
 
               (
@@ -1405,8 +1409,8 @@ router.get("/my-groups", async (req, res) => {
                 FROM MA_ChatGroupMembers gm
                 WHERE gm.GroupId = g.GroupId
                   AND (
-                       LOWER(gm.UserId) = LOWER(@UserId)
-                       OR LOWER(g.CreatedBy) = LOWER(@UserId)
+                       LOWER(gm.UserId) = LOWER(@UserIdentifier)
+                       OR LOWER(g.CreatedBy) = LOWER(@UserIdentifier)
                   )
             )
 
