@@ -1,59 +1,89 @@
 const admin = require("../firebase");
 const sql = require("mssql");
+const openCommunicationPool = require("./communicationPool");
 
 /**
- * Send push notification to a single user
+ * Send a push notification to a specific user.
+ *
+ * Tokens are stored in MA_UserDevices inside the AUTOSHOP_COMMUNICATION DB
+ * (the same table used by the chat push system).
+ *
+ * @param {object} pool       - Company DB pool (kept for compatibility, not used for token lookup)
+ * @param {string} userId     - The user ID to notify
+ * @param {string} title      - Notification title
+ * @param {string} body       - Notification body
+ * @param {object} extraData  - Additional key-value data sent in the notification payload
  */
-async function sendPushNotification(pool, userId, title, body, data = {}) {
+async function sendPushNotification(pool, userId, title, body, extraData = {}) {
   try {
-    console.log("PUSH FUNCTION CALLED — USER:", userId);
+    console.log("🔔 PUSH NOTIFICATION — USER:", userId, "TITLE:", title);
 
-    // GET USER TOKENS
-    const tokenResult = await pool
+    // ── 1. Look up FCM tokens from the communication DB ─────────────────────
+    const commPool = await openCommunicationPool();
+
+    const tokenResult = await commPool
       .request()
-      .input("user_id", sql.NVarChar, userId).query(`
-        SELECT fcm_token
-        FROM app_user_devices
-        WHERE user_id = @user_id
+      .input("userId", sql.NVarChar(100), userId)
+      .query(`
+        SELECT DeviceToken
+        FROM MA_UserDevices
+        WHERE UserId = @userId
+          AND IsActive = 1
+          AND DeviceToken IS NOT NULL
+          AND DeviceToken != ''
       `);
 
     const tokens = tokenResult.recordset
-      .map((x) => x.fcm_token)
+      .map((x) => x.DeviceToken)
       .filter(Boolean);
 
-    console.log("TOKENS:", tokens);
+    console.log(`📱 TOKENS FOUND FOR ${userId}:`, tokens.length);
 
     if (tokens.length === 0) {
-      console.log("NO TOKENS FOUND FOR:", userId);
+      console.log("⚠️  NO ACTIVE TOKENS FOR:", userId);
       return;
     }
 
-    // FCM requires string values
-    const stringData = {
-      title,
-      body,
+    // ── 2. Build the FCM payload ─────────────────────────────────────────────
+    // All values in the `data` block must be strings (FCM requirement).
+    const dataPayload = {
+      title: String(title ?? ""),
+      body: String(body ?? ""),
+      type: String(extraData.type ?? "CHALLAN_STATUS"),
     };
 
-    for (const [key, value] of Object.entries(data)) {
-      stringData[key] = String(value ?? "");
+    for (const [key, value] of Object.entries(extraData)) {
+      dataPayload[key] = String(value ?? "");
     }
 
-    // SEND DATA-ONLY — no notification block so FCM does NOT auto-show a
-    // system notification. Flutter's background handler shows exactly ONE
-    // local notification, preventing duplicates.
+    // ── 3. Send via FCM ──────────────────────────────────────────────────────
+    // We send BOTH a `notification` block AND a `data` block so that:
+    //   • System tray notification appears when the app is in background/closed
+    //     (handled automatically by FCM using the `notification` block).
+    //   • The app can read the `data` block in foreground / onMessageOpenedApp
+    //     to navigate to the correct screen.
     const response = await admin.messaging().sendEachForMulticast({
       tokens,
-      data: stringData,
+      notification: {
+        title: title,
+        body: body,
+      },
+      data: dataPayload,
       android: {
         priority: "high",
-        ttl: 86400000, // 24 hours in milliseconds (number, not string)
+        ttl: 86400000, // 24 h in ms
+        notification: {
+          sound: "default",
+          channelId: "challan_notifications",
+        },
       },
       apns: {
-        headers: {
-          "apns-priority": "10",
-        },
+        headers: { "apns-priority": "10" },
         payload: {
           aps: {
+            alert: { title, body },
+            sound: "default",
+            badge: 1,
             contentAvailable: true,
           },
         },
@@ -61,65 +91,62 @@ async function sendPushNotification(pool, userId, title, body, data = {}) {
     });
 
     console.log(
-      `PUSH SENT: ${response.successCount} ok, ${response.failureCount} failed`,
+      `✅ PUSH SENT: ${response.successCount} ok / ${response.failureCount} failed`,
     );
 
-    // LOG EACH FAILURE with full error details
+    // ── 4. Clean up stale / invalid tokens ──────────────────────────────────
     for (let i = 0; i < response.responses.length; i++) {
       const resp = response.responses[i];
+
       if (!resp.success) {
-        console.error(
-          `PUSH FAILED [${i}]:`,
-          resp.error?.code,
-          resp.error?.message,
-        );
-      }
-    }
+        const code = resp.error?.code ?? "";
+        console.error(`❌ PUSH FAILED [${i}]:`, code, resp.error?.message);
 
-    // REMOVE INVALID TOKENS
-    for (let i = 0; i < response.responses.length; i++) {
-      const resp = response.responses[i];
+        if (
+          code === "messaging/registration-token-not-registered" ||
+          code === "messaging/invalid-registration-token"
+        ) {
+          const badToken = tokens[i];
+          console.log(
+            "🗑️  Removing invalid token:",
+            badToken?.substring(0, 30) + "...",
+          );
 
-      if (
-        !resp.success &&
-        (resp.error?.code === "messaging/registration-token-not-registered" ||
-          resp.error?.code === "messaging/invalid-registration-token")
-      ) {
-        const badToken = tokens[i];
-
-        console.log("REMOVING INVALID TOKEN:", badToken?.substring(0, 20));
-
-        try {
-          await pool
-            .request()
-            .input("fcm_token", sql.NVarChar(sql.MAX), badToken).query(`
-              DELETE FROM app_user_devices
-              WHERE fcm_token = @fcm_token
-            `);
-
-          console.log("TOKEN REMOVED");
-        } catch (delErr) {
-          console.error("TOKEN CLEANUP ERROR:", delErr.message);
+          try {
+            await commPool
+              .request()
+              .input("token", sql.NVarChar(sql.MAX), badToken)
+              .query(`
+                UPDATE MA_UserDevices
+                SET IsActive = 0, LastUpdated = GETDATE()
+                WHERE DeviceToken = @token
+              `);
+          } catch (cleanErr) {
+            console.error("TOKEN CLEANUP ERROR:", cleanErr.message);
+          }
         }
       }
     }
   } catch (err) {
-    console.error("PUSH ERROR:", err.message);
+    console.error("❌ PUSH NOTIFICATION ERROR:", err.message);
   }
 }
 
+/**
+ * Send a push notification to every user in a user-type group.
+ */
 async function sendPushToGroup(pool, utg, title, body) {
   try {
-    const userResult = await pool.request().input("utg", sql.NVarChar, utg)
+    const userResult = await pool
+      .request()
+      .input("utg", sql.NVarChar, utg)
       .query(`
         SELECT uti
         FROM rh_secut
         WHERE utg = @utg
       `);
 
-    const users = userResult.recordset;
-
-    for (const user of users) {
+    for (const user of userResult.recordset) {
       await sendPushNotification(pool, user.uti, title, body);
     }
   } catch (err) {

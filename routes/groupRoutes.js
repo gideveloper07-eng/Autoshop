@@ -2739,6 +2739,36 @@ SELECT @RequestGuid AS RequestGuid;
 
             `);
 
+    // ── Push notification to receiver ─────────────────────────────────────
+    // Notify the user who received the chat request
+    try {
+      const senderName =
+        req.user.userName ||
+        req.user.userId ||
+        req.user.uti ||
+        loginId ||
+        "Someone";
+
+      await sendPushNotification(
+        null,                       // pool not needed (uses communicationPool internally)
+        toUser.LoginId,             // receiver's userId
+        "New Chat Request 💬",
+        `${senderName} wants to connect with you`,
+        {
+          type: "CHAT_REQUEST",
+          fromUserGuid: String(userGuid ?? ""),
+          fromLoginId: String(req.user.userId || req.user.uti || loginId || ""),
+          fromName: String(senderName),
+          requestGuid: String(insertResult.recordset[0].RequestGuid ?? ""),
+        },
+      );
+      console.log("✅ Chat request notification sent to:", toUser.LoginId);
+    } catch (notifErr) {
+      // Never fail the main request because of notification error
+      console.error("⚠️ Chat request notification error:", notifErr.message);
+    }
+    // ──────────────────────────────────────────────────────────────────────
+
     return res.status(201).json({
       success: true,
       requestGuid: insertResult.recordset[0].RequestGuid,

@@ -570,19 +570,21 @@ router.post("/approve", async (req, res) => {
       await createNotification(
         pool,
         creatorUserId,
-        "Challan Approved",
+        "Challan Approved ✅",
         `Your challan ${data.sp_468} has been approved`,
         "CHALLAN_APPROVED",
         data.sp_462,
       );
       await sendPushNotification(
         pool,
-
         creatorUserId,
-
-        "Challan Approved",
-
+        "Challan Approved ✅",
         `Your challan ${data.sp_468} has been approved`,
+        {
+          type: "CHALLAN_APPROVED",
+          challanId: String(data.sp_462 ?? ""),
+          challanNo: String(data.sp_468 ?? ""),
+        },
       );
       console.log("✅ Notification sent to:", creatorUserId);
     }
@@ -923,19 +925,21 @@ router.post("/reject", async (req, res) => {
       await createNotification(
         pool,
         creatorUserId,
-        "Challan Rejected",
+        "Challan Rejected ❌",
         `Your challan ${data.sp_468} has been rejected`,
         "CHALLAN_REJECTED",
         data.sp_462,
       );
       await sendPushNotification(
         pool,
-
         creatorUserId,
-
-        "Challan Rejected",
-
+        "Challan Rejected ❌",
         `Your challan ${data.sp_468} has been rejected`,
+        {
+          type: "CHALLAN_REJECTED",
+          challanId: String(data.sp_462 ?? ""),
+          challanNo: String(data.sp_468 ?? ""),
+        },
       );
       console.log("✅ Rejection notification sent to:", creatorUserId);
     }

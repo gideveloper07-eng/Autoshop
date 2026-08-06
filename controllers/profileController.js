@@ -31,8 +31,19 @@ const uploadFields = upload.fields([
 const getUserId = (req) => {
   const auth = req.headers.authorization;
   if (!auth) return null;
-  try { return jwt.verify(auth.split(" ")[1], process.env.JWT_SECRET).id; }
+  try { return jwt.verify(auth.split(" ")[1], process.env.JWT_SECRET).userId; }
   catch { return null; }
+};
+
+// ── Helper to decode full token ──────────────────────────────────────────
+const decodeToken = (req) => {
+  const auth = req.headers.authorization;
+  if (!auth || !auth.startsWith("Bearer ")) return null;
+  try {
+    return jwt.verify(auth.split(" ")[1], process.env.JWT_SECRET);
+  } catch {
+    return null;
+  }
 };
 
 // ── GET profile ───────────────────────────────────────────────────────────
@@ -155,4 +166,89 @@ const saveProfile = async (req, res) => {
   }
 };
 
-module.exports = { getProfile, saveProfile, uploadFields };
+// ── SAVE Device Token (FCM) ───────────────────────────────────────────────
+const saveDeviceToken = async (req, res) => {
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded) {
+      return res.status(401).json({ 
+        success: false, 
+        message: "Unauthorized" 
+      });
+    }
+
+    const { userId, currentDatabase } = decoded;
+    const { fcm_token, device_type } = req.body;
+
+    if (!fcm_token) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "fcm_token is required" 
+      });
+    }
+
+    console.log("💾 SAVING DEVICE TOKEN — User:", userId, "Device:", device_type);
+
+    // Use the database from token
+    const openPool = require("../utils/dynamicPoolManager");
+    const pool = await openPool(currentDatabase);
+
+    // Check if token already exists
+    const existing = await pool
+      .request()
+      .input("user_id", sql.NVarChar, userId)
+      .input("fcm_token", sql.NVarChar(sql.MAX), fcm_token)
+      .query(`
+        SELECT id 
+        FROM app_user_devices 
+        WHERE user_id = @user_id AND fcm_token = @fcm_token
+      `);
+
+    if (existing.recordset.length > 0) {
+      // Update existing record
+      await pool
+        .request()
+        .input("user_id", sql.NVarChar, userId)
+        .input("fcm_token", sql.NVarChar(sql.MAX), fcm_token)
+        .input("device_type", sql.NVarChar(50), device_type || "")
+        .query(`
+          UPDATE app_user_devices 
+          SET 
+            device_type = @device_type,
+            updated_at = GETDATE()
+          WHERE user_id = @user_id AND fcm_token = @fcm_token
+        `);
+
+      console.log("✅ DEVICE TOKEN UPDATED");
+    } else {
+      // Insert new record
+      await pool
+        .request()
+        .input("user_id", sql.NVarChar, userId)
+        .input("fcm_token", sql.NVarChar(sql.MAX), fcm_token)
+        .input("device_type", sql.NVarChar(50), device_type || "")
+        .query(`
+          INSERT INTO app_user_devices 
+          (user_id, fcm_token, device_type, created_at, updated_at)
+          VALUES 
+          (@user_id, @fcm_token, @device_type, GETDATE(), GETDATE())
+        `);
+
+      console.log("✅ DEVICE TOKEN SAVED");
+    }
+
+    return res.json({ 
+      success: true, 
+      message: "Device token saved successfully" 
+    });
+  } catch (err) {
+    console.error("❌ SAVE DEVICE TOKEN ERROR:", err.message);
+    return res.status(500).json({ 
+      success: false,
+      message: "Server Error",
+      error: err.message 
+    });
+  }
+};
+
+module.exports = { getProfile, saveProfile, uploadFields, saveDeviceToken };
