@@ -2508,6 +2508,73 @@ router.post("/update-task-status", async (req, res) => {
   }
 });
 
+// ── POST /api/chat/notify-task-complete ──────────────────────────────────────
+// Called by non-admin when they tap "Complete".
+// Does NOT change the task Status in the DB.
+// Only sends a push notification to the admin (AssignedBy) so they are aware.
+router.post("/notify-task-complete", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const { taskId } = req.body;
+    if (!taskId) {
+      return res.status(400).json({ success: false, message: "taskId is required" });
+    }
+
+    const userName = decoded.userName || decoded.userId;
+
+    pool = await openCommunicationPool();
+
+    // Read task details — we need AssignedBy and TaskTitle
+    const taskResult = await pool
+      .request()
+      .input("TaskId", sql.NVarChar(50), taskId).query(`
+        SELECT
+          AssignedBy,
+          TaskTitle
+        FROM MA_ChatTasks
+        WHERE TaskId = CONVERT(UNIQUEIDENTIFIER, @TaskId)
+      `);
+
+    if (taskResult.recordset.length === 0) {
+      return res.status(404).json({ success: false, message: "Task not found" });
+    }
+
+    const { AssignedBy: adminUserId, TaskTitle: taskTitle } = taskResult.recordset[0];
+
+    if (!adminUserId) {
+      return res.json({ success: true, message: "No admin to notify" });
+    }
+
+    // Send push notification to the admin — status is NOT changed
+    const { sendPushNotification } = require("../utils/pushNotificationHelper");
+    await sendPushNotification(
+      null,
+      adminUserId,
+      "✅ Task Completed",
+      `${userName} has completed the task: "${taskTitle}"`,
+      {
+        type: "TASK_COMPLETE_REQUEST",
+        taskId: String(taskId),
+        taskTitle: String(taskTitle || ""),
+        completedBy: String(userName),
+        completedById: String(decoded.userId),
+      }
+    );
+
+    return res.json({ success: true, message: "Admin notified" });
+  } catch (err) {
+    console.error("NOTIFY TASK COMPLETE ERROR:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  } finally {
+    // if (pool) await pool.close();
+  }
+});
+
 // ── POST /api/chat/create-global-task ─────────────────────────────────────────
 // Admin-only endpoint: assign a task to any user directly from the home screen.
 // No ChallanId, no GroupId — purely a standalone task.
