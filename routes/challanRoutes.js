@@ -1395,6 +1395,76 @@ router.get("/dashboard-modelwise", async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/dashboard-scwise
+// Returns SC (Sales Consultant) wise sale counts for today or yesterday.
+// Query params: type = sale, period = today | yesterday
+// SP modes: TodaySaleSCwise | YesterdaySaleSCwise
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/dashboard-scwise", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const { currentDatabase: databaseName } = decoded;
+    if (!databaseName) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Database not found in token" });
+    }
+
+    const period = (req.query.period || "today").toString().toLowerCase();
+
+    if (!["today", "yesterday"].includes(period)) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Period must be today or yesterday" });
+    }
+
+    const what =
+      period === "today" ? "TodaySaleSCwise" : "YesterdaySaleSCwise";
+
+    console.log(
+      `📊 Dashboard SCwise | Period: ${period} | DB: ${databaseName}`,
+    );
+
+    pool = await openPool(databaseName);
+
+    const result = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "")
+      .input("what", sql.NVarChar(50), what)
+      .input("FromDate", sql.NVarChar(50), "")
+      .input("ToDate", sql.NVarChar(50), "")
+      .execute("A_SP_FOR_ApplicationChallangrid");
+
+    const scs = (result.recordset || []).map((row) => ({
+      scName: (row.SCName ?? row.scname ?? row.scName ?? "Unknown SC")
+        .toString()
+        .trim(),
+      count: Number(row.totalCount ?? row.totalcount ?? 0),
+    }));
+
+    const total = scs.reduce((sum, item) => sum + item.count, 0);
+
+    return res.json({
+      success: true,
+      data: { period, total, scs },
+    });
+  } catch (err) {
+    console.error("❌ Dashboard SCwise Error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+});
+
 router.post(
   "/send-admin-push",
 
