@@ -1443,6 +1443,7 @@ router.get("/dashboard-scwise", async (req, res) => {
       .execute("A_SP_FOR_ApplicationChallangrid");
 
     const scs = (result.recordset || []).map((row) => ({
+      scId:   (row.sp_550 ?? row.scId ?? row.scid ?? "").toString().trim(),
       scName: (row.SCName ?? row.scname ?? row.scName ?? "Unknown SC")
         .toString()
         .trim(),
@@ -1709,4 +1710,78 @@ router.get("/branch-sale-details", async (req, res) => {
     // if (pool) await pool.close();
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/sc-sale-details
+// Returns sale detail rows for a specific SC (Sales Consultant) & period.
+// Query params: period=today|yesterday, scId=<sp_550 value>, scName=<display>
+// SP mode: SaleRegisterReportSCWise  (@sp_550 = scId, FromDate/ToDate = period date)
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/sc-sale-details", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const { currentDatabase: databaseName } = decoded;
+    if (!databaseName) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Database not found in token" });
+    }
+
+    const period = (req.query.period || "today").toLowerCase().trim();
+    const scId   = (req.query.scId   || "").trim();
+    const scName = (req.query.scName || "").trim();
+
+    if (!scId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "scId is required" });
+    }
+
+    console.log("========== SC SALE DETAIL ==========");
+    console.log("Period  :", period);
+    console.log("SC Id   :", scId);
+    console.log("SC Name :", scName);
+    console.log("====================================");
+
+    pool = await openPool(databaseName);
+
+    // Resolve today / yesterday as dd/mm/yyyy
+    const dateResult = await pool.request().query(
+      period === "today"
+        ? "SELECT CONVERT(NVARCHAR(11), GETDATE(), 103) AS dt"
+        : "SELECT CONVERT(NVARCHAR(11), DATEADD(DAY,-1,GETDATE()), 103) AS dt",
+    );
+    const dateStr = dateResult.recordset[0].dt;
+
+    console.log("From Date :", dateStr);
+    console.log("To Date   :", dateStr);
+
+    const request = pool.request();
+    request.input("prefix",   sql.NVarChar(50),  "");
+    request.input("what",     sql.NVarChar(100), "SaleRegisterReportSCWise");
+    request.input("FromDate", sql.NVarChar(20),  dateStr);
+    request.input("ToDate",   sql.NVarChar(20),  dateStr);
+    request.input("sp_550",   sql.NVarChar(50),  scId);   // SC identifier
+
+    console.log("Executing SaleRegisterReportSCWise...");
+
+    const result = await request.execute("A_SP_FOR_ApplicationChallangrid");
+
+    console.log("Rows Returned :", result.recordset.length);
+
+    return res.json({ success: true, data: result.recordset });
+  } catch (err) {
+    console.error("SC Sale Details Error:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  } finally {
+    // if (pool) await pool.close();
+  }
+});
+
 module.exports = router;
