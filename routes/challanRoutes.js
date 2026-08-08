@@ -1736,12 +1736,6 @@ router.get("/sc-sale-details", async (req, res) => {
     const scId   = (req.query.scId   || "").trim();
     const scName = (req.query.scName || "").trim();
 
-    if (!scId) {
-      return res
-        .status(400)
-        .json({ success: false, message: "scId is required" });
-    }
-
     console.log("========== SC SALE DETAIL ==========");
     console.log("Period  :", period);
     console.log("SC Id   :", scId);
@@ -1749,6 +1743,27 @@ router.get("/sc-sale-details", async (req, res) => {
     console.log("====================================");
 
     pool = await openPool(databaseName);
+
+    // ── Resolve scId: if not provided, look it up from scName in rh_mcm_1 ──
+    let resolvedScId = scId;
+    if (!resolvedScId && scName) {
+      try {
+        const lookup = await pool
+          .request()
+          .input("scName", sql.NVarChar(200), scName)
+          .query(
+            "SELECT TOP 1 mcm_14 AS scId FROM rh_mcm_1 WHERE mcm_15 = @scName",
+          );
+        resolvedScId = lookup.recordset[0]?.scId?.toString().trim() ?? "";
+        console.log("Resolved scId from name:", resolvedScId);
+      } catch (_) {}
+    }
+
+    if (!resolvedScId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "scId is required and could not be resolved" });
+    }
 
     // Resolve today / yesterday as dd/mm/yyyy
     const dateResult = await pool.request().query(
@@ -1766,7 +1781,7 @@ router.get("/sc-sale-details", async (req, res) => {
     request.input("what",     sql.NVarChar(100), "SaleRegisterReportSCWise");
     request.input("FromDate", sql.NVarChar(20),  dateStr);
     request.input("ToDate",   sql.NVarChar(20),  dateStr);
-    request.input("sp_550",   sql.NVarChar(50),  scId);   // SC identifier
+    request.input("sp_550",   sql.NVarChar(50),  resolvedScId); // SC identifier
 
     console.log("Executing SaleRegisterReportSCWise...");
 
