@@ -2,6 +2,7 @@ const express = require("express");
 const router  = express.Router();
 const jwt     = require("jsonwebtoken");
 const { getPool, sql } = require("../config/db");
+const axios = require("axios");
 
 const getUserId = (req) => {
   const auth = req.headers.authorization;
@@ -116,6 +117,67 @@ router.get("/notifications", async (req, res) => {
     notifs.sort((a, b) => new Date(b.time) - new Date(a.time));
     res.json(notifs);
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Daily Quote (proxy to external API to avoid CORS) ─────────────────────
+router.get("/daily-quote", async (req, res) => {
+  try {
+    const { category } = req.query;
+    
+    // Business/motivational categories
+    const categories = ['inspire', 'management', 'life', 'funny', 'students', 'sports'];
+    const selectedCategory = category && categories.includes(category) 
+      ? category 
+      : categories[Math.floor(Math.random() * categories.length)];
+    
+    const quoteApiUrl = `https://quotes.rest/qod.json?category=${selectedCategory}`;
+    
+    const response = await axios.get(quoteApiUrl, {
+      timeout: 10000,
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    });
+    
+    if (response.data && response.data.contents && response.data.contents.quotes) {
+      const quote = response.data.contents.quotes[0];
+      res.json({
+        success: true,
+        quote: {
+          text: quote.quote,
+          author: quote.author,
+          category: quote.category,
+          tags: quote.tags || [],
+          date: quote.date || new Date().toISOString().split('T')[0],
+        }
+      });
+    } else {
+      // Fallback quote if API fails
+      res.json({
+        success: true,
+        quote: {
+          text: "Success is not final, failure is not fatal: it is the courage to continue that counts.",
+          author: "Winston Churchill",
+          category: "inspire",
+          tags: ["success", "courage", "motivation"],
+          date: new Date().toISOString().split('T')[0],
+        }
+      });
+    }
+  } catch (e) {
+    console.error("Quote API error:", e.message);
+    // Return fallback quote on error
+    res.json({
+      success: true,
+      quote: {
+        text: "The only way to do great work is to love what you do.",
+        author: "Steve Jobs",
+        category: "inspire",
+        tags: ["work", "passion", "success"],
+        date: new Date().toISOString().split('T')[0],
+      }
+    });
+  }
 });
 
 module.exports = router;
