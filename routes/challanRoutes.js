@@ -1133,10 +1133,26 @@ router.get("/dashboard-stats", async (req, res) => {
       .input("ToDate", sql.NVarChar(50), "")
       .execute("A_SP_FOR_ApplicationChallangrid");
 
-    // SP returns count(*) with no alias — grab the first value of the first row
-    const pendingDelivery = pendingDelResult.recordset?.length > 0
-      ? Number(Object.values(pendingDelResult.recordset[0])[0] ?? 0)
-      : 0;
+    console.log("⏳ Pending Delivery Raw Recordset:", JSON.stringify(pendingDelResult.recordset));
+    console.log("⏳ Pending Delivery All Recordsets:", JSON.stringify(pendingDelResult.recordsets));
+
+    // SP may return multiple recordsets — scan all to find the count row
+    let pendingDelivery = 0;
+    const allRecordsets = pendingDelResult.recordsets ?? [pendingDelResult.recordset];
+    for (const rs of allRecordsets) {
+      if (rs?.length > 0) {
+        const firstVal = Object.values(rs[0])[0];
+        const num = Number(firstVal ?? 0);
+        if (!isNaN(num) && num > 0) {
+          pendingDelivery = num;
+          console.log("✅ Pending Delivery Count:", pendingDelivery, "| Raw row:", rs[0]);
+          break;
+        }
+      }
+    }
+    if (pendingDelivery === 0) {
+      console.log("⚠️ Pending Delivery: could not find count in any recordset");
+    }
 
     console.log("Today Booking Row:", bookingToday.recordset?.[0]);
     console.log("Yesterday Booking Row:", bookingYesterday.recordset?.[0]);
