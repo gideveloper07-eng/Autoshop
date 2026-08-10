@@ -1124,6 +1124,20 @@ router.get("/dashboard-stats", async (req, res) => {
 
     const saleTrend = saleTrendResult.recordset.map((x) => Number(x.TotalSale));
 
+    // ---------- PENDING DELIVERY ----------
+    const pendingDelResult = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "")
+      .input("what", sql.NVarChar(50), "pendingdelcount")
+      .input("FromDate", sql.NVarChar(50), "")
+      .input("ToDate", sql.NVarChar(50), "")
+      .execute("A_SP_FOR_ApplicationChallangrid");
+
+    const pendingDelivery = Number(
+      pendingDelResult.recordset?.[0]?.[""] ??          // SP returns unnamed col
+      Object.values(pendingDelResult.recordset?.[0] ?? {})[0] ?? 0
+    );
+
     console.log("Today Booking Row:", bookingToday.recordset?.[0]);
     console.log("Yesterday Booking Row:", bookingYesterday.recordset?.[0]);
 
@@ -1165,6 +1179,7 @@ router.get("/dashboard-stats", async (req, res) => {
         yesterdaySale,
         saleGrowth,
         saleTrend,
+        pendingDelivery,
       },
     });
   } catch (err) {
