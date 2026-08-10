@@ -1443,6 +1443,7 @@ router.get("/dashboard-scwise", async (req, res) => {
       .execute("A_SP_FOR_ApplicationChallangrid");
 
     const scs = (result.recordset || []).map((row) => ({
+      scId:  (row.scId ?? row.sp_550 ?? row.SCID ?? "").toString().trim(),
       scName: (row.SCName ?? row.scname ?? row.scName ?? "Unknown SC")
         .toString()
         .trim(),
