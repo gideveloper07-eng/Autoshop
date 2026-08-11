@@ -22,15 +22,19 @@ const notificationRoutes = require("./routes/notificationRoutes");
 const groupRoutes = require("./routes/groupRoutes");
 const chatRoutes = require("./routes/chatRoutes");
 const aiRoutes = require("./routes/aiRoutes");
-const { initializeEntityCache } = require("./services/entityLoader");
+
+const {
+    initializeAI
+} = require("./services/aiInitializer");
+
 const app = express();
 
 // ── MIDDLEWARE ───────────────────────────────────────
 const _corsOptions = {
-  origin: true, // reflect the request origin (allows any origin)
+  origin: true,           // reflect the request origin (allows any origin)
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   optionsSuccessStatus: 200,
 };
 
@@ -188,6 +192,7 @@ const PORT = process.env.PORT || 5000;
 
 (async () => {
   try {
+
     //--------------------------------------------------
     // Default Database Connection
     //--------------------------------------------------
@@ -206,45 +211,61 @@ const PORT = process.env.PORT || 5000;
     // Load AI Entity Cache
     //--------------------------------------------------
 
-    await initializeEntityCache();
+    //await initializeEntityCache();
 
-    console.log("✅ AI Entity Cache Initialized");
+  //  console.log("✅ AI Entity Cache Initialized");
+await initializeAI();
 
     //--------------------------------------------------
     // Start Server
     //--------------------------------------------------
 
     app.listen(PORT, () => {
+
       console.log(`🚀 Server running on port ${PORT}`);
+
     });
 
     //--------------------------------------------------
     // Self Ping
     //--------------------------------------------------
 
-    const RENDER_URL = process.env.RENDER_URL || `http://localhost:${PORT}`;
+    const RENDER_URL =
+      process.env.RENDER_URL || `http://localhost:${PORT}`;
 
-    setInterval(
-      () => {
-        const url = new URL(RENDER_URL + "/ping");
+    setInterval(() => {
 
-        const mod = url.protocol === "https:" ? https : http_mod;
+      const url = new URL(RENDER_URL + "/ping");
 
-        const req = mod.get(url.toString(), (res) => {
+      const mod =
+        url.protocol === "https:"
+          ? https
+          : http_mod;
+
+      const req =
+        mod.get(url.toString(), (res) => {
+
           console.log(`🏓 Self-ping: ${res.statusCode}`);
+
         });
 
-        req.on("error", (e) => {
-          console.log("Ping error:", e.message);
-        });
+      req.on("error", (e) => {
 
-        req.end();
-      },
-      14 * 60 * 1000,
-    );
-  } catch (err) {
+        console.log("Ping error:", e.message);
+
+      });
+
+      req.end();
+
+    }, 14 * 60 * 1000);
+
+  }
+  catch (err) {
+
     console.error("❌ Failed to connect to SQL Server:", err.message);
 
     process.exit(1);
+
   }
+
 })();

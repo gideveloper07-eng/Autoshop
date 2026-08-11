@@ -1,32 +1,24 @@
-const toolConfig =
-require("../config/toolConfig");
+/**
+ * ==================================================
+ * Permission Manager
+ * ==================================================
+ *
+ * Phase 7:
+ * Permission checking is temporarily disabled.
+ *
+ * Later this file will validate user permissions
+ * against dealership roles.
+ *
+ */
 
-function checkPermission(
-    toolName,
-    context
-){
-
-    if(context.identity.isAdmin){
-
-        return true;
-
-    }
-
-    const config =
-        toolConfig[toolName];
-
-    if(!config){
-
-        return false;
-
-    }
-
-    // temporary
+function checkPermission(permission, context) {
 
     return true;
 
 }
 
-module.exports={
-checkPermission
+module.exports = {
+
+    checkPermission
+
 };

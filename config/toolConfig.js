@@ -78,6 +78,24 @@ module.exports = {
 
         description: "Returns pending deliveries."
 
-    }
+    },
+
+getVehicleStock: {
+
+    procedure: "A_SP_FOR_ApplicationChallangrid",
+
+    what: "VehicleStock",
+
+    permission: "STOCK_VIEW",
+
+    responseType: "scalar",
+
+    contextParameters: [],
+
+    parameters: [],
+
+    description: "Returns current free vehicle stock."
+
+}
 
 };

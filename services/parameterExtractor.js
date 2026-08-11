@@ -1,165 +1,229 @@
-const { entityCache } = require("./entityCache");
-const { parseDate } =
-    require("./dateParser");
+const {
+    parseDateRange
+} = require("./dateParser");
+
+const {
+    resolveFilters
+} = require("./filterResolver");
+
 /**
- * Finds the first matching entity from cache.
+ * ==================================================
+ * PARAMETER EXTRACTOR
+ * ==================================================
+ *
+ * Extracts:
+ *
+ * 1. Date filters
+ * 2. Entity filters
+ *
+ * IMPORTANT:
+ *
+ * Entity ambiguity MUST be passed back to aiRouter.
+ *
+ * Example:
+ *
+ * "nexon stock"
+ *
+ * If multiple models match:
+ *
+ * NEXON
+ * NEXON EV
+ * NEXON EV 2.0
+ * NEXON EV 3.0
+ * NEXON ICNG
+ *
+ * filterResolver throws a special error with:
+ *
+ * selectionRequired = true
+ * entityType
+ * options
+ *
+ * We MUST NOT swallow that error.
+ *
+ * Entity cache failure is different:
+ * If the cache itself is unavailable, AI can continue
+ * without entity filtering.
+ * ==================================================
  */
-function findEntity(text, values) {
+/**
+ * ==================================================
+ * STOCK THRESHOLD
+ * ==================================================
+ */
 
-    if (!Array.isArray(values))
-        return null;
+function extractStockThreshold(message) {
 
-    const lowerText = text.toLowerCase();
+    const text =
+        String(message || "")
+            .toLowerCase();
 
-    for (const value of values) {
+    const patterns = [
 
-        if (!value)
-            continue;
+        /(?:less than|below|under|fewer than|maximum of)\s+(\d+)/i,
 
-        if (lowerText.includes(value.toLowerCase())) {
+        /(\d+)\s*(?:or less|and below)/i
 
-            return value;
+    ];
+
+    for (const pattern of patterns) {
+
+        const match =
+            text.match(pattern);
+
+        if (match) {
+
+            const value =
+                Number(match[1]);
+
+            if (
+                Number.isInteger(value) &&
+                value >= 0
+            ) {
+
+                return value;
+
+            }
 
         }
 
     }
 
-    return null;
+    return undefined;
+}
+async function extractParameters(
+    message,
+    context
+) {
+
+    //--------------------------------------------------
+    // Date Filters
+    //--------------------------------------------------
+
+    const dateFilters =
+    parseDateRange(message);
+
+const stockThreshold =
+    extractStockThreshold(message);
+
+    //--------------------------------------------------
+    // Entity Filters
+    //--------------------------------------------------
+
+    let entityFilters = {};
+
+    try {
+
+        entityFilters =
+            await resolveFilters(
+                message,
+                context
+            );
+
+    }
+
+    catch (err) {
+
+        console.log("--------------------------------------");
+        console.log("ENTITY FILTER ERROR");
+        console.log("Message :", message);
+        console.log("Error   :", err.message);
+        console.log("--------------------------------------");
+
+        //--------------------------------------------------
+        // IMPORTANT:
+        //
+        // Model / Variant selection is NOT a normal error.
+        //
+        // Pass it back to aiRouter so it can display:
+        //
+        // 1. NEXON
+        // 2. NEXON EV
+        // 3. NEXON EV 2.0
+        // ...
+        //--------------------------------------------------
+
+        if (
+            err.selectionRequired === true
+        ) {
+
+            console.log(
+                "SELECTION REQUIRED - PASSING TO ROUTER"
+            );
+
+            throw err;
+
+        }
+
+        //--------------------------------------------------
+        // Entity cache unavailable
+        //
+        // This is safe to ignore.
+        //--------------------------------------------------
+
+        console.log(
+            "Entity resolution failed."
+        );
+
+        console.log(
+            "Continuing without entity filters..."
+        );
+
+        console.log("--------------------------------------");
+
+        entityFilters = {};
+
+    }
+
+    //--------------------------------------------------
+    // Merge Date + Entity Filters
+    //--------------------------------------------------
+
+    const params = {
+
+    ...dateFilters,
+
+    ...entityFilters
+
+};
+
+if (
+    stockThreshold !== undefined
+) {
+
+    params.stockThreshold =
+        stockThreshold;
 
 }
 
-/**
- * Extract all supported parameters from the message.
- */
-function extractParameters(message) {
-
-    const text = message.toLowerCase();
-
-    const params = {};
-
     //--------------------------------------------------
-    // Branch
+    // Remove Empty Values
     //--------------------------------------------------
 
-    const branch =
-        findEntity(
-            text,
-            entityCache.branches
-        );
+    Object.keys(params).forEach(
+        key => {
 
-    if (branch) {
+            if (
+                params[key] === undefined ||
+                params[key] === null ||
+                params[key] === ""
+            ) {
 
-        params.branch = branch;
+                delete params[key];
 
-    }
+            }
 
-    //--------------------------------------------------
-    // Vehicle Model
-    //--------------------------------------------------
-
-    const model =
-        findEntity(
-            text,
-            entityCache.models
-        );
-
-    if (model) {
-
-        params.model = model;
-
-    }
+        }
+    );
 
     //--------------------------------------------------
-    // Sales Executive
+    // Logging
     //--------------------------------------------------
 
-    const executive =
-        findEntity(
-            text,
-            entityCache.executives
-        );
+    console.log("--------------------------------------");
+    console.log("EXTRACTED PARAMETERS");
+    console.table(params);
+    console.log("--------------------------------------");
 
-    if (executive) {
-
-        params.executive = executive;
-
-    }
-
-    //--------------------------------------------------
-    // Workshop
-    //--------------------------------------------------
-
-    const workshop =
-        findEntity(
-            text,
-            entityCache.workshops
-        );
-
-    if (workshop) {
-
-        params.workshop = workshop;
-
-    }
-
-    //--------------------------------------------------
-    // Finance Company
-    //--------------------------------------------------
-
-    const financeCompany =
-        findEntity(
-            text,
-            entityCache.financeCompanies
-        );
-
-    if (financeCompany) {
-
-        params.financeCompany =
-            financeCompany;
-
-    }
-
-    //--------------------------------------------------
-    // Customer
-    //--------------------------------------------------
-
-    const customer =
-        findEntity(
-            text,
-            entityCache.customers
-        );
-
-    if (customer) {
-
-        params.customer = customer;
-
-    }
-
-    //--------------------------------------------------
-    // Vendor
-    //--------------------------------------------------
-
-    const vendor =
-        findEntity(
-            text,
-            entityCache.vendors
-        );
-
-    if (vendor) {
-
-        params.vendor = vendor;
-
-    }
-//--------------------------------------------------
-// Date Parameters
-//--------------------------------------------------
-
-Object.assign(
-
-    params,
-
-    parseDate(message)
-
-);
     return params;
 
 }

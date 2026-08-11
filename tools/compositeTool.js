@@ -1,13 +1,24 @@
 const { executeTool } = require("./genericTool");
 
 /**
- * Executes multiple tools and combines the results.
+ * ==================================================
+ * Composite Tool Executor
+ * ==================================================
  *
- * @param {Array<string>} toolNames
- * @param {Object} context
- * @returns {Object}
+ * Executes multiple tools and combines the results
+ * into a single dashboard object.
+ *
  */
-async function executeCompositeTool(toolNames, context) {
+
+async function executeCompositeTool(
+
+    toolNames,
+
+    context,
+
+    params = {}
+
+) {
 
     const dashboard = {};
 
@@ -21,19 +32,34 @@ async function executeCompositeTool(toolNames, context) {
             console.log("Executing :", toolName);
             console.log("------------------------------------------");
 
-            const result =
-                await executeTool(
-                    toolName,
-                    context
-                );
+            const result = await executeTool(
+
+                toolName,
+
+                context,
+
+                params
+
+            );
+
+            //--------------------------------------------------
+            // Tool Failed
+            //--------------------------------------------------
 
             if (!result.success) {
+
+                console.log("======================================");
+                console.log("TOOL FAILED");
+                console.log(result);
+                console.log("======================================");
 
                 errors.push({
 
                     tool: toolName,
 
-                    error: result.error
+                    error: result.error,
+
+                    internalError: result.internalError
 
                 });
 
@@ -42,20 +68,46 @@ async function executeCompositeTool(toolNames, context) {
             }
 
             //--------------------------------------------------
-            // Remove get prefix
+            // Convert Tool Name -> Dashboard Key
             //--------------------------------------------------
 
             const key =
                 toolName.replace(/^get/, "");
 
-            dashboard[
+            const dashboardKey =
                 key.charAt(0).toLowerCase() +
-                key.slice(1)
-            ] = result.value;
+                key.slice(1);
+
+            //--------------------------------------------------
+            // Scalar Result
+            //--------------------------------------------------
+
+            if (
+
+                Array.isArray(result.data) &&
+
+                result.data.length > 0
+
+            ) {
+
+                const row =
+                    result.data[0];
+
+                dashboard[dashboardKey] =
+                    Object.values(row)[0];
+
+            }
+            else {
+
+                dashboard[dashboardKey] = null;
+
+            }
 
         }
 
         catch (err) {
+
+            console.log(err);
 
             errors.push({
 
@@ -68,6 +120,11 @@ async function executeCompositeTool(toolNames, context) {
         }
 
     }
+
+    console.log("======================================");
+    console.log("COMPOSITE DASHBOARD");
+    console.log(JSON.stringify(dashboard, null, 2));
+    console.log("======================================");
 
     return {
 

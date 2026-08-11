@@ -1,96 +1,308 @@
 const { getPool } = require("../config/db");
 
+const entityConfig =
+    require("../config/entityConfig");
+
 const {
-
-    entityCache,
-
-    markInitialized
-
+    setCache,
+    hasCache,
+    getCache
 } = require("./entityCache");
 
+
 /**
- * Executes a query and returns
- * first column as string array.
+ * ==================================================
+ * Load One Entity
+ * ==================================================
  */
-async function loadEntity(query) {
+async function loadEntity(pool, entity) {
 
     try {
 
-        const pool =
-    await getPool();
         const result =
-            await pool.request().query(query);
+            await pool
+                .request()
+                .query(entity.query);
 
-        if (!result.recordset)
-            return [];
+        console.log(
+            `Loaded ${entity.name}: ${result.recordset.length}`
+        );
 
-        return result.recordset.map(row =>
-            Object.values(row)[0]
+        return result.recordset;
+
+    }
+    catch (err) {
+
+        console.error(
+            `❌ Failed loading ${entity.name}`
+        );
+
+        console.error(
+            err.message
+        );
+
+        throw err;
+
+    }
+
+}
+
+
+/**
+ * ==================================================
+ * Load Entity Cache
+ * ==================================================
+ *
+ * Loads all configured entities for ONE dealership.
+ *
+ * Example:
+ *
+ *     loadEntityCache("TATADEMO")
+ *
+ * This function should only be called when we
+ * actually need the dealership cache.
+ *
+ * ==================================================
+ */
+async function loadEntityCache(database) {
+
+    if (!database) {
+
+        throw new Error(
+            "Database is required to load entity cache."
         );
 
     }
 
-    catch (err) {
+    console.log("");
+    console.log("======================================");
+    console.log(
+        `Loading Entity Cache : ${database}`
+    );
+    console.log("======================================");
 
-        console.error(err);
+    //--------------------------------------------------
+    // Database Pool
+    //--------------------------------------------------
 
-        return [];
+    const pool =
+        await getPool(database);
+
+    //--------------------------------------------------
+    // Empty Cache
+    //--------------------------------------------------
+
+    const cache = {
+
+        initialized: false,
+
+        loadedAt: null,
+
+        branches: [],
+
+        models: [],
+
+        variants: [],
+
+        colours: [],
+
+        fuels: [],
+
+        transmissions: [],
+
+        executives: [],
+
+        workshops: [],
+
+        financeCompanies: [],
+
+        customers: [],
+
+        vendors: []
+
+    };
+
+    //--------------------------------------------------
+    // Load Entities
+    //--------------------------------------------------
+
+    for (const entity of entityConfig) {
+
+        console.log(
+            `Loading ${entity.name}...`
+        );
+
+        cache[entity.key] =
+            await loadEntity(
+
+                pool,
+
+                entity
+
+            );
 
     }
 
+    //--------------------------------------------------
+    // Mark Initialized
+    //--------------------------------------------------
+
+    cache.initialized = true;
+
+    cache.loadedAt = new Date();
+
+    //--------------------------------------------------
+    // Save
+    //--------------------------------------------------
+
+    setCache(
+
+        database,
+
+        cache
+
+    );
+
+    //--------------------------------------------------
+    // Verification
+    //--------------------------------------------------
+
+    console.log("");
+    console.log(
+        `ENTITY CACHE SAVED : ${database}`
+    );
+
+    console.log(
+        "Models       :",
+        cache.models.length
+    );
+
+    console.log(
+        "Variants     :",
+        cache.variants.length
+    );
+
+    console.log(
+        "Colours      :",
+        cache.colours.length
+    );
+
+    console.log(
+        "Fuels        :",
+        cache.fuels.length
+    );
+
+    console.log(
+        "Branches     :",
+        cache.branches.length
+    );
+
+    console.log(
+        "Executives   :",
+        cache.executives.length
+    );
+
+    console.log(
+        "Customers    :",
+        cache.customers.length
+    );
+
+    console.log("");
+
+    return cache;
+
 }
+
 
 /**
- * Load every entity used by AI.
+ * ==================================================
+ * Ensure Entity Cache
+ * ==================================================
+ *
+ * Returns existing cache if already loaded.
+ *
+ * Otherwise loads the cache for that dealership.
+ *
+ * This is the function that filterResolver should
+ * use.
+ *
+ * ==================================================
  */
-async function initializeEntityCache() {
+async function ensureEntityCache(database) {
 
+    if (!database) {
+
+        throw new Error(
+            "Database is required for entity cache."
+        );
+
+    }
+
+    //--------------------------------------------------
+    // Check existing cache
+    //--------------------------------------------------
+
+    if (hasCache(database)) {
+
+        const cache =
+            getCache(database);
+
+        console.log(
+            `✅ Using existing Entity Cache : ${database}`
+        );
+
+        return cache;
+
+    }
+
+    //--------------------------------------------------
+    // Cache does not exist
+    //--------------------------------------------------
+
+    console.log("");
     console.log("--------------------------------------");
-    console.log("Loading AI Entity Cache...");
+    console.log(
+        `Entity Cache not found : ${database}`
+    );
+    console.log(
+        `Loading cache for : ${database}`
+    );
     console.log("--------------------------------------");
 
-    entityCache.branches =
-        await loadEntity(`
-            SELECT BranchName
-            FROM BranchMaster
-        `);
+    //--------------------------------------------------
+    // Load
+    //--------------------------------------------------
 
-    entityCache.models =
-        await loadEntity(`
-            SELECT ModelName
-            FROM VehicleModelMaster
-        `);
+    const cache =
+        await loadEntityCache(
+            database
+        );
 
-    entityCache.executives =
-        await loadEntity(`
-            SELECT ExecutiveName
-            FROM SalesExecutiveMaster
-        `);
+    //--------------------------------------------------
+    // Verify
+    //--------------------------------------------------
 
-    entityCache.workshops =
-        await loadEntity(`
-            SELECT WorkshopName
-            FROM WorkshopMaster
-        `);
+    if (!hasCache(database)) {
 
-    entityCache.financeCompanies =
-        await loadEntity(`
-            SELECT FinanceName
-            FROM FinanceCompanyMaster
-        `);
+        throw new Error(
+            `Entity cache was not saved for '${database}'.`
+        );
 
-   markInitialized();
+    }
 
-console.log("--------------------------------------");
-console.log("AI Entity Cache Loaded");
-console.log("--------------------------------------");
-console.log(entityCache);
-console.log("--------------------------------------");
+    console.log(
+        `✅ Entity Cache Ready : ${database}`
+    );
+
+    return cache;
 
 }
+
 
 module.exports = {
 
-    initializeEntityCache
+    loadEntityCache,
+
+    ensureEntityCache
 
 };

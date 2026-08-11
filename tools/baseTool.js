@@ -1,10 +1,17 @@
 const sql = require("mssql");
-const { getPool } = require("../config/db");
-const { checkPermission } = require("../services/permissionManager");
-const toolConfig = require("../config/toolConfig");
+
+const toolConfigs =
+    require("../config/toolConfig");
+
+const { getPool } =
+    require("../config/db");
+
+const {
+    checkPermission
+} = require("../services/permissionManager");
 
 /**
- * Detect SQL datatype automatically
+ * Detect SQL datatype automatically.
  */
 function detectSqlType(value) {
 
@@ -29,43 +36,52 @@ function detectSqlType(value) {
         return sql.VarBinary(sql.MAX);
 
     return sql.NVarChar(sql.MAX);
+
 }
 
 /**
- * Resolve parameter values
+ * Resolve built-in context parameters.
  */
-function resolveContextParameter(parameter, context) {
+function resolveContextParameters(context) {
 
-    switch (parameter) {
+    return {
 
-        case "BranchUnq":
-            return context.dealership.branchUnq;
+        BranchUnq:
+            context?.dealership?.branchUnq,
 
-        case "UserId":
-            return context.identity.userId;
+        PropertyCode:
+            context?.dealership?.propertyCode,
 
-        case "PropertyCode":
-            return context.dealership.propertyCode;
+        Database:
+            context?.dealership?.database,
 
-        case "ClientId":
-            return context.dealership.clientId;
+        ClientId:
+            context?.dealership?.clientId,
 
-        case "Database":
-            return context.dealership.database;
+        UserId:
+            context?.identity?.userId,
 
-        default:
-            return undefined;
+        UserCode:
+            context?.identity?.userCode,
 
-    }
+        LoginName:
+            context?.identity?.userName,
+
+        EmployeeId:
+            context?.identity?.employeeId
+
+    };
 
 }
 
 /**
- * Execute Stored Procedure
+ * Execute Stored Procedure.
  */
 async function executeStoredProcedure({
 
-    toolName,
+    toolName = null,
+
+    toolConfig = null,
 
     context,
 
@@ -75,33 +91,62 @@ async function executeStoredProcedure({
 
     const startTime = Date.now();
 
+    let config = null;
+
+    let procedure =
+        "A_SP_FOR_ApplicationChallangrid";
+
     try {
 
         //--------------------------------------------------
         // Configuration
         //--------------------------------------------------
 
-        const config = toolConfig[toolName];
+        config =
+            toolConfig ||
+            toolConfigs[toolName];
 
-        if (!config)
-            throw new Error(`Tool '${toolName}' is not configured.`);
+        if (!config) {
+
+            throw new Error(
+                "Tool configuration not found."
+            );
+
+        }
+
+        if (config.procedure) {
+
+            procedure =
+                config.procedure;
+
+        }
 
         //--------------------------------------------------
         // Permission
         //--------------------------------------------------
 
-        const allowed =
-            await checkPermission(toolName, context);
+        if (config.permission) {
 
-        if (!allowed) {
+            const allowed =
+                await checkPermission(
 
-            return {
+                    config.permission,
 
-                success: false,
+                    context
 
-                error: "Permission denied."
+                );
 
-            };
+            if (!allowed) {
+
+                return {
+
+                    success: false,
+
+                    error: "Permission denied."
+
+                };
+
+            }
 
         }
 
@@ -123,47 +168,109 @@ async function executeStoredProcedure({
 
         const finalParams = {};
 
-        // Always send @what if configured
+        const contextParams =
+            resolveContextParameters(context);
+
+        // @what
+
         if (config.what) {
 
-            finalParams.what = config.what;
+            finalParams.what =
+                config.what;
 
         }
 
-        // Only send parameters declared in toolConfig
-        for (const parameter of (config.parameters || [])) {
+        // Context Parameters
 
-            const value =
-                resolveContextParameter(
-                    parameter,
-                    context
-                );
+        for (
 
-            if (value !== undefined) {
+            const parameter of
 
-                finalParams[parameter] = value;
+            (config.contextParameters || [])
+
+        ) {
+
+            if (
+
+                contextParams[parameter] !== undefined
+
+            ) {
+
+                finalParams[parameter] =
+                    contextParams[parameter];
 
             }
 
         }
 
-        // Runtime parameters override everything
-        Object.assign(finalParams, params);
+        // AI Parameters
+
+        for (
+
+            const parameter of
+
+            (config.parameters || [])
+
+        ) {
+
+            if (
+
+                params[parameter] !== undefined
+
+            ) {
+
+                finalParams[parameter] =
+                    params[parameter];
+
+            }
+
+        }
+
+        //--------------------------------------------------
+        // Remove Undefined
+        //--------------------------------------------------
+
+        Object.keys(finalParams)
+            .forEach(key => {
+
+                if (
+
+                    finalParams[key] === undefined ||
+
+                    finalParams[key] === null
+
+                ) {
+
+                    delete finalParams[key];
+
+                }
+
+            });
 
         //--------------------------------------------------
         // Logging
         //--------------------------------------------------
 
         console.log("======================================");
-        console.log("SQL PARAMETERS");
-        console.log(finalParams);
+        console.log("DATABASE   :", context.dealership.database);
+        console.log("PROCEDURE  :", procedure);
+        console.log("WHAT       :", config.what);
+        console.log("PERMISSION :", config.permission);
+        console.log("PARAMETERS");
+        console.table(finalParams);
         console.log("======================================");
 
         //--------------------------------------------------
         // Bind Parameters
         //--------------------------------------------------
 
-        for (const [key, value] of Object.entries(finalParams)) {
+        for (
+
+            const [key, value]
+
+            of Object.entries(finalParams)
+
+        ) {
 
             request.input(
 
@@ -183,11 +290,8 @@ async function executeStoredProcedure({
 
         const result =
             await request.execute(
-                config.procedure
+                procedure
             );
-
-        console.log("RAW RECORDSET");
-        console.log(JSON.stringify(result.recordset, null, 2));
 
         const executionTime =
             Date.now() - startTime;
@@ -196,17 +300,25 @@ async function executeStoredProcedure({
 
             success: true,
 
-            tool: toolName,
+            procedure,
 
             what: config.what,
 
-            data: result.recordset || [],
+            permission: config.permission,
 
-            recordsets: result.recordsets || [],
+            parameters: finalParams,
 
-            output: result.output || {},
+            data:
+                result.recordset || [],
 
-            rowsAffected: result.rowsAffected || [],
+            recordsets:
+                result.recordsets || [],
+
+            output:
+                result.output || {},
+
+            rowsAffected:
+                result.rowsAffected || [],
 
             total:
                 result.recordset?.length || 0,
@@ -219,9 +331,21 @@ async function executeStoredProcedure({
 
     catch (err) {
 
+        console.log("======================================");
+        console.log("SQL EXECUTION FAILED");
+        console.log("DATABASE :", context?.dealership?.database);
+        console.log("PROCEDURE:", procedure);
+        console.log("WHAT     :", config?.what);
+        console.log(err.message);
+        console.log("======================================");
+
         return {
 
             success: false,
+
+            procedure,
+
+            what: config?.what,
 
             error: "Unable to retrieve data.",
 
@@ -237,5 +361,7 @@ async function executeStoredProcedure({
 }
 
 module.exports = {
+
     executeStoredProcedure
+
 };

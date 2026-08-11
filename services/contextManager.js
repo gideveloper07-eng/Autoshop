@@ -1,68 +1,54 @@
+const contexts = new Map();
+
+
 /**
- * Context Manager
- *
- * Stores conversation context per logged-in user.
+ * ==================================================
+ * Get Context
+ * ==================================================
  */
-
-const conversationContext = new Map();
-
-const CONTEXT_TIMEOUT = 30 * 60 * 1000; // 30 minutes
-
 function getContext(userId) {
 
-    if (!conversationContext.has(userId)) {
-
-        conversationContext.set(userId, {
-
-            lastIntent: null,
-
-            lastTool: null,
-
-            lastTools: null,
-
-            lastParams: {},
-
-            lastQuestion: null,
-
-            summary: false,
-
-            updatedAt: new Date()
-
-        });
-
-    }
-
-    const context = conversationContext.get(userId);
-
-    // Expire old context
-    if (
-        context.updatedAt &&
-        Date.now() - context.updatedAt.getTime() > CONTEXT_TIMEOUT
-    ) {
-
-        conversationContext.delete(userId);
-
-        return getContext(userId);
-
-    }
-
-    return context;
+    return contexts.get(userId) || {};
 
 }
 
-function updateContext(userId, values) {
 
-    const context = getContext(userId);
+/**
+ * ==================================================
+ * Update Context
+ * ==================================================
+ */
+function updateContext(
+    userId,
+    data
+) {
 
-    Object.assign(context, values);
+    const current =
+        contexts.get(userId) || {};
 
-    context.updatedAt = new Date();
+    contexts.set(
+        userId,
+        {
+            ...current,
+            ...data
+        }
+    );
 
 }
 
-function mergeParameters(userId, params = {}) {
 
-    const context = getContext(userId);
+/**
+ * ==================================================
+ * Merge Parameters
+ * ==================================================
+ */
+function mergeParameters(
+    userId,
+    params = {}
+) {
+
+    const context =
+        getContext(userId);
 
     return {
 
@@ -74,49 +60,112 @@ function mergeParameters(userId, params = {}) {
 
 }
 
-function clearContext(userId) {
 
-    conversationContext.delete(userId);
-
-}
-
-function clearAllContexts() {
-
-    conversationContext.clear();
-
-}
-
+/**
+ * ==================================================
+ * Follow Up Detection
+ * ==================================================
+ */
 function isFollowUp(message) {
 
-    const text = message.trim().toLowerCase();
+    const text =
+        String(message || "")
+            .toLowerCase()
+            .trim();
 
-    const starters = [
+    return [
 
-        "only",
+        "yes",
+        "no",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "that one",
+        "this one",
+        "the first one",
+        "the second one",
+        "the third one",
+        "the last one"
 
-        "also",
-
-        "compare",
-
-        "same",
-
-        "what about",
-
-        "and",
-
-        "yesterday",
-
-        "today",
-
-        "this month",
-
-        "last month"
-
-    ];
-
-    return starters.some(word => text.startsWith(word));
+    ].some(value =>
+        text === value ||
+        text.includes(value)
+    );
 
 }
+
+
+/**
+ * ==================================================
+ * Set Pending Selection
+ * ==================================================
+ */
+function setPendingSelection(
+    userId,
+    selection
+) {
+
+    updateContext(
+
+        userId,
+
+        {
+            pendingSelection: selection
+        }
+
+    );
+
+}
+
+
+/**
+ * ==================================================
+ * Get Pending Selection
+ * ==================================================
+ */
+function getPendingSelection(
+    userId
+) {
+
+    const context =
+        getContext(userId);
+
+    return (
+        context.pendingSelection ||
+        null
+    );
+
+}
+
+
+/**
+ * ==================================================
+ * Clear Pending Selection
+ * ==================================================
+ */
+function clearPendingSelection(
+    userId
+) {
+
+    const context =
+        getContext(userId);
+
+    delete context.pendingSelection;
+
+    contexts.set(
+        userId,
+        context
+    );
+
+}
+
 
 module.exports = {
 
@@ -126,10 +175,12 @@ module.exports = {
 
     mergeParameters,
 
-    clearContext,
+    isFollowUp,
 
-    clearAllContexts,
+    setPendingSelection,
 
-    isFollowUp
+    getPendingSelection,
+
+    clearPendingSelection
 
 };

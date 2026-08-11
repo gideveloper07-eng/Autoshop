@@ -234,6 +234,38 @@ module.exports = [
 
         ]
 
-    }
+    },
+    //--------------------------------------------------
+    // Vehicle Stock
+    //--------------------------------------------------
+{
+
+    type: "vehicleStock",
+
+    tool: "getVehicleStock",
+
+    summary: false,
+
+    patterns: [
+
+        ["vehicle", "stock"],
+
+        ["stock"],
+
+        ["current", "stock"],
+
+        ["available", "stock"],
+
+        ["free", "stock"],
+
+        ["stock", "today"],
+
+        ["how", "many", "vehicles"],
+
+        ["vehicles", "available"]
+
+    ]
+
+},
 
 ];

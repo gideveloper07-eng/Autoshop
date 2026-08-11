@@ -2,7 +2,7 @@
  * Date Parser
  *
  * Converts natural language date expressions
- * into structured parameters.
+ * into structured date ranges.
  */
 
 function formatDate(date) {
@@ -14,9 +14,13 @@ function formatDate(date) {
 function startOfMonth(date) {
 
     return new Date(
+
         date.getFullYear(),
+
         date.getMonth(),
+
         1
+
     );
 
 }
@@ -24,9 +28,13 @@ function startOfMonth(date) {
 function endOfMonth(date) {
 
     return new Date(
+
         date.getFullYear(),
+
         date.getMonth() + 1,
+
         0
+
     );
 
 }
@@ -59,13 +67,16 @@ function getFinancialYear(date) {
 
 }
 
-function parseDate(message) {
+/**
+ * Parse natural language dates.
+ */
+function parseDateRange(message) {
 
     const text =
-        message.toLowerCase();
 
-    const today =
-        new Date();
+        (message || "").toLowerCase();
+
+    const today = new Date();
 
     //--------------------------------------------------
     // Today
@@ -91,11 +102,12 @@ function parseDate(message) {
 
     if (text.includes("yesterday")) {
 
-        const yesterday =
-            new Date(today);
+        const yesterday = new Date(today);
 
         yesterday.setDate(
+
             yesterday.getDate() - 1
+
         );
 
         return {
@@ -115,15 +127,19 @@ function parseDate(message) {
     //--------------------------------------------------
 
     if (
+
         text.includes("last 7 days") ||
+
         text.includes("last seven days")
+
     ) {
 
-        const from =
-            new Date(today);
+        const from = new Date(today);
 
         from.setDate(
+
             from.getDate() - 6
+
         );
 
         return {
@@ -143,18 +159,25 @@ function parseDate(message) {
     //--------------------------------------------------
 
     if (
+
         text.includes("this month") ||
+
         text.includes("current month")
+
     ) {
 
         return {
 
             fromDate: formatDate(
+
                 startOfMonth(today)
+
             ),
 
             toDate: formatDate(
+
                 endOfMonth(today)
+
             ),
 
             period: "thisMonth"
@@ -167,22 +190,30 @@ function parseDate(message) {
     // Last Month
     //--------------------------------------------------
 
-    if (
-        text.includes("last month")
-    ) {
+    if (text.includes("last month")) {
 
         const first =
+
             new Date(
+
                 today.getFullYear(),
+
                 today.getMonth() - 1,
+
                 1
+
             );
 
         const last =
+
             new Date(
+
                 today.getFullYear(),
+
                 today.getMonth(),
+
                 0
+
             );
 
         return {
@@ -225,16 +256,12 @@ function parseDate(message) {
     // Default
     //--------------------------------------------------
 
-    return {
-
-        period: null
-
-    };
+    return {};
 
 }
 
 module.exports = {
 
-    parseDate
+    parseDateRange
 
 };

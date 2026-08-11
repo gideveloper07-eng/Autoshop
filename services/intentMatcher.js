@@ -1,85 +1,83 @@
-const aliases = require("../config/aliases");
+/**
+ * ==================================================
+ * Intent Matcher
+ * ==================================================
+ *
+ * Matches a user message against the configured
+ * intent patterns.
+ *
+ */
 
-function normalizeText(text) {
+function matchIntent(message, intentConfig) {
 
-    let normalized =
-        text.toLowerCase();
+    const text =
+        (message || "")
+            .toLowerCase()
+            .trim();
 
-    Object.entries(aliases).forEach(([canonical, words]) => {
+    //--------------------------------------------------
+    // Search Every Intent
+    //--------------------------------------------------
 
-        words.forEach(word => {
+    for (const intent of intentConfig) {
 
-            const regex =
-                new RegExp(`\\b${word}\\b`, "gi");
+        if (!Array.isArray(intent.patterns))
+            continue;
 
-            normalized =
-                normalized.replace(regex, canonical);
+        //--------------------------------------------------
+        // Search Every Pattern
+        //--------------------------------------------------
 
-        });
+        for (const pattern of intent.patterns) {
 
-    });
+            const matched =
+                pattern.every(word =>
 
-    return normalized;
+                    text.includes(
+                        word.toLowerCase()
+                    )
 
-}
-
-function calculateScore(text, pattern) {
-
-    let score = 0;
-
-    pattern.forEach(word => {
-
-        if (text.includes(word))
-            score++;
-
-    });
-
-    return score;
-
-}
-
-function matchIntent(text, intents) {
-
-    const normalized =
-        normalizeText(text);
-
-    let best = null;
-
-    let bestScore = 0;
-
-    intents.forEach(intent => {
-
-        intent.patterns.forEach(pattern => {
-
-            const score =
-                calculateScore(
-                    normalized,
-                    pattern
                 );
 
-            if (
-                score === pattern.length &&
-                score > bestScore
-            ) {
+            if (!matched)
+                continue;
 
-                bestScore = score;
+            console.log("--------------------------------------");
+            console.log("MATCHED INTENT :", intent.type);
+            console.log("PATTERN :", pattern.join(" "));
+            console.log("--------------------------------------");
 
-                best = intent;
+            return {
 
-            }
+                type: intent.type,
 
-        });
+                tool: intent.tool || null,
 
-    });
+                tools: intent.tools || null,
 
-    return best;
+                summary: intent.summary || false
+
+            };
+
+        }
+
+    }
+
+    //--------------------------------------------------
+    // No Match
+    //--------------------------------------------------
+
+    console.log("--------------------------------------");
+    console.log("NO INTENT MATCHED");
+    console.log(text);
+    console.log("--------------------------------------");
+
+    return null;
 
 }
 
 module.exports = {
 
-    matchIntent,
-
-    normalizeText
+    matchIntent
 
 };

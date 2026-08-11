@@ -1,31 +1,50 @@
-const { executeStoredProcedure } = require("./baseTool");
-const toolConfig = require("../config/toolConfig");
+const {
+    executeStoredProcedure
+} = require("./baseTool");
 
-async function executeTool(toolName, context, params = {}) {
+/**
+ * ==================================================
+ * Generic Tool Executor
+ * ==================================================
+ *
+ * Executes a configured tool from toolConfig.js.
+ *
+ * Flow:
+ *
+ * AI
+ *   ↓
+ * executeTool()
+ *   ↓
+ * baseTool.js
+ *   ↓
+ * SQL Stored Procedure
+ *
+ */
 
-    const config = toolConfig[toolName];
+async function executeTool(
 
-    if (!config) {
+    toolName,
 
-        return {
+    context,
 
-            success: false,
+    params = {}
 
-            error: `Tool '${toolName}' not configured.`
+) {
 
-        };
+    const result =
+        await executeStoredProcedure({
 
-    }
+            toolName,
 
-    const result = await executeStoredProcedure({
+            context,
 
-        toolName,
+            params
 
-        context,
+        });
 
-        params
-
-    });
+    //--------------------------------------------------
+    // Failed
+    //--------------------------------------------------
 
     if (!result.success) {
 
@@ -33,43 +52,44 @@ async function executeTool(toolName, context, params = {}) {
 
     }
 
-    //------------------------------------------------------
+    //--------------------------------------------------
     // Scalar Response
-    //------------------------------------------------------
+    //--------------------------------------------------
 
-    if (config.responseType === "scalar") {
+    let value = null;
 
-        if (!result.data || result.data.length === 0) {
+    if (
 
-            return {
+        Array.isArray(result.data) &&
 
-                success: true,
+        result.data.length > 0
 
-                value: 0
+    ) {
 
-            };
+        const row =
+            result.data[0];
 
-        }
-
-        const row = result.data[0];
-
-        const key = Object.keys(row)[0];
-
-        return {
-
-            success: true,
-
-            value: row[key]
-
-        };
+        value =
+            Object.values(row)[0];
 
     }
 
-    //------------------------------------------------------
-    // Table Response
-    //------------------------------------------------------
+    return {
 
-    return result;
+        success: true,
+
+        tool: toolName,
+
+        value,
+
+        data: result.data,
+
+        total: result.total,
+
+        executionTime:
+            result.executionTime
+
+    };
 
 }
 
