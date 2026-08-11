@@ -1338,6 +1338,63 @@ router.get("/dashboard-branchwise", async (req, res) => {
   }
 });
 // ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/dashboard-pending-delivery-branchwise
+// Returns branch-wise pending delivery counts.
+// SP mode: pendingdelcountBW
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/dashboard-pending-delivery-branchwise", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const { currentDatabase: databaseName } = decoded;
+
+    if (!databaseName) {
+      return res.status(400).json({ success: false, message: "Database not found in token" });
+    }
+
+    console.log(`📦 Pending Delivery Branchwise | DB: ${databaseName}`);
+
+    pool = await openPool(databaseName);
+
+    const result = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "")
+      .input("what", sql.NVarChar(50), "pendingdelcountBW")
+      .input("FromDate", sql.NVarChar(50), "")
+      .input("ToDate", sql.NVarChar(50), "")
+      .execute("A_SP_FOR_ApplicationChallangrid");
+
+    console.log("📦 Pending Delivery BW Raw:", JSON.stringify(result.recordset));
+
+    // SP returns: Branch (name), count(*) (no alias) — map both
+    const branches = (result.recordset || []).map((row) => {
+      const name = (row.Branch ?? row.branch ?? "Unknown Branch").toString().trim();
+      const countVal = row[""] ?? row["count(*)"] ?? Object.values(row).find((v, i) => i > 0);
+      return {
+        branchName: name,
+        count: Number(countVal ?? 0),
+      };
+    });
+
+    const total = branches.reduce((sum, b) => sum + b.count, 0);
+
+    return res.json({
+      success: true,
+      data: { total, branches },
+    });
+  } catch (err) {
+    console.error("❌ Pending Delivery Branchwise Error:", err);
+    return res.status(500).json({ success: false, message: "Server Error", error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GET /api/challan/dashboard-modelwise
 // Returns model-wise booking or sale counts for today or yesterday.
 // Query params: type = booking | sale, period = today | yesterday
