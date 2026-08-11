@@ -34,11 +34,15 @@ async function sendChatNotification({
 
     console.log("Sending notification to", tokens.length, "device(s)");
 
-    // Data-only payload — no notification block so FCM does NOT auto-show a
-    // system notification. Flutter's onMessage / background handler shows
-    // exactly ONE local notification, preventing duplicates.
+    // Data + notification payload — notification block lets FCM auto-show
+    // a system tray notification when the app is in background/killed.
+    // The data block lets the app navigate to the correct screen.
     const response = await admin.messaging().sendEachForMulticast({
       tokens,
+      notification: {
+        title: senderName,
+        body: message,
+      },
       data: {
         type: "DIRECT_CHAT",
         title: senderName,
@@ -50,10 +54,21 @@ async function sendChatNotification({
       android: {
         priority: "high",
         ttl: 86400000,
+        notification: {
+          sound: "default",
+          channelId: "challan_notifications",
+        },
       },
       apns: {
         headers: { "apns-priority": "10" },
-        payload: { aps: { contentAvailable: true } },
+        payload: {
+          aps: {
+            alert: { title: senderName, body: message },
+            sound: "default",
+            badge: 1,
+            contentAvailable: true,
+          },
+        },
       },
     });
 
