@@ -1338,6 +1338,64 @@ router.get("/dashboard-branchwise", async (req, res) => {
   }
 });
 // ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/dashboard-pending-delivery-branch-details
+// Returns individual pending delivery records for a branch.
+// Query params: branchId (sp_594 / sp_602 value)
+// SP mode: pendingdelcountdetailsBW
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/dashboard-pending-delivery-branch-details", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const { currentDatabase: databaseName } = decoded;
+
+    if (!databaseName) {
+      return res.status(400).json({ success: false, message: "Database not found in token" });
+    }
+
+    const branchId = (req.query.branchId || "").toString().trim();
+
+    if (!branchId) {
+      return res.status(400).json({ success: false, message: "branchId is required" });
+    }
+
+    console.log(`📦 Pending Delivery Branch Details | DB: ${databaseName} | BranchId: ${branchId}`);
+
+    pool = await openPool(databaseName);
+
+    const result = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "")
+      .input("what", sql.NVarChar(50), "pendingdelcountdetailsBW")
+      .input("FromDate", sql.NVarChar(50), "")
+      .input("ToDate", sql.NVarChar(50), "")
+      .input("sp_602", sql.NVarChar(50), branchId)
+      .execute("A_SP_FOR_ApplicationChallangrid");
+
+    console.log("📦 Pending Delivery Branch Details Raw:", JSON.stringify(result.recordset?.slice(0, 2)));
+
+    const rows = (result.recordset || []).map((row) => ({
+      customer: (row.customer ?? row.Customer ?? "").toString().trim(),
+      branch:   (row.Branch   ?? row.branch   ?? "").toString().trim(),
+      model:    (row.Model    ?? row.model    ?? "").toString().trim(),
+      variant:  (row.Variant  ?? row.variant  ?? "").toString().trim(),
+      color:    (row.Color    ?? row.color    ?? "").toString().trim(),
+    }));
+
+    return res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error("❌ Pending Delivery Branch Details Error:", err);
+    return res.status(500).json({ success: false, message: "Server Error", error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GET /api/challan/dashboard-pending-delivery-branchwise
 // Returns branch-wise pending delivery counts.
 // SP mode: pendingdelcountBW
@@ -1372,12 +1430,26 @@ router.get("/dashboard-pending-delivery-branchwise", async (req, res) => {
 
     console.log("📦 Pending Delivery BW Raw:", JSON.stringify(result.recordset));
 
+    // Fetch branch id↔name map
+    let branchMap = {};
+    try {
+      const branchResult = await pool
+        .request()
+        .query("SELECT sp_602 AS branchId, sp_607 AS branchName FROM rh_sp_60");
+      for (const r of branchResult.recordset) {
+        if (r.branchName) {
+          branchMap[r.branchName.trim().toLowerCase()] = (r.branchId || "").trim();
+        }
+      }
+    } catch (_) {}
+
     // SP returns: Branch (name), count(*) (no alias) — map both
     const branches = (result.recordset || []).map((row) => {
       const name = (row.Branch ?? row.branch ?? "Unknown Branch").toString().trim();
       const countVal = row[""] ?? row["count(*)"] ?? Object.values(row).find((v, i) => i > 0);
       return {
         branchName: name,
+        branchId: branchMap[name.toLowerCase()] ?? "",
         count: Number(countVal ?? 0),
       };
     });
