@@ -1467,6 +1467,60 @@ router.get("/dashboard-pending-delivery-branchwise", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/sales-performance
+// Returns sales count + value for a given period.
+// Query params: period = today | yesterday | thisweek | thismonth | thisfinancialyear
+// SP mode: SalesPerformance
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/sales-performance", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+    const { currentDatabase: databaseName } = decoded;
+    if (!databaseName) {
+      return res.status(400).json({ success: false, message: "Database not found in token" });
+    }
+
+    const period = (req.query.period || "today").toString().toLowerCase();
+    const validPeriods = ["today", "yesterday", "thisweek", "thismonth", "thisfinancialyear"];
+    if (!validPeriods.includes(period)) {
+      return res.status(400).json({ success: false, message: "Invalid period" });
+    }
+
+    console.log(`📈 Sales Performance | DB: ${databaseName} | Period: ${period}`);
+
+    pool = await openPool(databaseName);
+
+    const result = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "")
+      .input("what", sql.NVarChar(50), "SalesPerformance")
+      .input("FromDate", sql.NVarChar(50), "")
+      .input("ToDate", sql.NVarChar(50), "")
+      .input("period", sql.NVarChar(50), period)
+      .execute("A_SP_FOR_ApplicationChallangrid");
+
+    console.log("📈 Sales Performance Raw:", JSON.stringify(result.recordset));
+
+    const row = result.recordset?.[0] ?? {};
+    return res.json({
+      success: true,
+      data: {
+        period: row.Period ?? period,
+        saleCount: Number(row.SaleCount ?? 0),
+        saleValue: Number(row.SaleValue ?? 0),
+      },
+    });
+  } catch (err) {
+    console.error("❌ Sales Performance Error:", err);
+    return res.status(500).json({ success: false, message: "Server Error", error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GET /api/challan/dashboard-modelwise
 // Returns model-wise booking or sale counts for today or yesterday.
 // Query params: type = booking | sale, period = today | yesterday
