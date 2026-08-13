@@ -14,10 +14,11 @@ const { ensureEntityCache } = require("./entityLoader");
  * ==================================================
  *
  * Main responsibilities:
- *	
+ *
  * 1. Detect business domain/action.
  * 2. Extract date/entity filters.
- * 3. Detect ambiguous model names.
+ * 3. Resolve customer names from LIVE SQL (never customer cache).
+ * 4. Detect ambiguous model names.
  * 4. Ask the employee to choose when required.
  * 5. Remember the pending choice.
  * 6. Execute the original request after selection.
@@ -1407,39 +1408,7 @@ function detectVehicleStockIntelligence(message) {
 function detectSalesPerformanceIntelligence(message) {
 
     const text = normalize(message);
- //--------------------------------------------------
-    // YESTERDAY'S SALES
-    //--------------------------------------------------
 
-    if (
-        /\byesterday'?s?\s+(sales|sale|deliveries|delivery)\b/i.test(text) ||
-        /\b(sales|sale|deliveries|delivery)\s+(of|for)\s+yesterday\b/i.test(text) ||
-        /\bhow\s+many\s+(sales|deliveries)\s+(did\s+we\s+have|were\s+there)\s+yesterday\b/i.test(text)
-    ) {
-
-        return {
-            action: "yesterdaySale",
-            period: "yesterday"
-        };
-
-    }
-
-
-    //--------------------------------------------------
-    // TODAY'S SALES
-    //--------------------------------------------------
-
-    if (
-        /\btoday'?s?\s+(sales|sale|deliveries|delivery)\b/i.test(text) ||
-        /\b(sales|sale|deliveries|delivery)\s+(of|for)\s+today\b/i.test(text)
-    ) {
-
-        return {
-            action: "sale",
-            period: "today"
-        };
-
-    }
     //--------------------------------------------------
     // TODAY vs YESTERDAY
     //--------------------------------------------------
@@ -1500,6 +1469,264 @@ function detectSalesPerformanceIntelligence(message) {
 
 /**
  * ==================================================
+ * CUSTOMER INTELLIGENCE
+ * ==================================================
+ *
+ * Customer Intelligence is additive only. Existing sales,
+ * stock, booking, dashboard and legacy routing are left
+ * untouched.
+ *
+ * Supported examples:
+ *   Find customer Rahul Sharma
+ *   Find Rahul Sharma
+ *   What vehicle did Rahul Sharma book?
+ *   Show Rahul Sharma's pending delivery
+ *   How many times has Rahul Sharma purchased from us?
+ *   Customers with pending deliveries
+ *
+ * Customer names are resolved from LIVE SQL (rh_m1) and
+ * converted to customerUnq. The customer entity cache is NEVER
+ * consulted for customer intelligence. Ambiguous live matches
+ * ask for a selection instead of guessing.
+ * ==================================================
+ */
+
+function detectCustomerIntelligence(message) {
+
+    const text = normalize(message);
+
+    //--------------------------------------------------
+    // All customers with pending deliveries
+    //--------------------------------------------------
+    if (
+        /\bcustomers?\s+(?:with|awaiting|waiting\s+for)\s+pending\s+deliver(?:y|ies)\b/i.test(text) ||
+        /\bpending\s+deliver(?:y|ies)\s+customers?\b/i.test(text) ||
+        /\bwho\s+(?:is|are)\s+waiting\s+for\s+(?:vehicle\s+)?deliver(?:y|ies)\b/i.test(text)
+    ) {
+        return {
+            action: "customersPendingDelivery",
+            requiresCustomer: false
+        };
+    }
+
+    //--------------------------------------------------
+    // Customer pending delivery
+    //--------------------------------------------------
+    if (
+        /\b(?:show|find|check|get)\s+.+?['’]s\s+pending\s+deliver(?:y|ies)\b/i.test(text) ||
+        /\bpending\s+deliver(?:y|ies)\s+(?:for|of)\s+.+/i.test(text) ||
+        /\b(?:is|are)\s+.+?['’]s\s+deliver(?:y|ies)\s+pending\b/i.test(text)
+    ) {
+        return {
+            action: "pendingDelivery",
+            requiresCustomer: true
+        };
+    }
+
+    //--------------------------------------------------
+    // Customer purchase history
+    //--------------------------------------------------
+    if (
+        /\bhow\s+many\s+times\s+(?:has|have)\s+.+?\s+(?:purchased|bought)\b/i.test(text) ||
+        /\bhow\s+many\s+(?:vehicles?|cars?)\s+(?:has|have)\s+.+?\s+(?:purchased|bought)\b/i.test(text) ||
+        /\b.+?\s+(?:purchased|bought)\s+from\s+us\b/i.test(text) ||
+        /\bcustomer\s+(?:purchase|purchases|purchase\s+history)\b/i.test(text)
+    ) {
+        return {
+            action: "purchaseHistory",
+            requiresCustomer: true
+        };
+    }
+
+    //--------------------------------------------------
+    // Customer booking history
+    //--------------------------------------------------
+    if (
+        /\bwhat\s+(?:vehicle|car)\s+did\s+.+?\s+book\b/i.test(text) ||
+        /\bwhat\s+did\s+.+?\s+book\b/i.test(text) ||
+        /\b.+?\s+booked\b/i.test(text) ||
+        /\b(?:customer\s+)?book(?:ing|ings)\s+(?:for|of)\s+.+/i.test(text)
+    ) {
+        return {
+            action: "bookingHistory",
+            requiresCustomer: true
+        };
+    }
+
+    //--------------------------------------------------
+    // Customer profile / lookup
+    //--------------------------------------------------
+    if (
+        /\bfind\s+(?:customer\s+)?[a-z0-9 .'-]+$/i.test(text) ||
+        /\bshow\s+(?:customer\s+)?[a-z0-9 .'-]+$/i.test(text) ||
+        /\b(?:customer\s+)?(?:profile|details|information|info)\s+(?:for|of)\s+.+/i.test(text) ||
+        /\bwho\s+is\s+(?:customer\s+)?[a-z0-9 .'-]+$/i.test(text)
+    ) {
+        return {
+            action: "profile",
+            requiresCustomer: true
+        };
+    }
+
+    return null;
+}
+
+
+/**
+ * ==================================================
+ * Extract Customer Name From User Message
+ * ==================================================
+ * Customer names are never resolved from the entity cache.
+ * This function only extracts the customer text typed by the user.
+ * ==================================================
+ */
+function extractCustomerNameFromMessage(message, action) {
+    const text = String(message || "").trim();
+    let name = "";
+
+    if (!text) return "";
+
+    if (action === "pendingDelivery") {
+        let match = text.match(/\bpending\s+deliver(?:y|ies)\s+(?:for|of)\s+(.+?)\s*$/i);
+        if (match) {
+            name = match[1];
+        } else {
+            match = text.match(/^(.+?)['’]s\s+pending\s+deliver(?:y|ies)\s*$/i);
+            if (match) name = match[1];
+        }
+    }
+
+    if (!name && action === "purchaseHistory") {
+        let match = text.match(/\bhow\s+many\s+times\s+(?:has|have)\s+(.+?)\s+(?:purchased|bought)\b/i);
+        if (match) {
+            name = match[1];
+        } else {
+            match = text.match(/^(.+?)\s+(?:purchased|bought)\s+from\s+us\s*$/i);
+            if (match) name = match[1];
+        }
+    }
+
+    if (!name && action === "bookingHistory") {
+        let match = text.match(/\bwhat\s+(?:vehicle|car)\s+did\s+(.+?)\s+book\b/i);
+        if (match) {
+            name = match[1];
+        } else {
+            match = text.match(/\bwhat\s+did\s+(.+?)\s+book\b/i);
+            if (match) {
+                name = match[1];
+            } else {
+                match = text.match(/\b(?:customer\s+)?book(?:ing|ings)\s+(?:for|of)\s+(.+?)\s*$/i);
+                if (match) name = match[1];
+            }
+        }
+    }
+
+    if (!name && action === "profile") {
+        let match = text.match(/^(?:find|show)\s+(?:customer\s+)?(.+?)\s*$/i);
+        if (match) {
+            name = match[1];
+        } else {
+            match = text.match(/^who\s+is\s+(?:customer\s+)?(.+?)\s*$/i);
+            if (match) {
+                name = match[1];
+            } else {
+                match = text.match(/^(?:customer\s+)?(?:profile|details|information|info)\s+(?:for|of)\s+(.+?)\s*$/i);
+                if (match) name = match[1];
+            }
+        }
+    }
+
+    return String(name || "")
+        .replace(/[?!.]+$/g, "")
+        .replace(/^customer\s+/i, "")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+
+/**
+ * ==================================================
+ * Resolve Customer Intelligence Entity - LIVE SQL
+ * ==================================================
+ * NEVER calls getCandidates(), ensureEntityCache() or findExactEntity().
+ * CustomerSearch executes against rh_m1 on every customer request.
+ * ==================================================
+ */
+async function resolveCustomerIntelligence(message, context, action) {
+    const customerName =
+        extractCustomerNameFromMessage(message, action);
+
+    console.log("======================================");
+    console.log("LIVE CUSTOMER RESOLUTION");
+    console.log("Action       :", action);
+    console.log("CustomerName :", customerName);
+    console.log("Source       : SQL / rh_m1");
+    console.log("Cache        : DISABLED");
+    console.log("======================================");
+
+    if (!customerName) {
+        return { action: "missingName" };
+    }
+
+    const searchResult =
+        await executeDomainTool({
+            domain: "customer",
+            action: "search",
+            context,
+            filters: { customerName }
+        });
+
+    const rows =
+        Array.isArray(searchResult?.data)
+            ? searchResult.data
+            : [];
+
+    const candidates = rows
+        .map(row => ({
+            ...row,
+            CustomerUnq:
+                row.CustomerUnq ??
+                row.customerUnq ??
+                row.m1_2,
+            CustomerName:
+                row.CustomerName ??
+                row.customerName ??
+                row.m1_7
+        }))
+        .filter(row => row.CustomerUnq && row.CustomerName);
+
+    if (!candidates.length) {
+        return { action: "notFound", customerName };
+    }
+
+    const requested = compact(customerName);
+    const exactMatches = candidates.filter(
+        row => compact(row.CustomerName) === requested
+    );
+
+    if (exactMatches.length === 1) {
+        return {
+            action,
+            params: entityToParams("customers", exactMatches[0])
+        };
+    }
+
+    if (candidates.length === 1) {
+        return {
+            action,
+            params: entityToParams("customers", candidates[0])
+        };
+    }
+
+    return {
+        action: "select",
+        candidates
+    };
+}
+
+
+/**
+ * ==================================================
  * Main Router
  * ==================================================
  */
@@ -1556,6 +1783,25 @@ async function routeMessage(
 
     const route =
         detectDomain(message);
+
+    // --------------------------------------------------
+    // CUSTOMER INTELLIGENCE MUST OVERRIDE GENERIC ROUTES
+    // --------------------------------------------------
+    const customerIntelligence =
+        detectCustomerIntelligence(message);
+
+    if (customerIntelligence) {
+
+        console.log(
+            "CUSTOMER INTELLIGENCE DETECTED :",
+            customerIntelligence
+        );
+
+        route.found = true;
+        route.domain = "customer";
+        route.action =
+            customerIntelligence.action;
+    }
 
     // --------------------------------------------------
     // SALES PERFORMANCE MUST OVERRIDE GENERIC SALES
@@ -1657,9 +1903,91 @@ async function routeMessage(
 
 
         //--------------------------------------------------
-        // 3. Extract normal filters.
+        // 3. CUSTOMER INTELLIGENCE - LIVE SQL FIRST
+        //
+        // DO NOT call extractParameters() before this block.
+        // The normal extractor can resolve a stale customer from cache.
         //--------------------------------------------------
+        if (
+            route.domain === "customer" &&
+            route.action !== "customersPendingDelivery"
+        ) {
+            const customerResolution =
+                await resolveCustomerIntelligence(
+                    message,
+                    context,
+                    route.action
+                );
 
+            if (customerResolution.action === "missingName") {
+                return {
+                    handled: true,
+                    type: "customer",
+                    action: route.action,
+                    params: {},
+                    data: { success: false, data: [] },
+                    message: "👤 Please provide the customer name."
+                };
+            }
+
+            if (customerResolution.action === "notFound") {
+                return {
+                    handled: true,
+                    type: "customer",
+                    action: route.action,
+                    params: {},
+                    data: { success: true, data: [] },
+                    message:
+                        `👤 **Customer not found**
+
+I could not find **${customerResolution.customerName}** in the live customer master.`
+                };
+            }
+
+            if (customerResolution.action === "select") {
+                savePendingSelection(context, {
+                    domain: "customer",
+                    action: route.action,
+                    entityType: "customers",
+                    candidates: customerResolution.candidates,
+                    baseParams: {}
+                });
+
+                return {
+                    handled: true,
+                    selectionRequired: true,
+                    type: "customer",
+                    action: route.action,
+                    params: {},
+                    message: buildSelectionMessage(
+                        "customer",
+                        customerResolution.candidates
+                    ),
+                    options: customerResolution.candidates,
+                    data: {
+                        success: true,
+                        pendingSelection: true
+                    }
+                };
+            }
+
+            const liveCustomerParams =
+                customerResolution.params || {};
+
+            console.log("LIVE CUSTOMER PARAMETERS");
+            console.table(liveCustomerParams);
+
+            // Execute immediately. No parameterExtractor.
+            return await executeDomain(
+                route,
+                context,
+                liveCustomerParams
+            );
+        }
+
+        //--------------------------------------------------
+        // 4. Extract normal filters.
+        //--------------------------------------------------
         let extraction;
 
 
@@ -1772,111 +2100,35 @@ async function routeMessage(
         //   today_vs_yesterday
         //   thismonth_vs_lastmonth
         // --------------------------------------------------
-     if (route.domain === "sales") {
+        if (route.domain === "sales") {
 
-    //--------------------------------------------------
-    // SALES COMPARISON
-    //--------------------------------------------------
+            if (route.action === "salesComparison") {
 
-    if (route.action === "salesComparison") {
+                params = {
+                    ...params,
+                    period:
+                        route.salesPeriod
+                };
+            }
 
-        params = {
-            ...params,
+            else if (route.action === "salesTrend") {
 
-            period:
-                route.salesPeriod
-        };
-    }
+                params = {
+                    ...params
+                };
+            }
 
-    //--------------------------------------------------
-    //--------------------------------------------------
-    // TODAY SALES
-    //--------------------------------------------------
+            console.log(
+                "SALES INTELLIGENCE PARAMETERS"
+            );
 
-    else if (route.action === "sale") {
-
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const formatDate = (date) => {
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, "0");
-            const day = String(date.getDate()).padStart(2, "0");
-            return `${year}-${month}-${day}`;
-        };
-
-        params = {
-            ...params,
-            fromDate: formatDate(today),
-            toDate: formatDate(today)
-        };
-    }
-
-
-    //--------------------------------------------------
-    // YESTERDAY SALES
-    //--------------------------------------------------
-
-    else if (route.action === "yesterdaySale") {
-
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const yesterday = new Date(today);
-        yesterday.setDate(yesterday.getDate() - 1);
-
-        const formatDate = (date) => {
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, "0");
-            const day = String(date.getDate()).padStart(2, "0");
-            return `${year}-${month}-${day}`;
-        };
-
-        params = {
-            ...params,
-            fromDate: formatDate(yesterday),
-            toDate: formatDate(yesterday)
-        };
-    }
-
-
-    //--------------------------------------------------
-    // SALES TREND
-    //--------------------------------------------------
-
-    else if (route.action === "salesTrend") {
-
-        params = {
-            ...params
-        };
-
-    }
-
-    console.log(
-        "SALES ACTION READY :",
-        route.action
-    );
-
-    console.log(
-        "SALES INTELLIGENCE PARAMETERS"
-    );
-
-    console.table({
-
-        action:
-            route.action,
-
-        period:
-            route.salesPeriod,
-
-        fromDate:
-            params.fromDate,
-
-        toDate:
-            params.toDate
-
-    });
-}
+            console.table({
+                action:
+                    route.action,
+                period:
+                    params.period
+            });
+        }
 
 
         // --------------------------------------------------
@@ -2389,6 +2641,8 @@ module.exports = {
     detectVehicleStockIntelligence,
 
     detectSalesPerformanceIntelligence,
+
+    detectCustomerIntelligence,
 
     getPendingSelection,
 

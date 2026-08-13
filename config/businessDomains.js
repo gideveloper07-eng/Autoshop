@@ -17,6 +17,229 @@
  */
 
 module.exports = {
+    //--------------------------------------------------
+    // CUSTOMER INTELLIGENCE
+    //--------------------------------------------------
+
+    customer: {
+
+        displayName: "Customer Intelligence",
+
+        enabled: true,
+
+        keywords: [
+            "customer",
+            "customers",
+            "client",
+            "clients",
+            "customer profile",
+            "customer history",
+            "customer intelligence"
+        ],
+
+        actions: {
+
+            //--------------------------------------------------
+            // CUSTOMER SEARCH - LIVE DATABASE ONLY
+            //--------------------------------------------------
+            // Customer names are resolved from rh_m1 at request time.
+            // This action never reads the entity cache.
+
+            search: {
+
+                enabled: true,
+
+                description:
+                    "Searches the live customer master. Never uses the entity cache.",
+
+                keywords: [
+                    "customer search",
+                    "search customer",
+                    "find customer",
+                    "lookup customer"
+                ],
+
+                what: "CustomerSearch",
+
+                permission: "SALE_VIEW",
+
+                responseType: "table",
+
+                parameters: [
+                    "customerName"
+                ]
+            },
+
+            //--------------------------------------------------
+            // Customer Profile
+            //--------------------------------------------------
+
+            profile: {
+
+                enabled: true,
+
+                description:
+                    "Returns customer profile information from the customer master.",
+
+                keywords: [
+                    "find customer",
+                    "customer profile",
+                    "show customer",
+                    "customer details",
+                    "customer information",
+                    "customer info",
+                    "who is customer"
+                ],
+
+                what: "CustomerProfile",
+
+                permission: "SALE_VIEW",
+
+                responseType: "table",
+
+                parameters: [
+                    "customerUnq"
+                ]
+
+            },
+
+            //--------------------------------------------------
+            // Customer Booking History
+            //--------------------------------------------------
+
+            bookingHistory: {
+
+                enabled: true,
+
+                description:
+                    "Returns vehicle bookings made by a specific customer.",
+
+                keywords: [
+                    "customer booking",
+                    "customer bookings",
+                    "what did customer book",
+                    "what vehicle did customer book",
+                    "what car did customer book",
+                    "customer booked",
+                    "booked by customer"
+                ],
+
+                what: "CustomerBookingHistory",
+
+                permission: "BOOKING_VIEW",
+
+                responseType: "table",
+
+                parameters: [
+                    "customerUnq"
+                ]
+
+            },
+
+            //--------------------------------------------------
+            // Customer Purchase Summary
+            //--------------------------------------------------
+
+            purchaseHistory: {
+
+                enabled: true,
+
+                description:
+                    "Returns lifetime vehicle purchase statistics for a specific customer.",
+
+                keywords: [
+                    "customer purchase history",
+                    "customer purchases",
+                    "how many times customer purchased",
+                    "how many times customer bought",
+                    "how many vehicles customer purchased",
+                    "how many cars customer purchased",
+                    "customer purchased from us",
+                    "customer bought from us",
+                    "customer lifetime purchases",
+                    "customer lifetime value"
+                ],
+
+                what: "CustomerPurchaseHistory",
+
+                permission: "SALE_VIEW",
+
+                responseType: "table",
+
+                parameters: [
+                    "customerUnq"
+                ]
+
+            },
+
+            //--------------------------------------------------
+            // Customer Pending Delivery
+            //--------------------------------------------------
+
+            pendingDelivery: {
+
+                enabled: true,
+
+                description:
+                    "Returns pending vehicle deliveries for a specific customer.",
+
+                keywords: [
+                    "customer pending delivery",
+                    "customer pending deliveries",
+                    "customer delivery pending",
+                    "customer deliveries pending",
+                    "show customer pending delivery",
+                    "pending delivery for customer"
+                ],
+
+                what: "CustomerPendingDelivery",
+
+                permission: "DELIVERY_VIEW",
+
+                responseType: "table",
+
+                parameters: [
+                    "customerUnq"
+                ]
+
+            },
+
+            //--------------------------------------------------
+            // All Customers With Pending Deliveries
+            //--------------------------------------------------
+
+            customersPendingDelivery: {
+
+                enabled: true,
+
+                description:
+                    "Returns all customers whose vehicle delivery is pending.",
+
+                keywords: [
+                    "customers with pending deliveries",
+                    "customers with pending delivery",
+                    "pending delivery customers",
+                    "customers awaiting delivery",
+                    "customers waiting for delivery",
+                    "all pending delivery customers",
+                    "who is waiting for delivery",
+                    "who are waiting for delivery"
+                ],
+
+                what: "CustomersPendingDelivery",
+
+                permission: "DELIVERY_VIEW",
+
+                responseType: "table",
+
+                parameters: []
+
+            }
+
+        }
+
+    },
+
 
     //--------------------------------------------------
     // VEHICLE
@@ -451,55 +674,75 @@ module.exports = {
             //--------------------------------------------------
             // Booking
             //--------------------------------------------------
+booking: {
+    enabled: true,
 
-            booking: {
+    description:
+        "Returns booking information.",
 
-                enabled: true,
+    keywords: [
+        "booking",
+        "bookings",
+        "booked"
+    ],
 
-                description:
-                    "Returns booking information.",
+    what: "TodayBooking",
 
-                keywords: [
+    permission: "BOOKING_VIEW",
 
-                    "booking",
+    responseType: "table",
 
-                    "bookings",
+    parameters: [
+        "fromDate",
+        "toDate",
+        "branchUnq",
+        "executiveUnq",
+        "customerUnq",
+        "modelUnq",
+        "financeCompanyUnq"
+    ]
+},
+//--------------------------------------------------
+// Yesterday Booking
+//--------------------------------------------------
 
-                    "booked"
+yesterdayBooking: {
 
-                ],
+    enabled: true,
 
-                what: "TodayBooking",
+    description:
+        "Returns yesterday's booking information.",
 
-                permission: "BOOKING_VIEW",
+    keywords: [
+        "yesterday booking",
+        "yesterday bookings",
+        "yesterday's booking",
+        "yesterday's bookings",
+        "bookings yesterday",
+        "booking yesterday"
+    ],
 
-                responseType: "table",
+    what: "YesterdayBooking",
 
-                parameters: [
+    permission: "BOOKING_VIEW",
 
-                    "fromDate",
+    responseType: "table",
 
-                    "toDate",
+    parameters: [
+        "fromDate",
+        "toDate",
+        "branchUnq",
+        "executiveUnq",
+        "customerUnq",
+        "modelUnq",
+        "financeCompanyUnq"
+    ]
+},
+//--------------------------------------------------
+// TODAY SALE
+//--------------------------------------------------
 
-                    "branchUnq",
-
-                    "executiveUnq",
-
-                    "customerUnq",
-
-                    "modelUnq",
-
-                    "financeCompanyUnq"
-
-                ]
-
-            },
-
-            //--------------------------------------------------
-            // Sale
-            //--------------------------------------------------
-
-        sale: {
+todaySale: {
 
     enabled: true,
 
@@ -507,12 +750,15 @@ module.exports = {
         "Returns today's sales information.",
 
     keywords: [
-        "sale",
-        "sales",
-        "retail",
-        "today's sales",
+        "today sale",
         "today sales",
-        "today sale"
+        "today's sale",
+        "today's sales",
+        "sales today",
+        "sale today",
+        "sold today",
+        "vehicles sold today",
+        "cars sold today"
     ],
 
     what: "TodaySale",
@@ -529,9 +775,7 @@ module.exports = {
         "customerUnq",
         "modelUnq"
     ]
-
 },
-
 //--------------------------------------------------
 // Yesterday Sale
 //--------------------------------------------------
@@ -771,6 +1015,47 @@ executivePerformance: {
 },
 
 //--------------------------------------------------
+// BOOKING → SALE CONVERSION
+//--------------------------------------------------
+
+bookingSaleConversion: {
+
+    enabled: true,
+
+    description:
+        "Returns dealership booking to sale conversion for the requested period.",
+
+    keywords: [
+        "booking to sale conversion",
+        "booking to sales conversion",
+        "booking sale conversion",
+        "booking conversion rate",
+        "conversion rate",
+        "what percentage of bookings converted",
+        "percentage of bookings converted",
+        "bookings converted to sales",
+        "booking conversion this month",
+        "dealership conversion",
+        "overall conversion",
+        "sales conversion rate",
+        "how is booking conversion",
+        "how many bookings converted"
+    ],
+
+    what: "BookingSaleConversion",
+
+    permission: "SALE_VIEW",
+
+    responseType: "table",
+
+    parameters: [
+        "fromDate",
+        "toDate",
+        "branchUnq"
+    ]
+},
+
+//--------------------------------------------------
 // EXECUTIVE CONVERSION PERFORMANCE
 //--------------------------------------------------
 
@@ -785,15 +1070,13 @@ executiveConversionPerformance: {
         "executive conversion performance",
         "conversion performance",
         "booking conversion",
-        "booking conversion rate",
-        "conversion rate",
+        "executive booking conversion rate",
         "executive conversion",
-        "sales conversion",
         "sales executive conversion",
-        "best conversion",
-        "highest conversion",
-        "highest conversion rate",
-        "best conversion rate",
+        "best executive conversion",
+        "highest executive conversion",
+        "highest executive conversion rate",
+        "best executive conversion rate",
         "who converts the most bookings",
         "which executive has the highest conversion",
         "which executive has the best conversion",
@@ -813,9 +1096,9 @@ executiveConversionPerformance: {
     responseType: "table",
 
     parameters: [
-        "period",
-        "branchUnq",
-        "executiveUnq"
+        "fromDate",
+        "toDate",
+        "branchUnq"
     ]
 },
 //--------------------------------------------------

@@ -1,17 +1,433 @@
 const ai = require("../providers/aiProvider");
 
-const { routeMessage } = require("./aiRouter");
+const {
+    routeMessage
+} = require("./aiRouter");
 
 const SYSTEM_PROMPT =
     require("../prompts/systemPrompt");
 
-const { analyzeDashboard } =
-    require("./dashboardAnalyzer");
+const {
+    analyzeDashboard
+} = require("./dashboardAnalyzer");
 
 
 /**
  * ==================================================
- * Main AI Engine
+ * SALES COMPARISON FORMATTER
+ * ==================================================
+ *
+ * IMPORTANT:
+ * Do NOT send SalesComparison through Gemini.
+ *
+ * The stored procedure already returns:
+ *
+ * CurrentPeriod
+ * CurrentSaleCount
+ * CurrentSaleValue
+ * PreviousPeriod
+ * PreviousSaleCount
+ * PreviousSaleValue
+ * SaleCountDifference
+ * SaleValueDifference
+ * SaleValueGrowthPercent
+ *
+ * We format those values directly so that:
+ *
+ * 0 = zero sales
+ * NULL = missing value
+ *
+ * and never incorrectly becomes:
+ *
+ * "No sales data is available for comparison."
+ * ==================================================
+ */
+function formatSalesComparison(data, message = "") {
+
+    //--------------------------------------------------
+    // Normalize result
+    //--------------------------------------------------
+
+    let row = null;
+
+    if (Array.isArray(data)) {
+        row = data[0] || null;
+    }
+    else if (data && typeof data === "object") {
+        row = data;
+    }
+
+    //--------------------------------------------------
+    // No row returned at all
+    //--------------------------------------------------
+
+    if (!row) {
+        return (
+            "📊 **Sales Comparison**\n\n" +
+            "No comparison record was returned."
+        );
+    }
+
+    //--------------------------------------------------
+    // Read SQL values
+    //--------------------------------------------------
+
+    const currentPeriod =
+        row.CurrentPeriod ??
+        row.currentPeriod ??
+        "today";
+
+    const previousPeriod =
+        row.PreviousPeriod ??
+        row.previousPeriod ??
+        "yesterday";
+
+    const currentSaleCount =
+        Number(
+            row.CurrentSaleCount ??
+            row.currentSaleCount ??
+            0
+        );
+
+    const currentSaleValue =
+        Number(
+            row.CurrentSaleValue ??
+            row.currentSaleValue ??
+            0
+        );
+
+    const previousSaleCount =
+        Number(
+            row.PreviousSaleCount ??
+            row.previousSaleCount ??
+            0
+        );
+
+    const previousSaleValue =
+        Number(
+            row.PreviousSaleValue ??
+            row.previousSaleValue ??
+            0
+        );
+
+    const saleCountDifference =
+        Number(
+            row.SaleCountDifference ??
+            row.saleCountDifference ??
+            (
+                currentSaleCount -
+                previousSaleCount
+            )
+        );
+
+    const saleValueDifference =
+        Number(
+            row.SaleValueDifference ??
+            row.saleValueDifference ??
+            (
+                currentSaleValue -
+                previousSaleValue
+            )
+        );
+
+    //--------------------------------------------------
+    // Growth
+    //--------------------------------------------------
+
+    let growth =
+        row.SaleValueGrowthPercent ??
+        row.saleValueGrowthPercent;
+
+    growth = Number(growth);
+
+    if (!Number.isFinite(growth)) {
+
+        if (previousSaleValue === 0) {
+
+            if (currentSaleValue > 0) {
+                growth = 100;
+            }
+            else {
+                growth = 0;
+            }
+
+        }
+        else {
+
+            growth =
+                (
+                    (
+                        currentSaleValue -
+                        previousSaleValue
+                    )
+                    /
+                    previousSaleValue
+                ) * 100;
+
+        }
+    }
+
+    //--------------------------------------------------
+    // Format period names
+    //--------------------------------------------------
+
+    function formatPeriod(period) {
+
+        const p =
+            String(period || "")
+                .toLowerCase()
+                .trim();
+
+        const periodMap = {
+
+            "today":
+                "Today",
+
+            "yesterday":
+                "Yesterday",
+
+            "thisweek":
+                "This Week",
+
+            "lastweek":
+                "Last Week",
+
+            "thisweek_mtd":
+                "This Week",
+
+            "lastweek_mtd":
+                "Last Week",
+
+            "thismonth":
+                "This Month",
+
+            "lastmonth":
+                "Last Month",
+
+            "thismonth_mtd":
+                "This Month",
+
+            "lastmonth_mtd":
+                "Last Month",
+
+            "thisyear":
+                "This Year",
+
+            "lastyear":
+                "Last Year",
+
+            "thisyear_ytd":
+                "This Year",
+
+            "lastyear_ytd":
+                "Last Year",
+
+            "thisfinancialyear":
+                "This Financial Year",
+
+            "lastfinancialyear":
+                "Last Financial Year",
+
+            "thisfinancialyear_ytd":
+                "This Financial Year",
+
+            "lastfinancialyear_ytd":
+                "Last Financial Year"
+
+        };
+
+        if (periodMap[p]) {
+            return periodMap[p];
+        }
+
+        return String(period)
+            .replace(/_/g, " ")
+            .replace(/\b\w/g, c => c.toUpperCase());
+    }
+
+
+    const currentLabel =
+        formatPeriod(currentPeriod);
+
+    const previousLabel =
+        formatPeriod(previousPeriod);
+
+
+    //--------------------------------------------------
+    // Comparison title
+    //--------------------------------------------------
+
+    let title =
+        `${currentLabel} vs ${previousLabel}`;
+
+
+    //--------------------------------------------------
+    // Detect comparison type from user message
+    //--------------------------------------------------
+
+    const lowerMessage =
+        String(message || "").toLowerCase();
+
+    if (
+        lowerMessage.includes("yesterday")
+    ) {
+        title =
+            "Today vs Yesterday";
+    }
+    else if (
+        lowerMessage.includes("last week") ||
+        lowerMessage.includes("previous week")
+    ) {
+        title =
+            "This Week vs Last Week";
+    }
+    else if (
+        lowerMessage.includes("last month") ||
+        lowerMessage.includes("previous month")
+    ) {
+        title =
+            "This Month vs Last Month";
+    }
+    else if (
+        lowerMessage.includes("last year") ||
+        lowerMessage.includes("previous year")
+    ) {
+        title =
+            "This Year vs Last Year";
+    }
+    else if (
+        lowerMessage.includes("financial year") ||
+        lowerMessage.includes("financial")
+    ) {
+        title =
+            "This Financial Year vs Last Financial Year";
+    }
+
+
+    //--------------------------------------------------
+    // Number formatter
+    //--------------------------------------------------
+
+    function formatNumber(value) {
+
+        return Number(value || 0)
+            .toLocaleString(
+                "en-IN",
+                {
+                    maximumFractionDigits: 2
+                }
+            );
+    }
+
+
+    //--------------------------------------------------
+    // Currency formatter
+    //--------------------------------------------------
+
+    function formatCurrency(value) {
+
+        return `₹${formatNumber(value)}`;
+
+    }
+
+
+    //--------------------------------------------------
+    // Signed number
+    //--------------------------------------------------
+
+    function formatSignedNumber(value) {
+
+        const number =
+            Number(value || 0);
+
+        if (number > 0) {
+            return `+${formatNumber(number)}`;
+        }
+
+        if (number < 0) {
+            return `-${formatNumber(Math.abs(number))}`;
+        }
+
+        return "0";
+    }
+
+
+    //--------------------------------------------------
+    // Signed currency
+    //--------------------------------------------------
+
+    function formatSignedCurrency(value) {
+
+        const number =
+            Number(value || 0);
+
+        if (number > 0) {
+            return `+₹${formatNumber(number)}`;
+        }
+
+        if (number < 0) {
+            return `-₹${formatNumber(Math.abs(number))}`;
+        }
+
+        return "₹0";
+    }
+
+
+    //--------------------------------------------------
+    // Growth formatting
+    //--------------------------------------------------
+
+    const growthText =
+        `${growth >= 0 ? "" : ""}${growth.toFixed(2)}%`;
+
+
+    //--------------------------------------------------
+    // Business interpretation
+    //--------------------------------------------------
+
+    let conclusion = "";
+
+    if (growth > 0) {
+
+        conclusion =
+            "📈 Sales are improving.";
+
+    }
+    else if (growth < 0) {
+
+        conclusion =
+            "📉 Sales are declining.";
+
+    }
+    else {
+
+        conclusion =
+            "➡️ Sales are stable.";
+
+    }
+
+
+    //--------------------------------------------------
+    // Final response
+    //--------------------------------------------------
+
+    return [
+        `📊 **Sales Comparison — ${title}**`,
+        ``,
+        `${currentLabel}: **${formatNumber(currentSaleCount)} sales** — **${formatCurrency(currentSaleValue)}**`,
+        `${previousLabel}: **${formatNumber(previousSaleCount)} sales** — **${formatCurrency(previousSaleValue)}**`,
+        ``,
+        `Difference: **${formatSignedNumber(saleCountDifference)} sales** — **${formatSignedCurrency(saleValueDifference)}**`,
+        `Growth: **${growthText}**`,
+        ``,
+        conclusion
+    ].join("\n");
+}
+
+
+/**
+ * ==================================================
+ * MAIN AI ENGINE
  * ==================================================
  */
 async function runAI(
@@ -38,7 +454,6 @@ async function runAI(
 
     console.log("======================================");
     console.log("ROUTER RESULT");
-
     console.log(
         JSON.stringify(
             routed,
@@ -46,7 +461,6 @@ async function runAI(
             2
         )
     );
-
     console.log("======================================");
 
 
@@ -67,6 +481,7 @@ async function runAI(
                 routed.message ||
                 "Please choose one of the available options."
             );
+
         }
 
 
@@ -81,6 +496,7 @@ async function runAI(
                 routed.message ||
                 "Please choose one of the matching entities."
             );
+
         }
 
 
@@ -97,6 +513,7 @@ async function runAI(
                 routed.data.error ||
                 "Unable to retrieve the requested data."
             );
+
         }
 
 
@@ -109,21 +526,214 @@ async function runAI(
             return await analyzeDashboard(
                 routed.data?.dashboard
             );
+
         }
 
 
         //--------------------------------------------------
-        // SALES + EXECUTIVE PERFORMANCE FORMATTING
+        // CUSTOMER INTELLIGENCE
+        //--------------------------------------------------
+
+        if (
+            routed.type === "customer"
+        ) {
+
+            const rows =
+                Array.isArray(routed.data?.data)
+                    ? routed.data.data
+                    : [];
+
+            const action =
+                routed.action;
+
+            if (!rows.length) {
+                return "👤 **Customer Intelligence**\n\nNo matching customer records were found.";
+            }
+
+            //--------------------------------------------------
+            // Customer profile
+            //--------------------------------------------------
+
+            if (action === "profile") {
+
+                const row = rows[0];
+
+                return [
+                    `👤 **Customer Profile**`,
+                    ``,
+                    `**${row.CustomerName ?? row.customerName ?? "Unknown Customer"}**`,
+                    ``,
+                    row.MobileNo || row.mobileNo
+                        ? `📱 **Mobile:** ${row.MobileNo ?? row.mobileNo}`
+                        : null,
+                    row.Email || row.email
+                        ? `✉️ **Email:** ${row.Email ?? row.email}`
+                        : null,
+                    row.Address || row.address
+                        ? `📍 **Address:** ${row.Address ?? row.address}`
+                        : null,
+                    row.PanNo || row.panNo
+                        ? `🪪 **PAN:** ${row.PanNo ?? row.panNo}`
+                        : null
+                ].filter(Boolean).join("\n");
+
+            }
+
+            //--------------------------------------------------
+            // Customer booking history
+            //--------------------------------------------------
+
+            if (action === "bookingHistory") {
+
+                const lines = [
+                    `🚗 **Customer Booking History**`,
+                    ``,
+                    `**${rows[0].CustomerName ?? "Customer"}**`,
+                    ``
+                ];
+
+                rows.slice(0, 10).forEach((row, index) => {
+                    const vehicle = [
+                        row.Model,
+                        row.Variant,
+                        row.Color
+                    ].filter(Boolean).join(" ");
+
+                    lines.push(
+                        `${index + 1}. **${vehicle || "Vehicle"}**`,
+                        `   📅 Booking: ${row.BookingDate ?? "-"}`,
+                        row.BookingType ? `   📌 Type: ${row.BookingType}` : null,
+                        row.Branch ? `   🏢 Branch: ${row.Branch}` : null,
+                        row.VINNo ? `   🔢 VIN: ${row.VINNo}` : null,
+                        row.DeliveryDate ? `   🚚 Delivered: ${row.DeliveryDate}` : null,
+                        ``
+                    );
+                });
+
+                if (rows.length > 10) {
+                    lines.push(`Showing the latest 10 of **${rows.length} bookings**.`);
+                }
+
+                return lines.filter(v => v !== null).join("\n").trim();
+            }
+
+            //--------------------------------------------------
+            // Customer purchase summary
+            //--------------------------------------------------
+
+            if (action === "purchaseHistory") {
+
+                const row = rows[0];
+                const count = Number(row.PurchaseCount ?? row.purchaseCount ?? 0);
+                const value = Number(row.TotalPurchaseValue ?? row.totalPurchaseValue ?? 0);
+                const formatNumber = n => Number(n || 0).toLocaleString("en-IN");
+                const formatCurrency = n => `₹${formatNumber(n)}`;
+
+                return [
+                    `💰 **Customer Purchase History**`,
+                    ``,
+                    `**${row.CustomerName ?? "Customer"}**`,
+                    ``,
+                    `🛒 **Purchases:** ${formatNumber(count)}`,
+                    `💵 **Total Purchase Value:** ${formatCurrency(value)}`,
+                    `📅 **First Purchase:** ${row.FirstPurchaseDate ?? "-"}`,
+                    `📅 **Last Purchase:** ${row.LastPurchaseDate ?? "-"}`
+                ].join("\n");
+            }
+
+            //--------------------------------------------------
+            // Customer pending delivery / all pending customers
+            //--------------------------------------------------
+
+            if (
+                action === "pendingDelivery" ||
+                action === "customersPendingDelivery"
+            ) {
+
+                const lines = [
+                    `🚚 **Pending Deliveries**`,
+                    ``,
+                    `**${rows.length} pending delivery record${rows.length === 1 ? "" : "s"}**`,
+                    ``
+                ];
+
+                rows.slice(0, 20).forEach((row, index) => {
+                    const vehicle = [
+                        row.Model,
+                        row.Variant,
+                        row.Color
+                    ].filter(Boolean).join(" ");
+
+                    lines.push(
+                        `${index + 1}. **${row.CustomerName ?? "Unknown Customer"}**`,
+                        `   🚗 ${vehicle || "Vehicle"}`,
+                        row.Branch ? `   🏢 ${row.Branch}` : null,
+                        row.ChallanNo ? `   🧾 Challan: ${row.ChallanNo}` : null,
+                        row.ExpectedDeliveryDate ? `   📅 Expected: ${row.ExpectedDeliveryDate}` : null,
+                        row.VINNo ? `   🔢 VIN: ${row.VINNo}` : null,
+                        ``
+                    );
+                });
+
+                if (rows.length > 20) {
+                    lines.push(`Showing the first 20 of **${rows.length} pending delivery records**.`);
+                }
+
+                return lines.filter(v => v !== null).join("\n").trim();
+            }
+        }
+
+
+        //--------------------------------------------------
+        // SALES COMPARISON
         //--------------------------------------------------
         //
-        // Handles:
+        // IMPORTANT:
+        // Handle SalesComparison BEFORE the generic
+        // sales formatter.
         //
-        // sale
-        // yesterdaySale
-        // salesComparison
-        // salesTrend
-        // executivePerformance
+        // This prevents Gemini from incorrectly saying:
         //
+        // "No sales data is available for comparison."
+        //
+        //--------------------------------------------------
+
+        if (
+            routed.type === "sales" &&
+            routed.action === "salesComparison"
+        ) {
+
+            console.log(
+                "======================================"
+            );
+
+            console.log(
+                "SALES COMPARISON DATA"
+            );
+
+            console.log(
+                JSON.stringify(
+                    routed.data?.data,
+                    null,
+                    2
+                )
+            );
+
+            console.log(
+                "======================================"
+            );
+
+
+            return formatSalesComparison(
+                routed.data?.data,
+                message
+            );
+
+        }
+
+
+        //--------------------------------------------------
+        // OTHER SALES FORMATTING
         //--------------------------------------------------
 
         if (
@@ -131,435 +741,52 @@ async function runAI(
             [
                 "sale",
                 "yesterdaySale",
-                "salesComparison",
-                "salesTrend",
-                "executivePerformance"
-            ].includes(
-                routed.action
-            ) &&
-            Array.isArray(
-                routed.data?.data
-            )
+                "salesTrend"
+            ].includes(routed.action) &&
+            Array.isArray(routed.data?.data)
         ) {
-
-
-            //--------------------------------------------------
-            // EXECUTIVE PERFORMANCE
-            //--------------------------------------------------
-
-            if (
-                routed.action ===
-                "executivePerformance"
-            ) {
-
-                const executivePrompt = `
-${SYSTEM_PROMPT}
-
-You are MyAutoShop AI, a dealership
-business intelligence assistant.
-
-Employee asked:
-
-"${message}"
-
-Business domain:
-
-sales
-
-Action:
-
-executivePerformance
-
-
-The business system returned the following
-executive performance data:
-
-${JSON.stringify(
-    routed.data.data,
-    null,
-    2
-)}
-
-
-==================================================
-IMPORTANT DATA RULES
-==================================================
-
-- Use ONLY the supplied data.
-- Never invent an executive name.
-- Never invent a booking count.
-- Never invent a sales count.
-- Never invent a sales value.
-- A value of 0 means zero activity.
-- A value of 0 does NOT mean data is unavailable.
-- If a requested value is absent, say "Not available".
-- Do not calculate conversion rate.
-- Do not invent a conversion rate.
-- Do not compare bookings and sales as a conversion
-  percentage.
-- Do not invent targets.
-- Do not invent rankings that are not supported by
-  the supplied data.
-- Do not invent reasons for good or bad performance.
-- Do not mention SQL.
-- Do not mention JSON.
-- Do not mention stored procedures.
-- Do not mention APIs.
-- Do not mention routing.
-- Do not mention tools.
-- Do not mention database field names.
-- Do not expose internal implementation details.
-
-
-==================================================
-MARKDOWN FORMATTING
-==================================================
-
-MARKDOWN FORMATTING IS MANDATORY.
-
-- ALWAYS return Markdown.
-- ALWAYS use a short heading.
-- ALWAYS use bullet points for executive KPIs.
-- ALWAYS make executive names **bold**.
-- ALWAYS make important numeric values **bold**.
-- ALWAYS make sales values **bold**.
-- ALWAYS make sales counts **bold**.
-- ALWAYS make booking counts **bold**.
-- Keep the response concise.
-- Optimize the response for a mobile chat screen.
-- Do NOT create a large Markdown table.
-- Use ₹ for Indian currency.
-- Use lakh/crore notation for large Indian amounts
-  when appropriate.
-- Do not change the actual meaning of the supplied
-  amount.
-
-
-==================================================
-EXPECTED FORMAT
-==================================================
-
-For a request such as:
-
-"Show executive performance this month"
-
-use:
-
-### 📊 Sales Executive Performance
-
-**This Month**
-
-- **Executive Name**
-  - 🚗 **Sales:** **X**
-  - 💰 **Sales Value:** **₹X**
-  - 📋 **Bookings:** **X**
-
-For multiple executives, repeat the same format.
-
-Example:
-
-- **DIVYA SONI PN**
-  - 🚗 **Sales:** **3**
-  - 💰 **Sales Value:** **₹53.40 lakh**
-  - 📋 **Bookings:** **1**
-
-- **VISHNU PRAKASH GAUR BGKT**
-  - 🚗 **Sales:** **2**
-  - 💰 **Sales Value:** **₹50.46 lakh**
-  - 📋 **Bookings:** **4**
-
-
-==================================================
-OVERALL PERFORMANCE
-==================================================
-
-After listing executives, provide an overall summary
-when multiple rows are available.
-
-Use:
-
-### 📈 Overall Performance
-
-- **Total sales:** **X vehicles**
-- **Total sales value:** **₹X**
-- **Total bookings:** **X**
-
-Calculate totals ONLY from the supplied rows.
-
-Do not calculate or display a total if the required
-data is missing.
-
-
-==================================================
-ORDERING
-==================================================
-
-If multiple executives are supplied:
-
-- Prefer the supplied database order.
-- Do NOT reorder executives unless the employee
-  explicitly asks for ranking.
-- If the employee asks "top", "highest", "best",
-  or "who sold the most", then ranking may be
-  performed using the supplied sales values/counts.
-
-
-==================================================
-NO DATA
-==================================================
-
-If the supplied data contains no rows, return:
-
-### 📊 Sales Executive Performance
-
-**No executive performance records were found for
-the requested period.**
-
-
-==================================================
-MISSING DATA
-==================================================
-
-If an executive has:
-
-BookingCount = 0
-
-show:
-
-- 📋 **Bookings:** **0**
-
-Do NOT say that booking information is unavailable.
-
-If SaleCount = 0:
-
-- 🚗 **Sales:** **0**
-
-Do NOT say that sales information is unavailable.
-
-Only use "Not available" when the actual value is
-missing from the supplied data.
-
-
-==================================================
-IMPORTANT
-==================================================
-
-Do not add recommendations unless the employee
-explicitly asks for recommendations.
-
-Do not create business conclusions that are not
-supported by the supplied data.
-`;
-
-
-                const response =
-                    await ai.generate(
-                        executivePrompt
-                    );
-
-
-                console.log(
-                    "======================================"
-                );
-
-                console.log(
-                    "FINAL EXECUTIVE PERFORMANCE AI RESPONSE"
-                );
-
-                console.log(
-                    response
-                );
-
-                console.log(
-                    "======================================"
-                );
-
-
-                return response;
-            }
-
-
-            //--------------------------------------------------
-            // NORMAL SALES PERFORMANCE
-            //--------------------------------------------------
 
             const salesPrompt = `
 ${SYSTEM_PROMPT}
 
-You are MyAutoShop AI, a dealership business
-intelligence assistant.
+You are MyAutoShop AI, a dealership business intelligence assistant.
 
 Employee asked:
-
 "${message}"
 
 Business domain: sales
-
 Action: ${routed.action}
 
-The business system returned this factual
-sales data:
+The database returned this factual sales data:
+${JSON.stringify(routed.data.data, null, 2)}
 
-${JSON.stringify(
-    routed.data.data,
-    null,
-    2
-)}
-
-
-==================================================
-IMPORTANT DATA RULES
-==================================================
+IMPORTANT RULES:
 
 - Use ONLY the supplied data.
-- Never invent a sales count.
-- Never invent a sales amount.
-- Never invent a date.
-- Never invent a model.
-- Never invent a percentage.
-- A value of 0 means zero sales.
-- A value of 0 does NOT mean data is unavailable.
-- If a requested value is absent from the data,
-  say "Not available".
-- Do not mention SQL.
-- Do not mention JSON.
-- Do not mention stored procedures.
-- Do not mention routing.
-- Do not mention tools.
-- Do not mention APIs.
-- Do not mention internal implementation.
-- Do not expose database field names.
+- Never invent a sales count, amount, date, model, or percentage.
+- A value of 0 means zero sales; it does NOT mean that data is unavailable.
+- If a requested value is absent from the data, say that the value is not available.
+- Do not mention SQL, JSON, stored procedures, routing, tools, or internal implementation.
+- Format the answer as Markdown suitable for a ChatGPT-style mobile chat.
+- Use a short heading with bold key figures.
+- Use bullet points for KPIs when appropriate.
+- Keep the answer concise and business-focused.
 
+For a simple sales-period question, prefer this structure:
 
-==================================================
-MARKDOWN FORMATTING
-==================================================
+### Sales Summary
 
-MARKDOWN FORMATTING IS MANDATORY.
+- **Vehicles sold:** X
+- **Sales value:** ₹X
+- **Period:** X
 
-- ALWAYS return Markdown.
-- ALWAYS use a short heading.
-- ALWAYS use bullet points when presenting
-  multiple KPIs.
-- ALWAYS make KPI labels bold.
-- ALWAYS make important numeric values bold.
-- ALWAYS make sales amounts bold when supplied.
-- ALWAYS make percentages bold when supplied.
-- ALWAYS make model names bold when supplied.
-- ALWAYS make important conclusions bold
-  where appropriate.
-- Keep the response concise.
-- Optimize for a mobile chat screen.
-- Do not create a large table unless the employee
-  explicitly asks for one.
-
-
-==================================================
-SIMPLE SALES PERIOD
-==================================================
-
-For a simple sales-period question, use:
-
-### 📊 Sales Summary
-
-- **Vehicles sold:** **X**
-- **Sales value:** **₹X**
-- **Period:** **X**
-
-Only show Sales value when it is supplied.
-
-
-==================================================
-SALES COMPARISON
-==================================================
-
-For comparisons, use:
-
-### 📈 Sales Performance
-
-- **Today:** **X vehicles** — **₹X**
-- **Yesterday:** **X vehicles** — **₹X**
-- **Difference:** **X vehicles**
-- **Growth:** **X%**
-
-Then provide a short conclusion.
-
-For improving:
-
-**Sales are improving compared with the previous
-period.**
-
-For declining:
-
-**Sales are declining compared with the previous
-period.**
-
-For stable:
-
-**Sales are stable compared with the previous
-period.**
-
-
-==================================================
-SALES TREND
-==================================================
-
-For trend questions:
-
-- Clearly state **Improving** 📈,
-  **Declining** 📉, or **Stable** ➡️.
-- Base the conclusion ONLY on the supplied result.
-- Never invent a reason for the trend.
-
-
-==================================================
-NO DATA
-==================================================
-
-If there is no data:
-
-**No sales records were found for the requested
-period.**
-
-
-==================================================
-MISSING VALUE
-==================================================
-
-If a value is missing:
-
-- Do not guess it.
-- Say **Not available**.
-
-Never return a plain paragraph when multiple
-data fields are available.
+For a trend question, clearly state whether sales are improving, declining, or stable based on the supplied result.
 `;
 
-
-            const response =
-                await ai.generate(
-                    salesPrompt
-                );
-
-
-            console.log(
-                "======================================"
+            return await ai.generate(
+                salesPrompt
             );
 
-            console.log(
-                "FINAL SALES AI RESPONSE"
-            );
-
-            console.log(
-                response
-            );
-
-            console.log(
-                "======================================"
-            );
-
-
-            return response;
         }
 
 
@@ -567,15 +794,7 @@ data fields are available.
         // Scalar Result
         //--------------------------------------------------
 
-        const scalarActions = [
-            "stock"
-        ];
-
-
         if (
-            scalarActions.includes(
-                routed.action
-            ) &&
             Array.isArray(
                 routed.data?.data
             ) &&
@@ -588,15 +807,14 @@ data fields are available.
             const values =
                 Object.values(row);
 
-
-            if (
-                values.length === 1
-            ) {
+            if (values.length === 1) {
 
                 return String(
                     values[0]
                 );
+
             }
+
         }
 
 
@@ -619,16 +837,13 @@ Employee asked:
 
 "${message}"
 
-
 Business Domain:
 
 ${routed.type}
 
-
 Action:
 
 ${routed.action}
-
 
 The business system returned:
 
@@ -638,68 +853,21 @@ ${JSON.stringify(
     2
 )}
 
+Instructions:
 
-==================================================
-INSTRUCTIONS
-==================================================
-
-- Use ONLY the supplied data.
 - Summarize the result naturally.
-- Use Markdown formatting.
-- ALWAYS use a short heading.
-- Use **bold** for important numbers.
-- Use **bold** for model names.
-- Use **bold** for totals.
-- Use **bold** for warnings.
-- Use **bold** for key conclusions.
-- Use bullet points for lists of models or items.
-- Use short headings when useful.
-- Keep the response concise.
-- Keep the response easy to scan on a mobile screen.
-- Do not create large tables unless the user
-  explicitly asks for a table.
 - Mention totals where appropriate.
-- If there are multiple rows, provide a concise
-  overview followed by bullet points.
+- If there are multiple rows, provide a concise overview.
 - Never mention SQL.
 - Never mention JSON.
-- Never mention stored procedures.
-- Never mention APIs.
-- Never mention routing.
-- Never mention tools.
-- Never mention internal implementation.
-- Never expose database field names.
-- If there is no data, politely state that no
-  records were found.
-- Never invent information that is not present
-  in the supplied data.
+- Never expose internal implementation details.
+- If there is no data, politely state that no records were found.
 `;
 
-
-            const response =
-                await ai.generate(
-                    prompt
-                );
-
-
-            console.log(
-                "======================================"
+            return await ai.generate(
+                prompt
             );
 
-            console.log(
-                "FINAL TABLE AI RESPONSE"
-            );
-
-            console.log(
-                response
-            );
-
-            console.log(
-                "======================================"
-            );
-
-
-            return response;
         }
 
 
@@ -708,6 +876,7 @@ INSTRUCTIONS
         //--------------------------------------------------
 
         return "Task completed.";
+
     }
 
 
@@ -724,55 +893,17 @@ Employee Question:
 
 ${message}
 
-
 Reply professionally.
 
-Use Markdown when it improves readability.
-
-Use:
-
-- **bold** for important information
-- bullet points for lists
-- short headings for longer answers
-
-If the employee asks about a feature that has
-not yet been implemented, politely explain that
-it is not currently available.
+If the employee asks about a feature that has not yet been implemented, politely explain that it is not currently available.
 `;
 
-
-    const response =
-        await ai.generate(
-            prompt
-        );
-
-
-    console.log(
-        "======================================"
+    return await ai.generate(
+        prompt
     );
 
-    console.log(
-        "FINAL GENERAL AI RESPONSE"
-    );
-
-    console.log(
-        response
-    );
-
-    console.log(
-        "======================================"
-    );
-
-
-    return response;
 }
 
-
-/**
- * ==================================================
- * Exports
- * ==================================================
- */
 
 module.exports = {
     runAI
