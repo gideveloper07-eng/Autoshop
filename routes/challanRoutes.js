@@ -2013,4 +2013,66 @@ router.get("/sc-sale-details", async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/sales-comparison
+// Returns sales comparison data (current vs previous period) for a given period.
+// Query params: period = today_vs_yesterday | thisweek_vs_lastweek |
+//               thismonth_vs_lastmonth | thisquarter_vs_lastquarter | thisyear_vs_lastyear
+// SP mode: SalesComparisonShowdata
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/sales-comparison", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const { currentDatabase: databaseName } = decoded;
+    if (!databaseName) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Database not found in token" });
+    }
+
+    const period = (req.query.period || "today_vs_yesterday").trim();
+
+    console.log(
+      "📊 SALES COMPARISON — DB:",
+      databaseName,
+      "Period:",
+      period,
+    );
+
+    pool = await openPool(databaseName);
+
+    const result = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "")
+      .input("what", sql.NVarChar(50), "SalesComparisonShowdata")
+      .input("FromDate", sql.NVarChar(50), "")
+      .input("ToDate", sql.NVarChar(50), "")
+      .input("period", sql.NVarChar(50), period)
+      .execute("A_SP_FOR_ApplicationChallangrid");
+
+    if (!result.recordset || result.recordset.length === 0) {
+      return res.json({ success: true, data: {} });
+    }
+
+    return res.json({
+      success: true,
+      data: result.recordset[0],
+    });
+  } catch (err) {
+    console.error("❌ SALES COMPARISON ERROR:", err.message);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  } finally {
+    // if (pool) await pool.close();
+  }
+});
+
 module.exports = router;
