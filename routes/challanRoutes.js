@@ -1093,10 +1093,14 @@ router.get("/dashboard-stats", async (req, res) => {
       .input("ToDate", sql.NVarChar(50), "")
       .execute("A_SP_FOR_ApplicationChallangrid");
 
+    // Accept ?period=7days (default) or ?period=6months from the Flutter client
+    const trendPeriod = req.query.period === "6months" ? "6months" : "7days";
+
     const bookingTrendResult = await pool
       .request()
       .input("prefix", sql.NVarChar(50), "")
       .input("what", sql.NVarChar(50), "BookingTrend")
+      .input("period", sql.NVarChar(50), trendPeriod)
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
       .execute("A_SP_FOR_ApplicationChallangrid");
@@ -1105,6 +1109,7 @@ router.get("/dashboard-stats", async (req, res) => {
       .request()
       .input("prefix", sql.NVarChar(50), "")
       .input("what", sql.NVarChar(50), "SaleTrend")
+      .input("period", sql.NVarChar(50), trendPeriod)
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
       .execute("A_SP_FOR_ApplicationChallangrid");
@@ -1196,6 +1201,7 @@ router.get("/dashboard-stats", async (req, res) => {
         saleGrowth,
         saleTrend,
         pendingDelivery,
+        trendPeriod,
       },
     });
   } catch (err) {
