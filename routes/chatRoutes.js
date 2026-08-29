@@ -1977,16 +1977,34 @@ router.get("/get-tasks", async (req, res) => {
   let pool;
 
   try {
+    // ============================================================
+    // AUTHENTICATION
+    // ============================================================
+
     const decoded = decodeToken(req);
+
     if (!decoded) {
-      return res.status(401).json({ success: false, message: "Unauthorized" });
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
     }
+
+    // ============================================================
+    // CURRENT USER
+    // ============================================================
 
     const userId = decoded.userId;
     const isAdmin = decoded.isAdmin || false;
+
     const clientId = decoded.loginClientId || decoded.clientId || null;
+
     const currentDatabase =
       decoded.currentDatabase || decoded.loginDatabase || decoded.database;
+
+    // ============================================================
+    // OPEN COMMUNICATION DATABASE
+    // ============================================================
 
     pool = await new sql.ConnectionPool({
       user: process.env.DB_USER,
@@ -1994,96 +2012,202 @@ router.get("/get-tasks", async (req, res) => {
       server: process.env.DB_HOST,
       port: parseInt(process.env.DB_PORT || "1433"),
       database: process.env.COMM_DB,
-      options: { encrypt: false, trustServerCertificate: true },
+      options: {
+        encrypt: false,
+        trustServerCertificate: true,
+      },
     }).connect();
 
+    // ============================================================
+    // GET TASKS
+    // ============================================================
+
     let result;
+
+    // ============================================================
+    // ADMIN
+    // ============================================================
+
     if (isAdmin) {
       result = await pool
         .request()
-        .input("currentDB", sql.NVarChar(50), currentDatabase || null).query(`
+        .input("currentDB", sql.NVarChar(100), currentDatabase || null).query(`
           SELECT
-            CAST(t.TaskId     AS NVARCHAR(50))  AS TaskId,
-            CAST(t.ChallanId  AS NVARCHAR(100)) AS ChallanId,
-            CAST(t.GroupId    AS NVARCHAR(50))  AS GroupId,
+            CAST(t.TaskId AS NVARCHAR(50)) AS TaskId,
+            CAST(t.ChallanId AS NVARCHAR(100)) AS ChallanId,
+            CAST(t.GroupId AS NVARCHAR(50)) AS GroupId,
+
             t.TaskTitle,
             t.TaskDescription,
+
             t.AssignedBy,
             t.AssignedTo,
+
+            -- Will be replaced below with actual employee name
             t.AssignedTo AS AssignedToName,
+
             t.Priority,
             t.Status,
+
             t.StartDate,
             t.DueDate,
             t.CreatedDate,
+
             t.DatabaseName,
             t.PropertyCode,
+
             CASE
-              WHEN t.GroupId   IS NOT NULL THEN 'Group'
+              WHEN t.GroupId IS NOT NULL THEN 'Group'
               WHEN t.ChallanId IS NOT NULL THEN 'Challan'
               ELSE 'Individual'
             END AS TaskSource
+
           FROM MA_ChatTasks t
+
           WHERE t.DatabaseName = @currentDB
+
           ORDER BY t.CreatedDate DESC;
-        `);
-    } else {
-      result = await pool.request().input("UserId", sql.NVarChar(100), userId)
-        .query(`
-          SELECT
-    CAST(t.TaskId AS NVARCHAR(50)) AS TaskId,
-    CAST(t.ChallanId AS NVARCHAR(100)) AS ChallanId,
-    CAST(t.GroupId AS NVARCHAR(50)) AS GroupId,
-    t.TaskTitle,
-    t.TaskDescription,
-    t.AssignedBy,
-    t.AssignedTo,
-    t.AssignedTo AS AssignedToName,
-    t.Priority,
-    t.Status,
-    t.StartDate,
-    t.DueDate,
-    t.CreatedDate,
-    t.DatabaseName,
-    t.PropertyCode,
-
-    CASE
-        WHEN t.GroupId IS NOT NULL THEN 'Group'
-        WHEN t.ChallanId IS NOT NULL THEN 'Challan'
-        ELSE 'Individual'
-    END AS TaskSource
-
-FROM MA_ChatTasks t
-
-WHERE
-(
-    LOWER(ISNULL(t.AssignedTo, '')) = LOWER(@UserId)
-
-    OR
-
-    LOWER(ISNULL(t.AssignedTo, '')) IN
-    (
-        SELECT LOWER(userguid)
-        FROM ma_userdirectory
-        WHERE LOWER(loginid) = LOWER(@UserId)
-          AND propertydb = t.DatabaseName
-    )
-
-    OR
-
-    LOWER(ISNULL(t.AssignedBy, '')) = LOWER(@UserId)
-)
-
-ORDER BY t.CreatedDate DESC;
         `);
     }
 
-    return res.json({ success: true, data: result.recordset });
+    // ============================================================
+    // NORMAL USER
+    // ============================================================
+    else {
+      result = await pool.request().input("UserId", sql.NVarChar(100), userId)
+        .query(`
+          SELECT
+
+            CAST(t.TaskId AS NVARCHAR(50)) AS TaskId,
+            CAST(t.ChallanId AS NVARCHAR(100)) AS ChallanId,
+            CAST(t.GroupId AS NVARCHAR(50)) AS GroupId,
+
+            t.TaskTitle,
+            t.TaskDescription,
+
+            t.AssignedBy,
+            t.AssignedTo,
+
+            -- Will be replaced below with actual employee name
+            t.AssignedTo AS AssignedToName,
+
+            t.Priority,
+            t.Status,
+
+            t.StartDate,
+            t.DueDate,
+            t.CreatedDate,
+
+            t.DatabaseName,
+            t.PropertyCode,
+
+            CASE
+              WHEN t.GroupId IS NOT NULL THEN 'Group'
+              WHEN t.ChallanId IS NOT NULL THEN 'Challan'
+              ELSE 'Individual'
+            END AS TaskSource
+
+          FROM MA_ChatTasks t
+
+          WHERE
+          (
+              -- Assigned directly using UserId
+              LOWER(ISNULL(t.AssignedTo, '')) =
+              LOWER(@UserId)
+
+              OR
+
+              -- Assigned using User GUID
+              LOWER(ISNULL(t.AssignedTo, '')) IN
+              (
+                  SELECT LOWER(userguid)
+                  FROM ma_userdirectory
+
+                  WHERE LOWER(loginid) =
+                        LOWER(@UserId)
+
+                    AND propertydb =
+                        t.DatabaseName
+              )
+
+              OR
+
+              -- Tasks created by this user
+              LOWER(ISNULL(t.AssignedBy, '')) =
+              LOWER(@UserId)
+          )
+
+          ORDER BY t.CreatedDate DESC;
+        `);
+    }
+
+    // ============================================================
+    // RESOLVE ASSIGNEDTO GUID -> EMPLOYEE NAME
+    // ============================================================
+
+    const tasks = result.recordset;
+
+    await Promise.all(
+      tasks.map(async (task) => {
+        const assignedTo = task.AssignedTo?.toString().trim();
+
+        const databaseName = task.DatabaseName?.toString().trim();
+
+        // Default = original ID
+        task.AssignedToName = assignedTo || "";
+
+        // Nothing to resolve
+        if (!assignedTo || !databaseName) {
+          return;
+        }
+
+        try {
+          // ------------------------------------------------------
+          // Find employee from company database
+          // rh_secut:
+          // utunqid = User GUID
+          // uti     = User ID
+          // utnm    = User Name
+          // ------------------------------------------------------
+
+          const user = await findUserInDatabase(databaseName, assignedTo);
+
+          if (user && user.utnm) {
+            task.AssignedToName = user.utnm.toString().trim();
+          }
+        } catch (nameError) {
+          console.error("ASSIGNED TO NAME ERROR:", {
+            AssignedTo: assignedTo,
+            DatabaseName: databaseName,
+            Error: nameError.message,
+          });
+
+          // If name lookup fails,
+          // keep the original ID instead of breaking API
+          task.AssignedToName = assignedTo;
+        }
+      }),
+    );
+
+    // ============================================================
+    // RESPONSE
+    // ============================================================
+
+    return res.json({
+      success: true,
+      data: tasks,
+    });
   } catch (err) {
     console.error("GET TASKS ERROR:", err);
-    return res.status(500).json({ success: false, message: err.message });
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
   } finally {
-    if (pool) await pool.close();
+    if (pool) {
+      await pool.close();
+    }
   }
 });
 
