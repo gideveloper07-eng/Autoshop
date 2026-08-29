@@ -2031,31 +2031,50 @@ router.get("/get-tasks", async (req, res) => {
       result = await pool.request().input("UserId", sql.NVarChar(100), userId)
         .query(`
           SELECT
-            CAST(t.TaskId     AS NVARCHAR(50))  AS TaskId,
-            CAST(t.ChallanId  AS NVARCHAR(100)) AS ChallanId,
-            CAST(t.GroupId    AS NVARCHAR(50))  AS GroupId,
-            t.TaskTitle,
-            t.TaskDescription,
-            t.AssignedBy,
-            t.AssignedTo,
-            t.AssignedTo AS AssignedToName,
-            t.Priority,
-            t.Status,
-            t.StartDate,
-            t.DueDate,
-            t.CreatedDate,
-            t.DatabaseName,
-            t.PropertyCode,
-            CASE
-              WHEN t.GroupId   IS NOT NULL THEN 'Group'
-              WHEN t.ChallanId IS NOT NULL THEN 'Challan'
-              ELSE 'Individual'
-            END AS TaskSource
-          FROM MA_ChatTasks t
-          WHERE
-            LOWER(ISNULL(t.AssignedTo,'')) = LOWER(@UserId)
-            OR LOWER(ISNULL(t.AssignedBy,'')) = LOWER(@UserId)
-          ORDER BY t.CreatedDate DESC;
+    CAST(t.TaskId AS NVARCHAR(50)) AS TaskId,
+    CAST(t.ChallanId AS NVARCHAR(100)) AS ChallanId,
+    CAST(t.GroupId AS NVARCHAR(50)) AS GroupId,
+    t.TaskTitle,
+    t.TaskDescription,
+    t.AssignedBy,
+    t.AssignedTo,
+    t.AssignedTo AS AssignedToName,
+    t.Priority,
+    t.Status,
+    t.StartDate,
+    t.DueDate,
+    t.CreatedDate,
+    t.DatabaseName,
+    t.PropertyCode,
+
+    CASE
+        WHEN t.GroupId IS NOT NULL THEN 'Group'
+        WHEN t.ChallanId IS NOT NULL THEN 'Challan'
+        ELSE 'Individual'
+    END AS TaskSource
+
+FROM MA_ChatTasks t
+
+WHERE
+(
+    LOWER(ISNULL(t.AssignedTo, '')) = LOWER(@UserId)
+
+    OR
+
+    LOWER(ISNULL(t.AssignedTo, '')) IN
+    (
+        SELECT LOWER(userguid)
+        FROM ma_userdirectory
+        WHERE LOWER(loginid) = LOWER(@UserId)
+          AND propertydb = t.DatabaseName
+    )
+
+    OR
+
+    LOWER(ISNULL(t.AssignedBy, '')) = LOWER(@UserId)
+)
+
+ORDER BY t.CreatedDate DESC;
         `);
     }
 
