@@ -2585,22 +2585,20 @@ router.post("/notify-task-complete", async (req, res) => {
     // if (pool) await pool.close();
   }
 });
+
+// ── POST /api/chat/create-global-task ─────────────────────────────────────────
+// Admin-only endpoint: assign a task to any user directly from the home screen.
+// No ChallanId, no GroupId — purely a standalone task.
+// Does NOT create a chat message (this is not tied to any chat context).
 router.post("/create-global-task", async (req, res) => {
   let pool;
-  let employeePool;
-
   try {
     const decoded = decodeToken(req);
-
     if (!decoded) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized",
-      });
+      return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
     const isAdmin = decoded.isAdmin || false;
-
     if (!isAdmin) {
       return res.status(403).json({
         success: false,
@@ -2609,15 +2607,12 @@ router.post("/create-global-task", async (req, res) => {
     }
 
     const userId = decoded.userId;
-
     const currentDatabase =
       decoded.currentDatabase || decoded.loginDatabase || decoded.database;
-
     const currentPropertyCode =
       decoded.currentPropertyCode ||
       decoded.loginPropertyCode ||
       decoded.propertyCode;
-
     const currentClientId =
       decoded.currentClientId || decoded.loginClientId || decoded.clientId;
 
@@ -2638,50 +2633,10 @@ router.post("/create-global-task", async (req, res) => {
     }
 
     console.log("========== CREATE GLOBAL TASK ==========");
-    console.log("AssignedBy GUID :", userId);
-    console.log("Receiver ID     :", receiverId);
+    console.log("AssignedBy      :", userId);
+    console.log("AssignedTo      :", receiverId);
     console.log("Current DB      :", currentDatabase);
-    console.log("Property Code   :", currentPropertyCode);
-    console.log("========================================");
-
-    // =====================================================
-    // IMPORTANT:
-    // receiverId from Flutter is utunqid (GUID)
-    // AssignedTo must contain uti because login uses uti
-    // =====================================================
-
-    employeePool = await openPool(currentDatabase);
-
-    const employeeResult = await employeePool
-      .request()
-      .input("receiverGuid", sql.UniqueIdentifier, receiverId).query(`
-        SELECT TOP 1
-            utunqid,
-            uti,
-            utnm
-        FROM rh_secut
-        WHERE utunqid = @receiverGuid
-      `);
-
-    if (employeeResult.recordset.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Assigned user not found.",
-      });
-    }
-
-    const receiver = employeeResult.recordset[0];
-
-    // This is the value that Vinod's JWT uses as userId
-    const assignedToUserId = receiver.uti;
-
-    console.log("Receiver GUID    :", receiver.utunqid);
-    console.log("Receiver Login ID:", receiver.uti);
-    console.log("Receiver Name    :", receiver.utnm);
-
-    // =====================================================
-    // CREATE TASK
-    // =====================================================
+    console.log("=========================================");
 
     const taskId = randomUUID();
 
@@ -2693,191 +2648,62 @@ router.post("/create-global-task", async (req, res) => {
       .input("TaskTitle", sql.NVarChar(400), taskTitle)
       .input("TaskDescription", sql.NVarChar(sql.MAX), taskDescription || "")
       .input("AssignedBy", sql.NVarChar(200), userId)
-
-      // IMPORTANT:
-      // Store uti, NOT utunqid
-      .input("AssignedTo", sql.NVarChar(200), assignedToUserId)
-
+      .input("AssignedTo", sql.NVarChar(200), receiverId)
       .input("StartDate", sql.DateTime, startDate || null)
       .input("DueDate", sql.DateTime, dueDate || null)
       .input("Priority", sql.NVarChar(40), priority || "Medium")
       .input("DatabaseName", sql.NVarChar(100), currentDatabase)
       .input("PropertyCode", sql.NVarChar(20), currentPropertyCode)
       .input("ClientId", sql.UniqueIdentifier, currentClientId || null).query(`
-        INSERT INTO MA_ChatTasks
-        (
-            TaskId,
-            TaskTitle,
-            TaskDescription,
-            AssignedBy,
-            AssignedTo,
-            StartDate,
-            DueDate,
-            Priority,
-            Status,
-            CreatedDate,
-            DatabaseName,
-            PropertyCode,
-            ClientId
-        )
-        VALUES
-        (
-            @TaskId,
-            @TaskTitle,
-            @TaskDescription,
-            @AssignedBy,
-            @AssignedTo,
-            @StartDate,
-            @DueDate,
-            @Priority,
-            'Pending',
-            GETDATE(),
-            @DatabaseName,
-            @PropertyCode,
-            @ClientId
-        )
-      `);
+INSERT INTO MA_ChatTasks
+(
+    TaskId,
+    TaskTitle,
+    TaskDescription,
+    AssignedBy,
+    AssignedTo,
+    StartDate,
+    DueDate,
+    Priority,
+    Status,
+    CreatedDate,
+    DatabaseName,
+    PropertyCode,
+    ClientId
+)
+VALUES
+(
+    @TaskId,
+    @TaskTitle,
+    @TaskDescription,
+    @AssignedBy,
+    @AssignedTo,
+    @StartDate,
+    @DueDate,
+    @Priority,
+    'Pending',
+    GETDATE(),
+    @DatabaseName,
+    @PropertyCode,
+    @ClientId
+)
+`);
 
     return res.json({
       success: true,
       taskId,
-      assignedTo: assignedToUserId,
-      assignedToName: receiver.utnm,
       message: "Global task created successfully",
     });
   } catch (err) {
     console.error("CREATE GLOBAL TASK ERROR:", err);
-
     return res.status(500).json({
       success: false,
       message: err.message,
       detail: err.originalError?.message,
     });
   } finally {
-    if (employeePool) {
-      await employeePool.close();
-    }
-
-    // Keep communication pool reusable if this is your shared pool
-    // Do not close it if communicationPool.js manages it globally.
+    // if (pool) await pool.close();
   }
 });
-// ── POST /api/chat/create-global-task ─────────────────────────────────────────
-// Admin-only endpoint: assign a task to any user directly from the home screen.
-// No ChallanId, no GroupId — purely a standalone task.
-// Does NOT create a chat message (this is not tied to any chat context).
-// router.post("/create-global-task", async (req, res) => {
-//   let pool;
-//   try {
-//     const decoded = decodeToken(req);
-//     if (!decoded) {
-//       return res.status(401).json({ success: false, message: "Unauthorized" });
-//     }
-
-//     const isAdmin = decoded.isAdmin || false;
-//     if (!isAdmin) {
-//       return res
-//         .status(403)
-//         .json({ success: false, message: "Only admins can assign global tasks" });
-//     }
-
-//     const userId = decoded.userId;
-//     const currentDatabase =
-//       decoded.currentDatabase || decoded.loginDatabase || decoded.database;
-//     const currentPropertyCode =
-//       decoded.currentPropertyCode ||
-//       decoded.loginPropertyCode ||
-//       decoded.propertyCode;
-//     const currentClientId =
-//       decoded.currentClientId || decoded.loginClientId || decoded.clientId;
-
-//     const {
-//       receiverId,
-//       taskTitle,
-//       taskDescription,
-//       startDate,
-//       dueDate,
-//       priority,
-//     } = req.body;
-
-//     if (!receiverId || !taskTitle) {
-//       return res
-//         .status(400)
-//         .json({ success: false, message: "receiverId and taskTitle are required" });
-//     }
-
-//     console.log("========== CREATE GLOBAL TASK ==========");
-//     console.log("AssignedBy      :", userId);
-//     console.log("AssignedTo      :", receiverId);
-//     console.log("Current DB      :", currentDatabase);
-//     console.log("=========================================");
-
-//     const taskId = randomUUID();
-
-//     pool = await openCommunicationPool();
-
-//     await pool
-//       .request()
-//       .input("TaskId", sql.UniqueIdentifier, taskId)
-//       .input("TaskTitle", sql.NVarChar(400), taskTitle)
-//       .input("TaskDescription", sql.NVarChar(sql.MAX), taskDescription || "")
-//       .input("AssignedBy", sql.NVarChar(200), userId)
-//       .input("AssignedTo", sql.NVarChar(200), receiverId)
-//       .input("StartDate", sql.DateTime, startDate || null)
-//       .input("DueDate", sql.DateTime, dueDate || null)
-//       .input("Priority", sql.NVarChar(40), priority || "Medium")
-//       .input("DatabaseName", sql.NVarChar(100), currentDatabase)
-//       .input("PropertyCode", sql.NVarChar(20), currentPropertyCode)
-//       .input("ClientId", sql.UniqueIdentifier, currentClientId || null).query(`
-// INSERT INTO MA_ChatTasks
-// (
-//     TaskId,
-//     TaskTitle,
-//     TaskDescription,
-//     AssignedBy,
-//     AssignedTo,
-//     StartDate,
-//     DueDate,
-//     Priority,
-//     Status,
-//     CreatedDate,
-//     DatabaseName,
-//     PropertyCode,
-//     ClientId
-// )
-// VALUES
-// (
-//     @TaskId,
-//     @TaskTitle,
-//     @TaskDescription,
-//     @AssignedBy,
-//     @AssignedTo,
-//     @StartDate,
-//     @DueDate,
-//     @Priority,
-//     'Pending',
-//     GETDATE(),
-//     @DatabaseName,
-//     @PropertyCode,
-//     @ClientId
-// )
-// `);
-
-//     return res.json({
-//       success: true,
-//       taskId,
-//       message: "Global task created successfully",
-//     });
-//   } catch (err) {
-//     console.error("CREATE GLOBAL TASK ERROR:", err);
-//     return res.status(500).json({
-//       success: false,
-//       message: err.message,
-//       detail: err.originalError?.message,
-//     });
-//   } finally {
-//     // if (pool) await pool.close();
-//   }
-// });
 
 module.exports = router;
