@@ -2416,6 +2416,33 @@ ORDER BY m.MessageTime ASC
     // if (pool) await pool.close();
   }
 });
+async function findUserInDatabase(databaseName, receiverGuid) {
+  let pool;
+
+  try {
+    console.log("OPENING DB:", databaseName);
+    pool = await openPool(databaseName);
+    console.log("DB OPENED");
+    const result = await pool
+      .request()
+      .input("guid", sql.UniqueIdentifier, receiverGuid).query(`
+        SELECT TOP (1)
+            utunqid,
+            uti,
+            utnm
+        FROM rh_secut
+        WHERE utunqid=@guid
+      `);
+
+    if (result.recordset.length === 0) {
+      return null;
+    }
+    console.log("QUERY FINISHED");
+    return result.recordset[0];
+  } finally {
+    if (pool) await pool.close();
+  }
+}
 router.get("/tasks", async (req, res) => {
   let pool;
 
