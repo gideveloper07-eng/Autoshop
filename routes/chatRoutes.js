@@ -24,34 +24,83 @@ const { sendChatNotification } = require("../services/notificationService");
 //   }).connect();
 // }
 
-async function findUserInDatabase(databaseName, receiverGuid) {
-  let pool;
+async function findUserInDatabase(databaseName, receiverId) {
+  let employeePool;
 
   try {
-    console.log("OPENING DB:", databaseName);
-    pool = await openPool(databaseName);
-    console.log("DB OPENED");
-    const result = await pool
-      .request()
-      .input("guid", sql.UniqueIdentifier, receiverGuid).query(`
-        SELECT TOP (1)
+    if (!databaseName || !receiverId) {
+      return null;
+    }
+
+    const value = receiverId.toString().trim();
+
+    console.log("OPENING EMPLOYEE DB:", databaseName);
+    console.log("LOOKING FOR USER:", value);
+
+    employeePool = await openPool(databaseName);
+
+    // ============================================================
+    // CASE 1: AssignedTo is GUID
+    // ============================================================
+
+    const guidRegex =
+      /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+    let result;
+
+    if (guidRegex.test(value)) {
+      result = await employeePool
+        .request()
+        .input("guid", sql.UniqueIdentifier, value).query(`
+          SELECT TOP 1
             utunqid,
             uti,
             utnm
-        FROM rh_secut
-        WHERE utunqid=@guid
-      `);
+          FROM rh_secut
+          WHERE utunqid = @guid
+        `);
+    }
+
+    // ============================================================
+    // CASE 2: AssignedTo is normal employee ID
+    // ============================================================
+    else {
+      result = await employeePool
+        .request()
+        .input("userId", sql.NVarChar(100), value).query(`
+          SELECT TOP 1
+            utunqid,
+            uti,
+            utnm
+          FROM rh_secut
+          WHERE
+            UPPER(LTRIM(RTRIM(uti))) =
+            UPPER(LTRIM(RTRIM(@userId)))
+        `);
+    }
 
     if (result.recordset.length === 0) {
+      console.log("USER NOT FOUND:", value);
       return null;
     }
-    console.log("QUERY FINISHED");
+
+    console.log("USER FOUND:", result.recordset[0].utnm);
+
     return result.recordset[0];
+  } catch (error) {
+    console.error("FIND USER ERROR:", {
+      databaseName,
+      receiverId,
+      error: error.message,
+    });
+
+    return null;
   } finally {
-    if (pool) await pool.close();
+    if (employeePool) {
+      await employeePool.close();
+    }
   }
 }
-
 async function findUserByGuid(decoded, receiverGuid) {
   // -------------------------
   // Employee
