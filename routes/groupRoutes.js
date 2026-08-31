@@ -1376,9 +1376,10 @@ router.get("/my-groups", async (req, res) => {
       // Use userGuid (utunqid) to match against member.id stored in MA_ChatGroupMembers
       // member.id is the GUID from utunqid, not the login ID
       const userIdentifier = userGuid || userId;
-      
-      result = await pool.request().input("UserIdentifier", sql.NVarChar(100), userIdentifier)
-        .query(`
+
+      result = await pool
+        .request()
+        .input("UserIdentifier", sql.NVarChar(100), userIdentifier).query(`
           SELECT 
               g.GroupId,
               g.GroupName,
@@ -2490,7 +2491,7 @@ router.get("/tasks", async (req, res) => {
             t.CreatedDate,
             '${dbName.replace(/'/g, "''")}' AS TaskDatabase,
             CASE WHEN t.GroupId IS NOT NULL THEN 'Group' ELSE 'Chat' END AS TaskSource
-          FROM MA_ChatTasks t
+          FROM AUTOSHOP_COMMUNICATION.DBO.MA_ChatTasks t
           LEFT JOIN rh_secut s
             ON CONVERT(VARCHAR(50), s.utunqid) = t.AssignedTo
           ORDER BY t.CreatedDate DESC
@@ -2750,8 +2751,8 @@ SELECT @RequestGuid AS RequestGuid;
         "Someone";
 
       await sendPushNotification(
-        null,                       // pool not needed (uses communicationPool internally)
-        toUser.LoginId,             // receiver's userId
+        null, // pool not needed (uses communicationPool internally)
+        toUser.LoginId, // receiver's userId
         "New Chat Request 💬",
         `${senderName} wants to connect with you`,
         {
