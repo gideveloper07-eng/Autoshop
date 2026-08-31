@@ -2213,265 +2213,56 @@ router.get("/get-tasks", async (req, res) => {
 
 // ── GET /api/chat/individual-tasks ────────────────────────────────────────────
 // Returns ONLY direct-chat tasks (GroupId=NULL, ChallanId=NULL)
-// router.get("/individual-tasks", async (req, res) => {
-//   let pool;
-
-//   try {
-//     const decoded = decodeToken(req);
-//     if (!decoded) {
-//       return res.status(401).json({ success: false, message: "Unauthorized" });
-//     }
-
-//     const userId = decoded.userId;
-
-//     pool = await openCommunicationPool();
-
-//     const result = await pool
-//       .request()
-//       .input("UserId", sql.NVarChar(100), userId).query(`
-//         SELECT
-//           CAST(TaskId AS NVARCHAR(50)) AS TaskId,
-//           NULL                         AS ChallanId,
-//           NULL                         AS GroupId,
-//           TaskTitle,
-//           TaskDescription,
-//           AssignedBy,
-//           AssignedTo,
-//           AssignedTo AS AssignedToName,
-//           Priority,
-//           Status,
-//           StartDate,
-//           DueDate,
-//           CreatedDate,
-//           DatabaseName,
-//           PropertyCode,
-//           'Individual' AS TaskSource
-//         FROM MA_ChatTasks
-//         WHERE
-//           GroupId   IS NULL
-//           AND ChallanId IS NULL
-//           AND (
-//             LOWER(ISNULL(AssignedTo,'')) = LOWER(@UserId)
-//             OR LOWER(ISNULL(AssignedBy,'')) = LOWER(@UserId)
-//           )
-//         ORDER BY CreatedDate DESC;
-//       `);
-
-//     return res.json({ success: true, data: result.recordset });
-//   } catch (err) {
-//     console.error("GET INDIVIDUAL TASKS ERROR:", err);
-//     return res.status(500).json({ success: false, message: err.message });
-//   } finally {
-//     //  if (pool) await pool.close();
-//   }
-// });
-// ── GET /api/chat/individual-tasks ────────────────────────────────────────────
-// Returns individual tasks from AUTOSHOP_COMMUNICATION,
-// filtered by the currently selected company/database.
 router.get("/individual-tasks", async (req, res) => {
   let pool;
 
   try {
     const decoded = decodeToken(req);
-
     if (!decoded) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized",
-      });
+      return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
     const userId = decoded.userId;
-    const isAdmin = decoded.isAdmin || false;
 
-    // Current working company
-    const currentDatabase =
-      decoded.currentDatabase || decoded.loginDatabase || decoded.database;
-
-    const currentPropertyCode =
-      decoded.currentPropertyCode ||
-      decoded.loginPropertyCode ||
-      decoded.propertyCode;
-
-    const currentClientId =
-      decoded.currentClientId ||
-      decoded.loginClientId ||
-      decoded.clientId ||
-      null;
-
-    console.log("========== INDIVIDUAL TASKS ==========");
-    console.log("User ID       :", userId);
-    console.log("Is Admin      :", isAdmin);
-    console.log("Database      :", currentDatabase);
-    console.log("Property Code :", currentPropertyCode);
-    console.log("Client ID     :", currentClientId);
-    console.log("======================================");
-
-    // IMPORTANT:
-    // Tasks are stored ONLY in AUTOSHOP_COMMUNICATION
     pool = await openCommunicationPool();
 
-    const request = pool.request();
-
-    request.input("UserId", sql.NVarChar(100), userId);
-
-    request.input("DatabaseName", sql.NVarChar(100), currentDatabase);
-
-    request.input("PropertyCode", sql.NVarChar(20), currentPropertyCode);
-
-    request.input("ClientId", sql.UniqueIdentifier, currentClientId || null);
-
-    let result;
-
-    if (isAdmin) {
-      // ----------------------------------------------------
-      // ADMIN
-      // Only tasks belonging to CURRENT company
-      // ----------------------------------------------------
-
-      result = await request.query(`
+    const result = await pool
+      .request()
+      .input("UserId", sql.NVarChar(100), userId).query(`
         SELECT
           CAST(TaskId AS NVARCHAR(50)) AS TaskId,
-          CAST(ChallanId AS NVARCHAR(100)) AS ChallanId,
-          CAST(GroupId AS NVARCHAR(50)) AS GroupId,
-
+          NULL                         AS ChallanId,
+          NULL                         AS GroupId,
           TaskTitle,
           TaskDescription,
-
           AssignedBy,
           AssignedTo,
           AssignedTo AS AssignedToName,
-
           Priority,
           Status,
-
           StartDate,
           DueDate,
           CreatedDate,
-
           DatabaseName,
           PropertyCode,
-          ClientId,
-
           'Individual' AS TaskSource
-
         FROM MA_ChatTasks
-
         WHERE
-          GroupId IS NULL
+          GroupId   IS NULL
           AND ChallanId IS NULL
-
-          -- VERY IMPORTANT
-          AND DatabaseName = @DatabaseName
-
           AND (
-            @PropertyCode IS NULL
-            OR PropertyCode = @PropertyCode
+            LOWER(ISNULL(AssignedTo,'')) = LOWER(@UserId)
+            OR LOWER(ISNULL(AssignedBy,'')) = LOWER(@UserId)
           )
-
-          AND (
-            @ClientId IS NULL
-            OR ClientId = @ClientId
-          )
-
         ORDER BY CreatedDate DESC;
       `);
-    } else {
-      // ----------------------------------------------------
-      // NORMAL USER
-      // Only tasks for CURRENT company + CURRENT USER
-      // ----------------------------------------------------
 
-      result = await request.query(`
-        SELECT
-          CAST(TaskId AS NVARCHAR(50)) AS TaskId,
-          CAST(ChallanId AS NVARCHAR(100)) AS ChallanId,
-          CAST(GroupId AS NVARCHAR(50)) AS GroupId,
-
-          TaskTitle,
-          TaskDescription,
-
-          AssignedBy,
-          AssignedTo,
-          AssignedTo AS AssignedToName,
-
-          Priority,
-          Status,
-
-          StartDate,
-          DueDate,
-          CreatedDate,
-
-          DatabaseName,
-          PropertyCode,
-          ClientId,
-
-          'Individual' AS TaskSource
-
-        FROM MA_ChatTasks
-
-        WHERE
-          GroupId IS NULL
-          AND ChallanId IS NULL
-
-          -- CURRENT COMPANY
-          AND DatabaseName = @DatabaseName
-
-          AND (
-            @PropertyCode IS NULL
-            OR PropertyCode = @PropertyCode
-          )
-
-          AND (
-            @ClientId IS NULL
-            OR ClientId = @ClientId
-          )
-
-          AND
-          (
-            -- Assigned directly using UserId
-            LOWER(ISNULL(AssignedTo, '')) =
-            LOWER(@UserId)
-
-            OR
-
-            -- Created by current user
-            LOWER(ISNULL(AssignedBy, '')) =
-            LOWER(@UserId)
-
-            OR
-
-            -- Assigned using GUID
-            LOWER(ISNULL(AssignedTo, '')) IN
-            (
-              SELECT LOWER(userguid)
-              FROM ma_userdirectory
-              WHERE
-                LOWER(loginid) = LOWER(@UserId)
-                AND propertydb = @DatabaseName
-            )
-          )
-
-        ORDER BY CreatedDate DESC;
-      `);
-    }
-
-    console.log("INDIVIDUAL TASK COUNT:", result.recordset.length);
-
-    return res.json({
-      success: true,
-      data: result.recordset,
-    });
+    return res.json({ success: true, data: result.recordset });
   } catch (err) {
     console.error("GET INDIVIDUAL TASKS ERROR:", err);
-
-    return res.status(500).json({
-      success: false,
-      message: err.message,
-    });
+    return res.status(500).json({ success: false, message: err.message });
   } finally {
-    // openCommunicationPool() is shared.
-    // Do not close it here.
+    //  if (pool) await pool.close();
   }
 });
 
