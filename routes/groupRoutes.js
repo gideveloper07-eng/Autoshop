@@ -2538,7 +2538,7 @@ router.get("/tasks", async (req, res) => {
         (
           @ClientId IS NULL
           OR @ClientId = ''
-          OR LOWER(ISNULL(t.ClientId, '')) =
+          OR LOWER(ISNULL(cast(t.ClientId as nvarchar(max)), '')) =
              LOWER(@ClientId)
         )
 
