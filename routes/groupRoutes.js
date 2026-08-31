@@ -2491,7 +2491,7 @@ router.get("/tasks", async (req, res) => {
             t.CreatedDate,
             '${dbName.replace(/'/g, "''")}' AS TaskDatabase,
             CASE WHEN t.GroupId IS NOT NULL THEN 'Group' ELSE 'Chat' END AS TaskSource
-          FROM AUTOSHOP_COMMUNICATION.DBO.MA_ChatTasks t
+          FROM MA_ChatTasks t
           LEFT JOIN rh_secut s
             ON CONVERT(VARCHAR(50), s.utunqid) = t.AssignedTo
           ORDER BY t.CreatedDate DESC
