@@ -1310,6 +1310,10 @@ router.get("/my-groups", async (req, res) => {
   let pool;
 
   try {
+    // ============================================================
+    // AUTHENTICATION
+    // ============================================================
+
     const decoded = decodeToken(req);
 
     if (!decoded) {
@@ -1319,12 +1323,73 @@ router.get("/my-groups", async (req, res) => {
       });
     }
 
-    const { userId, userGuid, isAdmin } = decoded;
+    // ============================================================
+    // CURRENT USER
+    // ============================================================
 
-    // Always use Communication DB
+    const userId = decoded.userId || null;
+    const userGuid = decoded.userGuid || null;
+    const isAdmin =
+      decoded.isAdmin === true ||
+      decoded.isAdmin === "true" ||
+      decoded.isAdmin === 1;
+
+    // ============================================================
+    // CURRENT COMPANY / DATABASE
+    // ============================================================
+
+    const databaseName =
+      decoded.currentDatabase ||
+      decoded.loginDatabase ||
+      decoded.database ||
+      null;
+
+    const propertyCode =
+      decoded.currentPropertyCode ||
+      decoded.loginPropertyCode ||
+      decoded.propertyCode ||
+      null;
+
+    const clientId =
+      decoded.currentClientId ||
+      decoded.loginClientId ||
+      decoded.clientId ||
+      null;
+
+    console.log("==============================================");
+    console.log("             GET MY GROUPS");
+    console.log("==============================================");
+    console.log("UserId       :", userId);
+    console.log("UserGuid     :", userGuid);
+    console.log("IsAdmin      :", isAdmin);
+    console.log("Database     :", databaseName);
+    console.log("PropertyCode :", propertyCode);
+    console.log("ClientId     :", clientId);
+    console.log("==============================================");
+
+    // ============================================================
+    // DATABASE VALIDATION
+    // ============================================================
+
+    if (!databaseName) {
+      return res.status(400).json({
+        success: false,
+        message: "Current database not found in login session",
+      });
+    }
+
+    // ============================================================
+    // ALWAYS USE COMMUNICATION DATABASE
+    // ============================================================
+
     pool = await openCommunicationPool();
 
-    // Ensure required tables exist
+    console.log("✅ COMMUNICATION DATABASE CONNECTED");
+
+    // ============================================================
+    // CHECK REQUIRED TABLES
+    // ============================================================
+
     const tableCheck = await pool.request().query(`
       SELECT COUNT(*) AS Total
       FROM INFORMATION_SCHEMA.TABLES
@@ -1337,16 +1402,143 @@ router.get("/my-groups", async (req, res) => {
     `);
 
     if (tableCheck.recordset[0].Total < 3) {
+      console.log("⚠️ Required group tables not found");
+
       return res.json({
         success: true,
         data: [],
       });
     }
 
-    let result;
+    // ============================================================
+    // ADMIN
+    // ============================================================
 
     if (isAdmin) {
-      result = await pool.request().query(`
+      const result = await pool
+        .request()
+        .input("DatabaseName", sql.NVarChar(200), databaseName)
+        .input("PropertyCode", sql.NVarChar(100), propertyCode)
+        .input("ClientId", sql.NVarChar(100), clientId).query(`
+          SELECT
+              g.GroupId,
+              g.GroupName,
+              g.CreatedDate,
+              g.LastMessageTime,
+              g.DatabaseName,
+              g.PropertyCode,
+              g.ClientId,
+
+              (
+                  SELECT COUNT(*)
+                  FROM MA_ChatGroupMembers gm2
+                  WHERE gm2.GroupId = g.GroupId
+              ) AS MemberCount,
+
+              (
+                  SELECT TOP 1 MessageText
+                  FROM MA_GroupChatMessages m
+                  WHERE m.GroupId = g.GroupId
+                  ORDER BY m.MessageTime DESC
+              ) AS LastMessage
+
+          FROM MA_ChatGroups g
+
+          WHERE
+              ISNULL(g.IsActive, 1) = 1
+
+              -- ================================================
+              -- DATABASE ISOLATION
+              -- ================================================
+
+              AND LOWER(
+                    LTRIM(RTRIM(ISNULL(g.DatabaseName, '')))
+                  )
+                  =
+                  LOWER(
+                    LTRIM(RTRIM(@DatabaseName))
+                  )
+
+              -- ================================================
+              -- PROPERTY ISOLATION
+              -- ================================================
+
+              AND
+              (
+                  @PropertyCode IS NULL
+                  OR @PropertyCode = ''
+                  OR LOWER(
+                       LTRIM(RTRIM(ISNULL(g.PropertyCode, '')))
+                     )
+                     =
+                     LOWER(
+                       LTRIM(RTRIM(@PropertyCode))
+                     )
+              )
+
+              -- ================================================
+              -- CLIENT ISOLATION
+              --
+              -- ClientId may be UNIQUEIDENTIFIER in the table,
+              -- so convert it to NVARCHAR before comparing.
+              -- This avoids GUID conversion errors.
+              -- ================================================
+
+              AND
+              (
+                  @ClientId IS NULL
+                  OR @ClientId = ''
+                  OR LOWER(
+                       CONVERT(NVARCHAR(100), g.ClientId)
+                     )
+                     =
+                     LOWER(
+                       LTRIM(RTRIM(@ClientId))
+                     )
+              )
+
+          ORDER BY
+              ISNULL(g.LastMessageTime, g.CreatedDate) DESC;
+        `);
+
+      console.log("👑 ADMIN GROUP COUNT:", result.recordset.length);
+
+      console.log(
+        "ADMIN GROUPS:",
+        result.recordset.map((g) => ({
+          GroupId: g.GroupId,
+          GroupName: g.GroupName,
+          DatabaseName: g.DatabaseName,
+          PropertyCode: g.PropertyCode,
+          ClientId: g.ClientId,
+        })),
+      );
+
+      return res.json({
+        success: true,
+        data: result.recordset,
+      });
+    }
+
+    // ============================================================
+    // NORMAL USER
+    // ============================================================
+
+    const userIdentifier = userGuid || userId;
+
+    if (!userIdentifier) {
+      return res.status(400).json({
+        success: false,
+        message: "User identifier not found",
+      });
+    }
+
+    const result = await pool
+      .request()
+      .input("UserIdentifier", sql.NVarChar(100), userIdentifier)
+      .input("DatabaseName", sql.NVarChar(200), databaseName)
+      .input("PropertyCode", sql.NVarChar(100), propertyCode)
+      .input("ClientId", sql.NVarChar(100), clientId).query(`
         SELECT
             g.GroupId,
             g.GroupName,
@@ -1354,84 +1546,146 @@ router.get("/my-groups", async (req, res) => {
             g.LastMessageTime,
             g.DatabaseName,
             g.PropertyCode,
+            g.ClientId,
+
             (
                 SELECT COUNT(*)
                 FROM MA_ChatGroupMembers gm2
                 WHERE gm2.GroupId = g.GroupId
+                  AND LOWER(
+                        ISNULL(gm2.UserId, '')
+                      )
+                      <>
+                      LOWER(
+                        ISNULL(@UserIdentifier, '')
+                      )
             ) AS MemberCount,
 
             (
                 SELECT TOP 1 MessageText
-                FROM MA_GroupChatMessages
-                WHERE GroupId = g.GroupId
-                ORDER BY MessageTime DESC
+                FROM MA_GroupChatMessages m
+                WHERE m.GroupId = g.GroupId
+                ORDER BY m.MessageTime DESC
             ) AS LastMessage
 
         FROM MA_ChatGroups g
-        WHERE ISNULL(g.IsActive,1)=1
 
-        ORDER BY ISNULL(g.LastMessageTime,g.CreatedDate) DESC
-      `);
-    } else {
-      // Use userGuid (utunqid) to match against member.id stored in MA_ChatGroupMembers
-      // member.id is the GUID from utunqid, not the login ID
-      const userIdentifier = userGuid || userId;
+        WHERE
+            ISNULL(g.IsActive, 1) = 1
 
-      result = await pool
-        .request()
-        .input("UserIdentifier", sql.NVarChar(100), userIdentifier).query(`
-          SELECT 
-              g.GroupId,
-              g.GroupName,
-              g.CreatedDate,
-              g.LastMessageTime,
-              g.DatabaseName,
-              g.PropertyCode,
+            -- ==================================================
+            -- USER MUST BELONG TO GROUP
+            -- ==================================================
 
-              (
-                  SELECT COUNT(*)
-                  FROM MA_ChatGroupMembers gm2
-                  WHERE gm2.GroupId = g.GroupId
-                    AND LOWER(gm2.UserId) <> LOWER(@UserIdentifier)
-              ) AS MemberCount,
-
-              (
-                  SELECT TOP 1 MessageText
-                  FROM MA_GroupChatMessages
-                  WHERE GroupId = g.GroupId
-                  ORDER BY MessageTime DESC
-              ) AS LastMessage
-
-          FROM MA_ChatGroups g
-          WHERE ISNULL(g.IsActive,1)=1
             AND EXISTS
             (
                 SELECT 1
                 FROM MA_ChatGroupMembers gm
-                WHERE gm.GroupId = g.GroupId
-                  AND (
-                       LOWER(gm.UserId) = LOWER(@UserIdentifier)
-                       OR LOWER(g.CreatedBy) = LOWER(@UserIdentifier)
-                  )
+                WHERE
+                    gm.GroupId = g.GroupId
+
+                    AND
+                    (
+                        LOWER(
+                            ISNULL(gm.UserId, '')
+                        )
+                        =
+                        LOWER(
+                            ISNULL(@UserIdentifier, '')
+                        )
+
+                        OR
+
+                        LOWER(
+                            ISNULL(g.CreatedBy, '')
+                        )
+                        =
+                        LOWER(
+                            ISNULL(@UserIdentifier, '')
+                        )
+                    )
             )
 
-          ORDER BY ISNULL(g.LastMessageTime,g.CreatedDate) DESC
-        `);
-    }
+            -- ==================================================
+            -- DATABASE ISOLATION
+            -- ==================================================
+
+            AND LOWER(
+                  LTRIM(RTRIM(ISNULL(g.DatabaseName, '')))
+                )
+                =
+                LOWER(
+                  LTRIM(RTRIM(@DatabaseName))
+                )
+
+            -- ==================================================
+            -- PROPERTY ISOLATION
+            -- ==================================================
+
+            AND
+            (
+                @PropertyCode IS NULL
+                OR @PropertyCode = ''
+                OR LOWER(
+                     LTRIM(RTRIM(ISNULL(g.PropertyCode, '')))
+                   )
+                   =
+                   LOWER(
+                     LTRIM(RTRIM(@PropertyCode))
+                   )
+            )
+
+            -- ==================================================
+            -- CLIENT ISOLATION
+            -- ==================================================
+
+            AND
+            (
+                @ClientId IS NULL
+                OR @ClientId = ''
+                OR LOWER(
+                     CONVERT(NVARCHAR(100), g.ClientId)
+                   )
+                   =
+                   LOWER(
+                     LTRIM(RTRIM(@ClientId))
+                   )
+            )
+
+        ORDER BY
+            ISNULL(g.LastMessageTime, g.CreatedDate) DESC;
+      `);
+
+    console.log("👤 USER GROUP COUNT:", result.recordset.length);
+
+    console.log(
+      "USER GROUPS:",
+      result.recordset.map((g) => ({
+        GroupId: g.GroupId,
+        GroupName: g.GroupName,
+        DatabaseName: g.DatabaseName,
+        PropertyCode: g.PropertyCode,
+        ClientId: g.ClientId,
+      })),
+    );
 
     return res.json({
       success: true,
       data: result.recordset,
     });
   } catch (err) {
-    console.error("MY GROUPS ERROR:", err);
+    console.error("==============================================");
+    console.error("❌ MY GROUPS ERROR");
+    console.error(err);
+    console.error("==============================================");
 
     return res.status(500).json({
       success: false,
       message: err.message,
     });
   } finally {
-    //if (pool) await pool.close();
+    // Do NOT close the communication pool here
+    // if openCommunicationPool() returns a shared pool.
   }
 });
 // ── POST /api/group/add-member ────────────────────────────────────────────────
