@@ -2223,11 +2223,14 @@ router.get("/individual-tasks", async (req, res) => {
     }
 
     const userId = decoded.userId;
+    const db =
+      decoded.currentDatabase || decoded.loginDatabase || decoded.database;
 
     pool = await openCommunicationPool();
 
     const result = await pool
       .request()
+      .input("dbname", sql.NVarChar(100), db)
       .input("UserId", sql.NVarChar(100), userId).query(`
         SELECT
           CAST(TaskId AS NVARCHAR(50)) AS TaskId,
@@ -2254,6 +2257,7 @@ router.get("/individual-tasks", async (req, res) => {
             LOWER(ISNULL(AssignedTo,'')) = LOWER(@UserId)
             OR LOWER(ISNULL(AssignedBy,'')) = LOWER(@UserId)
           )
+              AND DatabaseName = @dbname
         ORDER BY CreatedDate DESC;
       `);
 
