@@ -1991,19 +1991,55 @@ router.get("/get-tasks", async (req, res) => {
     }
 
     // ============================================================
-    // CURRENT USER
+    // CURRENT LOGIN INFORMATION
     // ============================================================
 
-    const userId = decoded.userId;
-    const isAdmin = decoded.isAdmin || false;
-
-    const clientId = decoded.loginClientId || decoded.clientId || null;
+    const userId = decoded.userId || decoded.uti || null;
+    const isAdmin = decoded.isAdmin === true || decoded.isAdmin === "true";
 
     const currentDatabase =
-      decoded.currentDatabase || decoded.loginDatabase || decoded.database;
+      decoded.currentDatabase ||
+      decoded.loginDatabase ||
+      decoded.database ||
+      null;
+
+    const currentClientId =
+      decoded.currentClientId ||
+      decoded.loginClientId ||
+      decoded.clientId ||
+      null;
+
+    const currentPropertyCode =
+      decoded.currentPropertyCode ||
+      decoded.loginPropertyCode ||
+      decoded.propertyCode ||
+      null;
+
+    console.log("==============================================");
+    console.log("           GET TASKS");
+    console.log("==============================================");
+    console.log("User ID       :", userId);
+    console.log("Is Admin      :", isAdmin);
+    console.log("Database      :", currentDatabase);
+    console.log("Client ID     :", currentClientId);
+    console.log("Property Code :", currentPropertyCode);
+    console.log("==============================================");
+
+    // ============================================================
+    // VALIDATE DATABASE
+    // ============================================================
+
+    if (!currentDatabase) {
+      return res.status(400).json({
+        success: false,
+        message: "Current database not found in token",
+      });
+    }
 
     // ============================================================
     // OPEN COMMUNICATION DATABASE
+    // ============================================================
+    // MA_ChatTasks is stored in AUTOSHOP_COMMUNICATION
     // ============================================================
 
     pool = await new sql.ConnectionPool({
@@ -2018,20 +2054,17 @@ router.get("/get-tasks", async (req, res) => {
       },
     }).connect();
 
-    // ============================================================
-    // GET TASKS
-    // ============================================================
-
-    let result;
+    console.log("✅ COMMUNICATION DB CONNECTED");
+    console.log("🔎 Looking for tasks from:", currentDatabase);
 
     // ============================================================
     // ADMIN
     // ============================================================
 
     if (isAdmin) {
-      result = await pool
+      const result = await pool
         .request()
-        .input("currentDB", sql.NVarChar(100), currentDatabase || null).query(`
+        .input("DatabaseName", sql.NVarChar(200), currentDatabase).query(`
           SELECT
             CAST(t.TaskId AS NVARCHAR(50)) AS TaskId,
             CAST(t.ChallanId AS NVARCHAR(100)) AS ChallanId,
@@ -2043,7 +2076,6 @@ router.get("/get-tasks", async (req, res) => {
             t.AssignedBy,
             t.AssignedTo,
 
-            -- Will be replaced below with actual employee name
             t.AssignedTo AS AssignedToName,
 
             t.Priority,
@@ -2056,50 +2088,7 @@ router.get("/get-tasks", async (req, res) => {
             t.DatabaseName,
             t.PropertyCode,
 
-            CASE
-              WHEN t.GroupId IS NOT NULL THEN 'Group'
-              WHEN t.ChallanId IS NOT NULL THEN 'Challan'
-              ELSE 'Individual'
-            END AS TaskSource
-
-          FROM MA_ChatTasks t
-
-          WHERE t.DatabaseName = @currentDB
-
-          ORDER BY t.CreatedDate DESC;
-        `);
-    }
-
-    // ============================================================
-    // NORMAL USER
-    // ============================================================
-    else {
-      result = await pool.request().input("UserId", sql.NVarChar(100), userId)
-        .query(`
-          SELECT
-
-            CAST(t.TaskId AS NVARCHAR(50)) AS TaskId,
-            CAST(t.ChallanId AS NVARCHAR(100)) AS ChallanId,
-            CAST(t.GroupId AS NVARCHAR(50)) AS GroupId,
-
-            t.TaskTitle,
-            t.TaskDescription,
-
-            t.AssignedBy,
-            t.AssignedTo,
-
-            -- Will be replaced below with actual employee name
-            t.AssignedTo AS AssignedToName,
-
-            t.Priority,
-            t.Status,
-
-            t.StartDate,
-            t.DueDate,
-            t.CreatedDate,
-
-            t.DatabaseName,
-            t.PropertyCode,
+            CAST(t.ClientId AS NVARCHAR(50)) AS ClientId,
 
             CASE
               WHEN t.GroupId IS NOT NULL THEN 'Group'
@@ -2110,42 +2099,169 @@ router.get("/get-tasks", async (req, res) => {
           FROM MA_ChatTasks t
 
           WHERE
-          (
-              -- Assigned directly using UserId
-              LOWER(ISNULL(t.AssignedTo, '')) =
-              LOWER(@UserId)
-
-              OR
-
-              -- Assigned using User GUID
-              LOWER(ISNULL(t.AssignedTo, '')) IN
-              (
-                  SELECT LOWER(userguid)
-                  FROM ma_userdirectory
-
-                  WHERE LOWER(loginid) =
-                        LOWER(@UserId)
-
-                    AND propertydb =
-                        t.DatabaseName
-              )
-
-              OR
-
-              -- Tasks created by this user
-              LOWER(ISNULL(t.AssignedBy, '')) =
-              LOWER(@UserId)
-          )
+            LOWER(LTRIM(RTRIM(ISNULL(t.DatabaseName, ''))))
+            =
+            LOWER(LTRIM(RTRIM(@DatabaseName)))
 
           ORDER BY t.CreatedDate DESC;
         `);
+
+      console.log("✅ ADMIN TASK COUNT:", result.recordset.length);
+
+      const tasks = result.recordset;
+
+      // ==========================================================
+      // RESOLVE ASSIGNED USER NAME
+      // ==========================================================
+
+      await Promise.all(
+        tasks.map(async (task) => {
+          const assignedTo = task.AssignedTo?.toString().trim();
+
+          const databaseName = task.DatabaseName?.toString().trim();
+
+          task.AssignedToName = assignedTo || "";
+
+          if (!assignedTo || !databaseName) {
+            return;
+          }
+
+          try {
+            const user = await findUserInDatabase(databaseName, assignedTo);
+
+            if (user && user.utnm) {
+              task.AssignedToName = user.utnm.toString().trim();
+            }
+          } catch (nameError) {
+            console.error("ASSIGNED TO NAME ERROR:", {
+              AssignedTo: assignedTo,
+              DatabaseName: databaseName,
+              Error: nameError.message,
+            });
+
+            task.AssignedToName = assignedTo;
+          }
+        }),
+      );
+
+      return res.json({
+        success: true,
+        data: tasks,
+      });
     }
 
     // ============================================================
-    // RESOLVE ASSIGNEDTO GUID -> EMPLOYEE NAME
+    // NORMAL USER
     // ============================================================
 
+    const result = await pool
+      .request()
+      .input("UserId", sql.NVarChar(100), userId)
+      .input("DatabaseName", sql.NVarChar(200), currentDatabase).query(`
+        SELECT
+          CAST(t.TaskId AS NVARCHAR(50)) AS TaskId,
+          CAST(t.ChallanId AS NVARCHAR(100)) AS ChallanId,
+          CAST(t.GroupId AS NVARCHAR(50)) AS GroupId,
+
+          t.TaskTitle,
+          t.TaskDescription,
+
+          t.AssignedBy,
+          t.AssignedTo,
+
+          t.AssignedTo AS AssignedToName,
+
+          t.Priority,
+          t.Status,
+
+          t.StartDate,
+          t.DueDate,
+          t.CreatedDate,
+
+          t.DatabaseName,
+          t.PropertyCode,
+
+          CAST(t.ClientId AS NVARCHAR(50)) AS ClientId,
+
+          CASE
+            WHEN t.GroupId IS NOT NULL THEN 'Group'
+            WHEN t.ChallanId IS NOT NULL THEN 'Challan'
+            ELSE 'Individual'
+          END AS TaskSource
+
+        FROM MA_ChatTasks t
+
+        WHERE
+
+          -- ====================================================
+          -- VERY IMPORTANT:
+          -- ONLY TASKS FROM CURRENT LOGIN DATABASE
+          -- ====================================================
+
+          LOWER(LTRIM(RTRIM(ISNULL(t.DatabaseName, ''))))
+          =
+          LOWER(LTRIM(RTRIM(@DatabaseName)))
+
+          AND
+
+          (
+            -- ==================================================
+            -- Assigned directly using UserId
+            -- ==================================================
+
+            LOWER(LTRIM(RTRIM(ISNULL(t.AssignedTo, ''))))
+            =
+            LOWER(LTRIM(RTRIM(@UserId)))
+
+            OR
+
+            -- ==================================================
+            -- Assigned using User GUID
+            -- ==================================================
+
+            EXISTS
+            (
+              SELECT 1
+              FROM MA_UserDirectory d
+              WHERE
+                LOWER(LTRIM(RTRIM(ISNULL(d.LoginId, ''))))
+                =
+                LOWER(LTRIM(RTRIM(@UserId)))
+
+                AND
+
+                LOWER(LTRIM(RTRIM(ISNULL(d.UserGuid, ''))))
+                =
+                LOWER(LTRIM(RTRIM(ISNULL(t.AssignedTo, ''))))
+
+                AND
+
+                LOWER(LTRIM(RTRIM(ISNULL(d.PropertyDB, ''))))
+                =
+                LOWER(LTRIM(RTRIM(ISNULL(t.DatabaseName, ''))))
+            )
+
+            OR
+
+            -- ==================================================
+            -- Tasks created by this user
+            -- ==================================================
+
+            LOWER(LTRIM(RTRIM(ISNULL(t.AssignedBy, ''))))
+            =
+            LOWER(LTRIM(RTRIM(@UserId)))
+          )
+
+        ORDER BY t.CreatedDate DESC;
+      `);
+
+    console.log("✅ USER TASK COUNT:", result.recordset.length);
+
     const tasks = result.recordset;
+
+    // ============================================================
+    // RESOLVE ASSIGNED TO NAME
+    // ============================================================
 
     await Promise.all(
       tasks.map(async (task) => {
@@ -2153,23 +2269,14 @@ router.get("/get-tasks", async (req, res) => {
 
         const databaseName = task.DatabaseName?.toString().trim();
 
-        // Default = original ID
+        // Default value
         task.AssignedToName = assignedTo || "";
 
-        // Nothing to resolve
         if (!assignedTo || !databaseName) {
           return;
         }
 
         try {
-          // ------------------------------------------------------
-          // Find employee from company database
-          // rh_secut:
-          // utunqid = User GUID
-          // uti     = User ID
-          // utnm    = User Name
-          // ------------------------------------------------------
-
           const user = await findUserInDatabase(databaseName, assignedTo);
 
           if (user && user.utnm) {
@@ -2182,8 +2289,6 @@ router.get("/get-tasks", async (req, res) => {
             Error: nameError.message,
           });
 
-          // If name lookup fails,
-          // keep the original ID instead of breaking API
           task.AssignedToName = assignedTo;
         }
       }),
@@ -2198,7 +2303,10 @@ router.get("/get-tasks", async (req, res) => {
       data: tasks,
     });
   } catch (err) {
-    console.error("GET TASKS ERROR:", err);
+    console.error("==============================================");
+    console.error("❌ GET TASKS ERROR");
+    console.error(err);
+    console.error("==============================================");
 
     return res.status(500).json({
       success: false,
@@ -2206,7 +2314,11 @@ router.get("/get-tasks", async (req, res) => {
     });
   } finally {
     if (pool) {
-      await pool.close();
+      try {
+        await pool.close();
+      } catch (closeError) {
+        console.error("POOL CLOSE ERROR:", closeError.message);
+      }
     }
   }
 });
