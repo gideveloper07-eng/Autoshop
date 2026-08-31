@@ -2213,58 +2213,58 @@ router.get("/get-tasks", async (req, res) => {
 
 // ── GET /api/chat/individual-tasks ────────────────────────────────────────────
 // Returns ONLY direct-chat tasks (GroupId=NULL, ChallanId=NULL)
-router.get("/individual-tasks", async (req, res) => {
-  let pool;
+// router.get("/individual-tasks", async (req, res) => {
+//   let pool;
 
-  try {
-    const decoded = decodeToken(req);
-    if (!decoded) {
-      return res.status(401).json({ success: false, message: "Unauthorized" });
-    }
+//   try {
+//     const decoded = decodeToken(req);
+//     if (!decoded) {
+//       return res.status(401).json({ success: false, message: "Unauthorized" });
+//     }
 
-    const userId = decoded.userId;
+//     const userId = decoded.userId;
 
-    pool = await openCommunicationPool();
+//     pool = await openCommunicationPool();
 
-    const result = await pool
-      .request()
-      .input("UserId", sql.NVarChar(100), userId).query(`
-        SELECT
-          CAST(TaskId AS NVARCHAR(50)) AS TaskId,
-          NULL                         AS ChallanId,
-          NULL                         AS GroupId,
-          TaskTitle,
-          TaskDescription,
-          AssignedBy,
-          AssignedTo,
-          AssignedTo AS AssignedToName,
-          Priority,
-          Status,
-          StartDate,
-          DueDate,
-          CreatedDate,
-          DatabaseName,
-          PropertyCode,
-          'Individual' AS TaskSource
-        FROM MA_ChatTasks
-        WHERE
-          GroupId   IS NULL
-          AND ChallanId IS NULL
-          AND (
-            LOWER(ISNULL(AssignedTo,'')) = LOWER(@UserId)
-            OR LOWER(ISNULL(AssignedBy,'')) = LOWER(@UserId)
-          )
-        ORDER BY CreatedDate DESC;
-      `);
+//     const result = await pool
+//       .request()
+//       .input("UserId", sql.NVarChar(100), userId).query(`
+//         SELECT
+//           CAST(TaskId AS NVARCHAR(50)) AS TaskId,
+//           NULL                         AS ChallanId,
+//           NULL                         AS GroupId,
+//           TaskTitle,
+//           TaskDescription,
+//           AssignedBy,
+//           AssignedTo,
+//           AssignedTo AS AssignedToName,
+//           Priority,
+//           Status,
+//           StartDate,
+//           DueDate,
+//           CreatedDate,
+//           DatabaseName,
+//           PropertyCode,
+//           'Individual' AS TaskSource
+//         FROM MA_ChatTasks
+//         WHERE
+//           GroupId   IS NULL
+//           AND ChallanId IS NULL
+//           AND (
+//             LOWER(ISNULL(AssignedTo,'')) = LOWER(@UserId)
+//             OR LOWER(ISNULL(AssignedBy,'')) = LOWER(@UserId)
+//           )
+//         ORDER BY CreatedDate DESC;
+//       `);
 
-    return res.json({ success: true, data: result.recordset });
-  } catch (err) {
-    console.error("GET INDIVIDUAL TASKS ERROR:", err);
-    return res.status(500).json({ success: false, message: err.message });
-  } finally {
-    //  if (pool) await pool.close();
-  }
-});
+//     return res.json({ success: true, data: result.recordset });
+//   } catch (err) {
+//     console.error("GET INDIVIDUAL TASKS ERROR:", err);
+//     return res.status(500).json({ success: false, message: err.message });
+//   } finally {
+//     //  if (pool) await pool.close();
+//   }
+// });
 // ── GET /api/chat/individual-tasks ────────────────────────────────────────────
 // Returns individual tasks from AUTOSHOP_COMMUNICATION,
 // filtered by the currently selected company/database.
