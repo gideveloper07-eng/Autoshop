@@ -2420,6 +2420,9 @@ router.get("/tasks", async (req, res) => {
   let pool;
 
   try {
+    // ============================================================
+    // AUTHENTICATION
+    // ============================================================
     const decoded = decodeToken(req);
 
     if (!decoded) {
@@ -2429,97 +2432,183 @@ router.get("/tasks", async (req, res) => {
       });
     }
 
-    const { database: currentDb, userGuid } = decoded;
+    // ============================================================
+    // CURRENT USER / COMPANY
+    // ============================================================
+    const userId = decoded.userId;
+    const userGuid = decoded.userGuid || null;
+    const isAdmin = decoded.isAdmin || false;
 
-    // Collect all DBs this user has access to
-    let databases = [currentDb];
+    const currentDatabase =
+      decoded.currentDatabase ||
+      decoded.loginDatabase ||
+      decoded.database ||
+      null;
 
-    if (userGuid) {
-      let masterPool;
-      try {
-        masterPool = await new sql.ConnectionPool({
-          user: process.env.DB_USER,
-          password: process.env.DB_PASSWORD,
-          server: process.env.DB_HOST,
-          port: parseInt(process.env.DB_PORT || "1433"),
-          database: "CMPY_AUTOSHOP",
-          options: { encrypt: false, trustServerCertificate: true },
-        }).connect();
+    const currentClientId =
+      decoded.currentClientId ||
+      decoded.loginClientId ||
+      decoded.clientId ||
+      null;
 
-        const accessResult = await masterPool
-          .request()
-          .input("userGuid", sql.UniqueIdentifier, userGuid).query(`
-            SELECT CM.propertydb AS [database]
-            FROM MA_UserDatabaseAccess UA
-            INNER JOIN MA_ClientMaster CM ON UA.ClientId = CM.unqid
-            WHERE UA.UserGuid = @userGuid
-          `);
+    const currentPropertyCode =
+      decoded.currentPropertyCode ||
+      decoded.loginPropertyCode ||
+      decoded.propertyCode ||
+      null;
 
-        if (accessResult.recordset.length > 0) {
-          databases = [
-            ...new Set(
-              accessResult.recordset.map((r) => r.database).filter(Boolean),
-            ),
-          ];
+    console.log("==============================================");
+    console.log("📋 GET /api/group/tasks");
+    console.log("==============================================");
+    console.log("UserId          :", userId);
+    console.log("UserGuid        :", userGuid);
+    console.log("IsAdmin         :", isAdmin);
+    console.log("Current Database:", currentDatabase);
+    console.log("ClientId        :", currentClientId);
+    console.log("PropertyCode    :", currentPropertyCode);
+    console.log("==============================================");
+
+    if (!currentDatabase) {
+      return res.status(400).json({
+        success: false,
+        message: "Current database not found in token",
+      });
+    }
+
+    // ============================================================
+    // CONNECT ONLY TO COMMUNICATION DATABASE
+    // ============================================================
+    pool = await openCommunicationPool();
+
+    console.log("✅ Connected to COMMUNICATION DB");
+    console.log("🔎 Querying MA_ChatTasks for:", currentDatabase);
+
+    // ============================================================
+    // GET TASKS
+    //
+    // IMPORTANT:
+    // MA_ChatTasks is in AUTOSHOP_COMMUNICATION.
+    // Do NOT open company databases here.
+    // ============================================================
+    const request = pool.request();
+
+    request.input("DatabaseName", sql.NVarChar(100), currentDatabase);
+
+    request.input("ClientId", sql.NVarChar(100), currentClientId);
+
+    const result = await request.query(`
+      SELECT
+        CAST(t.TaskId AS NVARCHAR(50)) AS TaskId,
+        CAST(t.ChallanId AS NVARCHAR(100)) AS ChallanId,
+        CAST(t.GroupId AS NVARCHAR(50)) AS GroupId,
+
+        t.TaskTitle,
+        t.TaskDescription,
+
+        t.AssignedBy,
+        t.AssignedTo,
+
+        t.AssignedTo AS AssignedToName,
+
+        t.Priority,
+        t.Status,
+
+        t.StartDate,
+        t.DueDate,
+        t.CreatedDate,
+
+        t.DatabaseName,
+        t.PropertyCode,
+        t.ClientId,
+
+        CASE
+          WHEN t.GroupId IS NOT NULL THEN 'Group'
+          WHEN t.ChallanId IS NOT NULL THEN 'Challan'
+          ELSE 'Individual'
+        END AS TaskSource
+
+      FROM MA_ChatTasks t
+
+      WHERE
+        LOWER(ISNULL(t.DatabaseName, '')) =
+        LOWER(@DatabaseName)
+
+        AND
+
+        (
+          @ClientId IS NULL
+          OR @ClientId = ''
+          OR LOWER(ISNULL(t.ClientId, '')) =
+             LOWER(@ClientId)
+        )
+
+      ORDER BY t.CreatedDate DESC;
+    `);
+
+    console.log("✅ TASK QUERY FINISHED");
+    console.log("📊 TASK COUNT:", result.recordset.length);
+
+    // ============================================================
+    // RESOLVE ASSIGNED USER NAME
+    //
+    // MA_ChatTasks stores AssignedTo.
+    // It can be UserId or UserGuid depending on how task was created.
+    //
+    // We resolve the name from the CURRENT company's database only.
+    // ============================================================
+    const tasks = result.recordset;
+
+    await Promise.all(
+      tasks.map(async (task) => {
+        const assignedTo = task.AssignedTo?.toString().trim();
+
+        // Default
+        task.AssignedToName = assignedTo || "";
+
+        if (!assignedTo) {
+          return;
         }
-      } catch (e) {
-        console.error("TASKS: failed to fetch accessible DBs:", e.message);
-      } finally {
-        if (masterPool) await masterPool.close();
-      }
-    }
 
-    // Query MA_ChatTasks from every accessible DB and merge
-    const allTasks = [];
-    for (const dbName of databases) {
-      let dbPool;
-      try {
-        dbPool = await openPool(dbName);
-        const result = await dbPool.request().query(`
-          SELECT
-            t.TaskId,
-            t.GroupId,
-            t.TaskTitle,
-            t.TaskDescription,
-            t.AssignedBy,
-            t.AssignedTo,
-            ISNULL(s.utnm, t.AssignedTo) AS AssignedToName,
-            t.Priority,
-            t.Status,
-            t.StartDate,
-            t.DueDate,
-            t.CreatedDate,
-            '${dbName.replace(/'/g, "''")}' AS TaskDatabase,
-            CASE WHEN t.GroupId IS NOT NULL THEN 'Group' ELSE 'Chat' END AS TaskSource
-          FROM MA_ChatTasks t
-          LEFT JOIN rh_secut s
-            ON CONVERT(VARCHAR(50), s.utunqid) = t.AssignedTo
-          ORDER BY t.CreatedDate DESC
-        `);
-        allTasks.push(...result.recordset);
-      } catch (dbErr) {
-        console.error(`TASKS: failed to query ${dbName}:`, dbErr.message);
-      } finally {
-        if (dbPool) await dbPool.close();
-      }
-    }
+        try {
+          const user = await findUserInDatabase(currentDatabase, assignedTo);
 
-    // Sort merged results by CreatedDate desc
-    allTasks.sort((a, b) => new Date(b.CreatedDate) - new Date(a.CreatedDate));
+          if (user && user.utnm) {
+            task.AssignedToName = user.utnm.toString().trim();
+          }
+        } catch (nameError) {
+          console.error("ASSIGNED TO NAME ERROR:", {
+            AssignedTo: assignedTo,
+            DatabaseName: currentDatabase,
+            Error: nameError.message,
+          });
+
+          // Don't break task API if name lookup fails
+          task.AssignedToName = assignedTo;
+        }
+      }),
+    );
+
+    // ============================================================
+    // RESPONSE
+    // ============================================================
+    console.log("📤 RETURNING TASKS:", tasks.length);
+    console.log("==============================================");
 
     return res.json({
       success: true,
-      data: allTasks,
+      data: tasks,
     });
   } catch (err) {
-    console.error(err);
+    console.error("❌ GET TASKS ERROR:", err);
 
     return res.status(500).json({
       success: false,
       message: err.message,
     });
   } finally {
-    if (pool) await pool.close();
+    // openCommunicationPool() is shared.
+    // Do NOT close it here if your communicationPool.js
+    // returns a reusable shared pool.
   }
 });
 router.post("/sendrequest", verifyToken, async (req, res) => {
