@@ -2136,13 +2136,8 @@ router.get("/receipt/combined", async (req, res) => {
         arr.req_type AS request_type,
         arr.val_frm AS value_from,
         arr.val_to AS value_to,
-
-        -- REQUEST STATUS
-        arr.status AS Status,
-
-        -- CHANGE / REJECTION REASON
-        arr.change_reason AS Reason
-
+        arr.status AS status,
+        arr.change_reason AS reason
       FROM rh_rcl rcl
 
       RIGHT JOIN app_receipt_request arr
