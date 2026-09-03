@@ -2195,6 +2195,11 @@ router.get("/receipt/combined", async (req, res) => {
 // Update Receipt Request
 // ======================================================
 
+// ======================================================
+// POST /api/challan/receipt/update
+// Update Receipt Request
+// ======================================================
+
 router.post("/receipt/update", async (req, res) => {
   let pool;
 
@@ -2229,22 +2234,36 @@ router.post("/receipt/update", async (req, res) => {
     // GET VALUES FROM FLUTTER
     // ==================================================
 
-    const { recpt_unqid, req_type, val_to } = req.body;
+    const { request_unqid, recpt_unqid, req_type, val_to } = req.body;
+
+    // ==================================================
+    // DEBUG
+    // ==================================================
 
     console.log("");
     console.log("==============================================");
     console.log("       UPDATE RECEIPT REQUEST API");
     console.log("==============================================");
-    console.log("DATABASE   :", databaseName);
-    console.log("recpt_unqid:", recpt_unqid);
-    console.log("req_type   :", req_type);
-    console.log("val_to     :", val_to);
+    console.log("DATABASE      :", databaseName);
+    console.log("request_unqid :", request_unqid);
+    console.log("recpt_unqid   :", recpt_unqid);
+    console.log("req_type      :", req_type);
+    console.log("val_to        :", val_to);
     console.log("==============================================");
 
     // ==================================================
     // VALIDATION
     // ==================================================
 
+    // app_receipt_request.unqid
+    if (!request_unqid) {
+      return res.status(400).json({
+        success: false,
+        message: "request_unqid is required",
+      });
+    }
+
+    // rh_rcl.rcl_2
     if (!recpt_unqid) {
       return res.status(400).json({
         success: false,
@@ -2278,14 +2297,28 @@ router.post("/receipt/update", async (req, res) => {
 
     const result = await pool
       .request()
+
+      // @what
       .input("what", sql.NVarChar(50), "Update")
+
+      // @unqid
+      // This is rh_rcl.rcl_2
       .input("unqid", sql.NVarChar(50), String(recpt_unqid).trim())
+
+      // @request_unqid
+      // This is app_receipt_request.unqid
+      .input("request_unqid", sql.NVarChar(50), String(request_unqid).trim())
+
+      // @req_type
       .input("req_type", sql.NVarChar(50), String(req_type).trim())
+
+      // @to
       .input("to", sql.NVarChar(sql.MAX), String(val_to))
+
       .execute("A_SP_FOR_UpdateReceiptRequest");
 
     // ==================================================
-    // DEBUG
+    // DEBUG SP RESULT
     // ==================================================
 
     console.log("");
@@ -2296,15 +2329,38 @@ router.post("/receipt/update", async (req, res) => {
     console.log("==============================================");
 
     // ==================================================
-    // RESPONSE
+    // CHECK SP RESULT
+    // ==================================================
+
+    const spStatus = result.recordset?.[0]?.Status;
+
+    console.log("SP STATUS:", spStatus);
+
+    if (spStatus !== "Success") {
+      return res.status(400).json({
+        success: false,
+        message: result.recordset?.[0]?.Message || "Receipt update failed",
+        data: result.recordset || [],
+      });
+    }
+
+    // ==================================================
+    // SUCCESS RESPONSE
     // ==================================================
 
     return res.json({
       success: true,
       message: "Receipt updated successfully",
       data: result.recordset || [],
+      request_unqid: request_unqid,
+      recpt_unqid: recpt_unqid,
+      request_status: "complete",
     });
   } catch (err) {
+    // ==================================================
+    // ERROR
+    // ==================================================
+
     console.error("❌ UPDATE RECEIPT ERROR:", err);
 
     return res.status(500).json({
