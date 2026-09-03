@@ -1138,19 +1138,32 @@ router.get("/dashboard-stats", async (req, res) => {
       .input("ToDate", sql.NVarChar(50), "")
       .execute("A_SP_FOR_ApplicationChallangrid");
 
-    console.log("⏳ Pending Delivery Raw Recordset:", JSON.stringify(pendingDelResult.recordset));
-    console.log("⏳ Pending Delivery All Recordsets:", JSON.stringify(pendingDelResult.recordsets));
+    console.log(
+      "⏳ Pending Delivery Raw Recordset:",
+      JSON.stringify(pendingDelResult.recordset),
+    );
+    console.log(
+      "⏳ Pending Delivery All Recordsets:",
+      JSON.stringify(pendingDelResult.recordsets),
+    );
 
     // SP may return multiple recordsets — scan all to find the count row
     let pendingDelivery = 0;
-    const allRecordsets = pendingDelResult.recordsets ?? [pendingDelResult.recordset];
+    const allRecordsets = pendingDelResult.recordsets ?? [
+      pendingDelResult.recordset,
+    ];
     for (const rs of allRecordsets) {
       if (rs?.length > 0) {
         const firstVal = Object.values(rs[0])[0];
         const num = Number(firstVal ?? 0);
         if (!isNaN(num) && num > 0) {
           pendingDelivery = num;
-          console.log("✅ Pending Delivery Count:", pendingDelivery, "| Raw row:", rs[0]);
+          console.log(
+            "✅ Pending Delivery Count:",
+            pendingDelivery,
+            "| Raw row:",
+            rs[0],
+          );
           break;
         }
       }
@@ -1362,16 +1375,22 @@ router.get("/dashboard-pending-delivery-branch-details", async (req, res) => {
     const { currentDatabase: databaseName } = decoded;
 
     if (!databaseName) {
-      return res.status(400).json({ success: false, message: "Database not found in token" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Database not found in token" });
     }
 
     const branchId = (req.query.branchId || "").toString().trim();
 
     if (!branchId) {
-      return res.status(400).json({ success: false, message: "branchId is required" });
+      return res
+        .status(400)
+        .json({ success: false, message: "branchId is required" });
     }
 
-    console.log(`📦 Pending Delivery Branch Details | DB: ${databaseName} | BranchId: ${branchId}`);
+    console.log(
+      `📦 Pending Delivery Branch Details | DB: ${databaseName} | BranchId: ${branchId}`,
+    );
 
     pool = await openPool(databaseName);
 
@@ -1384,20 +1403,25 @@ router.get("/dashboard-pending-delivery-branch-details", async (req, res) => {
       .input("sp_602", sql.NVarChar(50), branchId)
       .execute("A_SP_FOR_ApplicationChallangrid");
 
-    console.log("📦 Pending Delivery Branch Details Raw:", JSON.stringify(result.recordset?.slice(0, 2)));
+    console.log(
+      "📦 Pending Delivery Branch Details Raw:",
+      JSON.stringify(result.recordset?.slice(0, 2)),
+    );
 
     const rows = (result.recordset || []).map((row) => ({
       customer: (row.customer ?? row.Customer ?? "").toString().trim(),
-      branch:   (row.Branch   ?? row.branch   ?? "").toString().trim(),
-      model:    (row.Model    ?? row.model    ?? "").toString().trim(),
-      variant:  (row.Variant  ?? row.variant  ?? "").toString().trim(),
-      color:    (row.Color    ?? row.color    ?? "").toString().trim(),
+      branch: (row.Branch ?? row.branch ?? "").toString().trim(),
+      model: (row.Model ?? row.model ?? "").toString().trim(),
+      variant: (row.Variant ?? row.variant ?? "").toString().trim(),
+      color: (row.Color ?? row.color ?? "").toString().trim(),
     }));
 
     return res.json({ success: true, data: rows });
   } catch (err) {
     console.error("❌ Pending Delivery Branch Details Error:", err);
-    return res.status(500).json({ success: false, message: "Server Error", error: err.message });
+    return res
+      .status(500)
+      .json({ success: false, message: "Server Error", error: err.message });
   }
 });
 
@@ -1419,7 +1443,9 @@ router.get("/dashboard-pending-delivery-branchwise", async (req, res) => {
     const { currentDatabase: databaseName } = decoded;
 
     if (!databaseName) {
-      return res.status(400).json({ success: false, message: "Database not found in token" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Database not found in token" });
     }
 
     console.log(`📦 Pending Delivery Branchwise | DB: ${databaseName}`);
@@ -1434,7 +1460,10 @@ router.get("/dashboard-pending-delivery-branchwise", async (req, res) => {
       .input("ToDate", sql.NVarChar(50), "")
       .execute("A_SP_FOR_ApplicationChallangrid");
 
-    console.log("📦 Pending Delivery BW Raw:", JSON.stringify(result.recordset));
+    console.log(
+      "📦 Pending Delivery BW Raw:",
+      JSON.stringify(result.recordset),
+    );
 
     // Fetch branch id↔name map
     let branchMap = {};
@@ -1444,15 +1473,20 @@ router.get("/dashboard-pending-delivery-branchwise", async (req, res) => {
         .query("SELECT sp_602 AS branchId, sp_607 AS branchName FROM rh_sp_60");
       for (const r of branchResult.recordset) {
         if (r.branchName) {
-          branchMap[r.branchName.trim().toLowerCase()] = (r.branchId || "").trim();
+          branchMap[r.branchName.trim().toLowerCase()] = (
+            r.branchId || ""
+          ).trim();
         }
       }
     } catch (_) {}
 
     // SP returns: Branch (name), count(*) (no alias) — map both
     const branches = (result.recordset || []).map((row) => {
-      const name = (row.Branch ?? row.branch ?? "Unknown Branch").toString().trim();
-      const countVal = row[""] ?? row["count(*)"] ?? Object.values(row).find((v, i) => i > 0);
+      const name = (row.Branch ?? row.branch ?? "Unknown Branch")
+        .toString()
+        .trim();
+      const countVal =
+        row[""] ?? row["count(*)"] ?? Object.values(row).find((v, i) => i > 0);
       return {
         branchName: name,
         branchId: branchMap[name.toLowerCase()] ?? "",
@@ -1468,7 +1502,9 @@ router.get("/dashboard-pending-delivery-branchwise", async (req, res) => {
     });
   } catch (err) {
     console.error("❌ Pending Delivery Branchwise Error:", err);
-    return res.status(500).json({ success: false, message: "Server Error", error: err.message });
+    return res
+      .status(500)
+      .json({ success: false, message: "Server Error", error: err.message });
   }
 });
 
@@ -1487,16 +1523,28 @@ router.get("/sales-performance", async (req, res) => {
     }
     const { currentDatabase: databaseName } = decoded;
     if (!databaseName) {
-      return res.status(400).json({ success: false, message: "Database not found in token" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Database not found in token" });
     }
 
     const period = (req.query.period || "today").toString().toLowerCase();
-    const validPeriods = ["today", "yesterday", "thisweek", "thismonth", "thisfinancialyear"];
+    const validPeriods = [
+      "today",
+      "yesterday",
+      "thisweek",
+      "thismonth",
+      "thisfinancialyear",
+    ];
     if (!validPeriods.includes(period)) {
-      return res.status(400).json({ success: false, message: "Invalid period" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid period" });
     }
 
-    console.log(`📈 Sales Performance | DB: ${databaseName} | Period: ${period}`);
+    console.log(
+      `📈 Sales Performance | DB: ${databaseName} | Period: ${period}`,
+    );
 
     pool = await openPool(databaseName);
 
@@ -1522,7 +1570,9 @@ router.get("/sales-performance", async (req, res) => {
     });
   } catch (err) {
     console.error("❌ Sales Performance Error:", err);
-    return res.status(500).json({ success: false, message: "Server Error", error: err.message });
+    return res
+      .status(500)
+      .json({ success: false, message: "Server Error", error: err.message });
   }
 });
 
@@ -1645,8 +1695,7 @@ router.get("/dashboard-scwise", async (req, res) => {
         .json({ success: false, message: "Period must be today or yesterday" });
     }
 
-    const what =
-      period === "today" ? "TodaySaleSCwise" : "YesterdaySaleSCwise";
+    const what = period === "today" ? "TodaySaleSCwise" : "YesterdaySaleSCwise";
 
     console.log(
       `📊 Dashboard SCwise | Period: ${period} | DB: ${databaseName}`,
@@ -1663,7 +1712,7 @@ router.get("/dashboard-scwise", async (req, res) => {
       .execute("A_SP_FOR_ApplicationChallangrid");
 
     const scs = (result.recordset || []).map((row) => ({
-      scId:  (row.scId ?? row.sp_550 ?? row.SCID ?? "").toString().trim(),
+      scId: (row.scId ?? row.sp_550 ?? row.SCID ?? "").toString().trim(),
       scName: (row.SCName ?? row.scname ?? row.scName ?? "Unknown SC")
         .toString()
         .trim(),
@@ -1954,7 +2003,7 @@ router.get("/sc-sale-details", async (req, res) => {
     }
 
     const period = (req.query.period || "today").toLowerCase().trim();
-    const scId   = (req.query.scId   || "").trim();
+    const scId = (req.query.scId || "").trim();
     const scName = (req.query.scName || "").trim();
 
     console.log("========== SC SALE DETAIL ==========");
@@ -1981,28 +2030,31 @@ router.get("/sc-sale-details", async (req, res) => {
     }
 
     if (!resolvedScId) {
-      return res
-        .status(400)
-        .json({ success: false, message: "scId is required and could not be resolved" });
+      return res.status(400).json({
+        success: false,
+        message: "scId is required and could not be resolved",
+      });
     }
 
     // Resolve today / yesterday as dd/mm/yyyy
-    const dateResult = await pool.request().query(
-      period === "today"
-        ? "SELECT CONVERT(NVARCHAR(11), GETDATE(), 103) AS dt"
-        : "SELECT CONVERT(NVARCHAR(11), DATEADD(DAY,-1,GETDATE()), 103) AS dt",
-    );
+    const dateResult = await pool
+      .request()
+      .query(
+        period === "today"
+          ? "SELECT CONVERT(NVARCHAR(11), GETDATE(), 103) AS dt"
+          : "SELECT CONVERT(NVARCHAR(11), DATEADD(DAY,-1,GETDATE()), 103) AS dt",
+      );
     const dateStr = dateResult.recordset[0].dt;
 
     console.log("From Date :", dateStr);
     console.log("To Date   :", dateStr);
 
     const request = pool.request();
-    request.input("prefix",   sql.NVarChar(50),  "");
-    request.input("what",     sql.NVarChar(100), "SaleRegisterReportSCWise");
-    request.input("FromDate", sql.NVarChar(20),  dateStr);
-    request.input("ToDate",   sql.NVarChar(20),  dateStr);
-    request.input("sp_550",   sql.NVarChar(50),  resolvedScId); // SC identifier
+    request.input("prefix", sql.NVarChar(50), "");
+    request.input("what", sql.NVarChar(100), "SaleRegisterReportSCWise");
+    request.input("FromDate", sql.NVarChar(20), dateStr);
+    request.input("ToDate", sql.NVarChar(20), dateStr);
+    request.input("sp_550", sql.NVarChar(50), resolvedScId); // SC identifier
 
     console.log("Executing SaleRegisterReportSCWise...");
 
@@ -2018,7 +2070,116 @@ router.get("/sc-sale-details", async (req, res) => {
     // if (pool) await pool.close();
   }
 });
+// ======================================================
+// GET /api/challan/receipt/combined
+// Combined Receipt + Receipt Request Data
+// ======================================================
 
+router.get("/receipt/combined", async (req, res) => {
+  let pool;
+
+  try {
+    // ==================================================
+    // AUTHENTICATION
+    // ==================================================
+
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    // ==================================================
+    // DATABASE
+    // ==================================================
+
+    const databaseName = decoded.currentDatabase;
+
+    if (!databaseName) {
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
+    }
+
+    console.log("======================================");
+    console.log("COMBINED RECEIPT API");
+    console.log("DATABASE:", databaseName);
+    console.log("======================================");
+
+    pool = await openPool(databaseName);
+
+    // ==================================================
+    // GET COMBINED DATA
+    // ==================================================
+
+    const result = await pool.request().query(`
+      SELECT
+          rcl.rcl_2 AS receipt_id,
+          rcl.rcl_9 AS receipt_no,
+          rcl.rcl_7 AS receipt_date,
+
+          (
+              SELECT TOP 1 ml.ml_1
+              FROM rh_ml ml
+              WHERE ml.ml_2 = rcl.rcl_54
+          ) AS customer_name,
+
+          arr.edate AS request_date,
+          arr.unqid AS request_id,
+          arr.userid AS request_user_id,
+          arr.ipaddress AS request_ip,
+          arr.recpt_unqid AS request_receipt_id,
+          arr.req_type AS request_type,
+          arr.val_frm AS value_from,
+          arr.val_to AS value_to
+
+      FROM rh_rcl rcl
+
+      LEFT JOIN app_receipt_request arr
+          ON arr.recpt_unqid = rcl.rcl_2
+
+      ORDER BY rcl.rcl_7 DESC
+    `);
+
+    // ==================================================
+    // LOG RESULT
+    // ==================================================
+
+    console.log("COMBINED RECEIPT ROWS:", result.recordset.length);
+
+    console.log(
+      "COMBINED RECEIPT DATA:",
+      JSON.stringify(result.recordset, null, 2),
+    );
+
+    // ==================================================
+    // RESPONSE
+    // ==================================================
+
+    return res.json({
+      success: true,
+      data: result.recordset,
+    });
+  } catch (err) {
+    console.error("COMBINED RECEIPT ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  } finally {
+    // Do not close the pool here.
+    // dynamicPoolManager manages the connection.
+    // if (pool) {
+    //   await pool.close();
+    // }
+  }
+});
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/challan/sales-comparison
 // Returns sales comparison data (current vs previous period) for a given period.
@@ -2043,12 +2204,7 @@ router.get("/sales-comparison", async (req, res) => {
 
     const period = (req.query.period || "today_vs_yesterday").trim();
 
-    console.log(
-      "📊 SALES COMPARISON — DB:",
-      databaseName,
-      "Period:",
-      period,
-    );
+    console.log("📊 SALES COMPARISON — DB:", databaseName, "Period:", period);
 
     pool = await openPool(databaseName);
 
