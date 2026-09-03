@@ -2117,32 +2117,32 @@ router.get("/receipt/combined", async (req, res) => {
     // ==================================================
 
     const result = await pool.request().query(`
-      SELECT
-          rcl.rcl_2 AS receipt_id,
-          rcl.rcl_9 AS receipt_no,
-          rcl.rcl_7 AS receipt_date,
+  SELECT
+    rcl.rcl_2 AS receipt_id,
+    rcl.rcl_9 AS receipt_no,
+    rcl.rcl_7 AS receipt_date,
 
-          (
-              SELECT TOP 1 ml.ml_1
-              FROM rh_ml ml
-              WHERE ml.ml_2 = rcl.rcl_54
-          ) AS customer_name,
+    (
+        SELECT TOP 1 m1.m1_1
+        FROM rh_m1 m1
+        WHERE m1.m1_2 = rcl.rcl_54
+    ) AS customer_name,
 
-          arr.edate AS request_date,
-          arr.unqid AS request_id,
-          arr.userid AS request_user_id,
-          arr.ipaddress AS request_ip,
-          arr.recpt_unqid AS request_receipt_id,
-          arr.req_type AS request_type,
-          arr.val_frm AS value_from,
-          arr.val_to AS value_to
+    arr.edate AS request_date,
+    arr.unqid AS request_id,
+    arr.userid AS request_user_id,
+    arr.ipaddress AS request_ip,
+    arr.recpt_unqid AS request_receipt_id,
+    arr.req_type AS request_type,
+    arr.val_frm AS value_from,
+    arr.val_to AS value_to
 
-      FROM rh_rcl rcl
+FROM rh_rcl rcl
 
-      LEFT JOIN app_receipt_request arr
-          ON arr.recpt_unqid = rcl.rcl_2
+right JOIN app_receipt_request arr
+    ON arr.recpt_unqid = rcl.rcl_2
 
-      ORDER BY rcl.rcl_7 DESC
+ORDER BY rcl.rcl_7 DESC;
     `);
 
     // ==================================================
