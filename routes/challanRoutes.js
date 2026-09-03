@@ -2189,6 +2189,131 @@ router.get("/receipt/combined", async (req, res) => {
     // }
   }
 });
+
+// ======================================================
+// POST /api/challan/receipt/update
+// Update Receipt Request
+// ======================================================
+
+router.post("/receipt/update", async (req, res) => {
+  let pool;
+
+  try {
+    // ==================================================
+    // AUTHENTICATION
+    // ==================================================
+
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    // ==================================================
+    // DATABASE
+    // ==================================================
+
+    const databaseName = decoded.currentDatabase;
+
+    if (!databaseName) {
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
+    }
+
+    // ==================================================
+    // GET VALUES FROM FLUTTER
+    // ==================================================
+
+    const { recpt_unqid, req_type, val_to } = req.body;
+
+    console.log("");
+    console.log("==============================================");
+    console.log("       UPDATE RECEIPT REQUEST API");
+    console.log("==============================================");
+    console.log("DATABASE   :", databaseName);
+    console.log("recpt_unqid:", recpt_unqid);
+    console.log("req_type   :", req_type);
+    console.log("val_to     :", val_to);
+    console.log("==============================================");
+
+    // ==================================================
+    // VALIDATION
+    // ==================================================
+
+    if (!recpt_unqid) {
+      return res.status(400).json({
+        success: false,
+        message: "recpt_unqid is required",
+      });
+    }
+
+    if (!req_type) {
+      return res.status(400).json({
+        success: false,
+        message: "req_type is required",
+      });
+    }
+
+    if (val_to === undefined || val_to === null) {
+      return res.status(400).json({
+        success: false,
+        message: "val_to is required",
+      });
+    }
+
+    // ==================================================
+    // OPEN DATABASE
+    // ==================================================
+
+    pool = await openPool(databaseName);
+
+    // ==================================================
+    // CALL STORED PROCEDURE
+    // ==================================================
+
+    const result = await pool
+      .request()
+      .input("what", sql.NVarChar(50), "Update")
+      .input("unqid", sql.NVarChar(50), String(recpt_unqid).trim())
+      .input("req_type", sql.NVarChar(50), String(req_type).trim())
+      .input("to", sql.NVarChar(sql.MAX), String(val_to))
+      .execute("A_SP_FOR_UpdateReceiptRequest");
+
+    // ==================================================
+    // DEBUG
+    // ==================================================
+
+    console.log("");
+    console.log("==============================================");
+    console.log("       UPDATE SP RESULT");
+    console.log("==============================================");
+    console.log(result.recordset);
+    console.log("==============================================");
+
+    // ==================================================
+    // RESPONSE
+    // ==================================================
+
+    return res.json({
+      success: true,
+      message: "Receipt updated successfully",
+      data: result.recordset || [],
+    });
+  } catch (err) {
+    console.error("❌ UPDATE RECEIPT ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Receipt update failed",
+      error: err.message,
+    });
+  }
+});
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/challan/sales-comparison
 // Returns sales comparison data (current vs previous period) for a given period.
