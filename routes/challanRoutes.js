@@ -2143,6 +2143,7 @@ right JOIN app_receipt_request arr
     ON arr.recpt_unqid = rcl.rcl_2
 
 ORDER BY rcl.rcl_7 DESC;
+
     `);
 
     // ==================================================
