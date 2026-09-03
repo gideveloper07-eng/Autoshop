@@ -2123,7 +2123,7 @@ router.get("/receipt/combined", async (req, res) => {
     rcl.rcl_7 AS receipt_date,
 
     (
-        SELECT TOP 1 m1.m1_1
+        SELECT TOP 1 m1.m1_7
         FROM rh_m1 m1
         WHERE m1.m1_2 = rcl.rcl_54
     ) AS customer_name,
