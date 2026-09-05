@@ -22,6 +22,7 @@ const notificationRoutes = require("./routes/notificationRoutes");
 const groupRoutes = require("./routes/groupRoutes");
 const chatRoutes = require("./routes/chatRoutes");
 const aiRoutes = require("./routes/aiRoutes");
+const vehicleAllocationRoutes = require("./routes/vehicleAllocationRoutes");
 
 const {
     initializeAI
@@ -55,6 +56,7 @@ app.use("/api", notificationRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/group", groupRoutes);
 app.use("/api/ai", aiRoutes);
+app.use("/api/vehicle-allocation", vehicleAllocationRoutes);
 // ── HEALTH CHECK ─────────────────────────────────────
 app.get("/", (_, res) => {
   res.json({
