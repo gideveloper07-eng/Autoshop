@@ -112,6 +112,12 @@ async function sendReceiptChangeNotification({
     // ==========================================================
     communicationPool = await openCommunicationPool();
 
+    // Some pool managers return an existing pool that may have been
+    // closed by a previous request. Reconnect it before using it.
+    if (communicationPool && !communicationPool.connected) {
+      await communicationPool.connect();
+    }
+
     // ==========================================================
     // 6. GET ADMIN FCM TOKEN
     //
@@ -306,13 +312,11 @@ async function sendReceiptChangeNotification({
 
     throw err;
   } finally {
-    if (companyPool) {
-      await companyPool.close();
-    }
-
-    if (communicationPool) {
-      await communicationPool.close();
-    }
+    // IMPORTANT:
+    // Do NOT close companyPool or communicationPool here.
+    // These pools are managed by the pool-manager/helper modules.
+    // Closing them here causes the next notification request to fail
+    // with: "Connection is closed" / ECONNCLOSED.
   }
 }
 
