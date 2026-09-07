@@ -1,6 +1,8 @@
 const admin = require("../firebase");
-const { sql } = require("../config/db");
-const openPool = require("../utils/dynamicPoolManager");
+const { sql } = require("mssql");
+const openCommunicationPool = require("./communicationPool");
+const { sql: companySql } = require("../config/db");
+const openCompanyPool = require("../utils/dynamicPoolManager");
 
 // ============================================================
 // SEND RECEIPT CHANGE REQUEST NOTIFICATION TO ADMIN
@@ -11,9 +13,18 @@ async function sendReceiptChangeNotification({
   receiptNo,
   requestType,
 }) {
-  let pool;
+  let companyPool;
+  let communicationPool;
 
   try {
+    console.log("==========================================");
+    console.log("RECEIPT CHANGE PUSH START");
+    console.log("DATABASE:", databaseName);
+    console.log("REQUEST ID:", requestId);
+    console.log("RECEIPT NO:", receiptNo);
+    console.log("REQUEST TYPE:", requestType);
+    console.log("==========================================");
+
     if (!databaseName) {
       throw new Error("databaseName is required");
     }
@@ -22,16 +33,19 @@ async function sendReceiptChangeNotification({
       throw new Error("requestId is required");
     }
 
-    pool = await openPool(databaseName);
+    // ==========================================================
+    // 1. OPEN COMPANY DATABASE
+    // ==========================================================
+    companyPool = await openCompanyPool(databaseName);
 
-    // ----------------------------------------------------------
-    // 1. Prevent duplicate notification
-    // ----------------------------------------------------------
-    const duplicateCheck = await pool
+    // ==========================================================
+    // 2. CHECK DUPLICATE NOTIFICATION
+    // ==========================================================
+    const duplicateCheck = await companyPool
       .request()
-      .input("userId", sql.NVarChar, "adm")
-      .input("referenceId", sql.NVarChar, String(requestId))
-      .input("type", sql.NVarChar, "RECEIPT_CHANGE_REQUEST").query(`
+      .input("userId", companySql.NVarChar, "adm")
+      .input("referenceId", companySql.NVarChar, String(requestId))
+      .input("type", companySql.NVarChar, "RECEIPT_CHANGE_REQUEST").query(`
         SELECT TOP 1 id
         FROM app_notifications
         WHERE user_id = @userId
@@ -48,25 +62,25 @@ async function sendReceiptChangeNotification({
       };
     }
 
-    // ----------------------------------------------------------
-    // 2. Create notification text
-    // ----------------------------------------------------------
+    // ==========================================================
+    // 3. CREATE NOTIFICATION TEXT
+    // ==========================================================
     const title = "New Receipt Change Request";
 
     const message =
       `Receipt No ${receiptNo || ""} - ` +
       `${requestType || ""} change requested`;
 
-    // ----------------------------------------------------------
-    // 3. Insert notification into app_notifications
-    // ----------------------------------------------------------
-    await pool
+    // ==========================================================
+    // 4. SAVE NOTIFICATION IN COMPANY DATABASE
+    // ==========================================================
+    await companyPool
       .request()
-      .input("userId", sql.NVarChar, "adm")
-      .input("title", sql.NVarChar, title)
-      .input("message", sql.NVarChar, message)
-      .input("type", sql.NVarChar, "RECEIPT_CHANGE_REQUEST")
-      .input("referenceId", sql.NVarChar, String(requestId)).query(`
+      .input("userId", companySql.NVarChar, "adm")
+      .input("title", companySql.NVarChar, title)
+      .input("message", companySql.NVarChar, message)
+      .input("type", companySql.NVarChar, "RECEIPT_CHANGE_REQUEST")
+      .input("referenceId", companySql.NVarChar, String(requestId)).query(`
         INSERT INTO app_notifications
         (
           id,
@@ -91,25 +105,66 @@ async function sendReceiptChangeNotification({
         )
       `);
 
-    // ----------------------------------------------------------
-    // 4. Get admin FCM token
-    // ----------------------------------------------------------
-    const tokenResult = await pool
+    console.log("APP NOTIFICATION SAVED SUCCESSFULLY");
+
+    // ==========================================================
+    // 5. OPEN COMMUNICATION DATABASE
+    // ==========================================================
+    communicationPool = await openCommunicationPool();
+
+    // ==========================================================
+    // 6. GET ADMIN FCM TOKEN
+    //
+    // IMPORTANT:
+    // Flutter save-fcm-token stores tokens here:
+    // AUTOSHOP_COMMUNICATION -> MA_UserDevices
+    // ==========================================================
+    const tokenResult = await communicationPool
       .request()
-      .input("userId", sql.NVarChar, "adm").query(`
-        SELECT DISTINCT fcm_token
-        FROM app_user_devices
-        WHERE user_id = @userId
-          AND fcm_token IS NOT NULL
-          AND LTRIM(RTRIM(fcm_token)) <> ''
+      .input("userId", sql.NVarChar(100), "adm").query(`
+        SELECT
+          DeviceToken,
+          PropertyCode,
+          DatabaseName,
+          Platform,
+          DeviceModel
+        FROM MA_UserDevices
+        WHERE UserId = @userId
+          AND IsActive = 1
+          AND DeviceToken IS NOT NULL
+          AND LTRIM(RTRIM(DeviceToken)) <> ''
       `);
 
     const tokens = tokenResult.recordset
-      .map((row) => String(row.fcm_token).trim())
+      .map((row) => String(row.DeviceToken).trim())
       .filter(Boolean);
 
+    // ==========================================================
+    // DEBUG
+    // ==========================================================
+    console.log("==========================================");
+    console.log("FCM TOKEN DEBUG");
+    console.log("ADMIN USER:", "adm");
+    console.log("TOKENS FOUND:", tokens.length);
+
+    tokenResult.recordset.forEach((row, index) => {
+      console.log(
+        `TOKEN ${index + 1}:`,
+        String(row.DeviceToken).substring(0, 30) + "...",
+      );
+      console.log(`PROPERTY ${index + 1}:`, row.PropertyCode);
+      console.log(`DATABASE ${index + 1}:`, row.DatabaseName);
+    });
+
+    console.log("==========================================");
+
+    // ==========================================================
+    // 7. NO TOKEN
+    // ==========================================================
     if (tokens.length === 0) {
-      console.log("Receipt request saved, but no FCM token found for adm.");
+      console.log(
+        "Receipt request saved, but NO ACTIVE FCM TOKEN found for adm.",
+      );
 
       return {
         success: true,
@@ -119,76 +174,124 @@ async function sendReceiptChangeNotification({
       };
     }
 
-    // ----------------------------------------------------------
-    // 5. Send Firebase push notification
-    // ----------------------------------------------------------
+    // ==========================================================
+    // 8. CREATE FCM DATA
+    // ==========================================================
+    const dataPayload = {
+      type: "receipt_change_request",
+      requestId: String(requestId),
+      receiptNo: String(receiptNo || ""),
+      requestType: String(requestType || ""),
+    };
+
+    // ==========================================================
+    // 9. SEND PUSH NOTIFICATION
+    // ==========================================================
+    console.log("SENDING FCM PUSH...");
+
     const response = await admin.messaging().sendEachForMulticast({
       tokens,
 
+      // ------------------------------------------------------
+      // VERY IMPORTANT
+      // This makes Android display the notification when the
+      // Flutter app is backgrounded or terminated.
+      // ------------------------------------------------------
       notification: {
-        title,
+        title: title,
         body: message,
       },
 
-      data: {
-        type: "receipt_change_request",
-        requestId: String(requestId),
-        receiptNo: String(receiptNo || ""),
-        requestType: String(requestType || ""),
-      },
+      // ------------------------------------------------------
+      // Flutter uses this data when notification is opened.
+      // ------------------------------------------------------
+      data: dataPayload,
 
+      // ------------------------------------------------------
+      // ANDROID
+      // ------------------------------------------------------
       android: {
         priority: "high",
+
         notification: {
           channelId: "receipt_change_requests",
           sound: "default",
+          defaultSound: true,
         },
       },
 
+      // ------------------------------------------------------
+      // IOS
+      // ------------------------------------------------------
       apns: {
+        headers: {
+          "apns-priority": "10",
+        },
+
         payload: {
           aps: {
+            alert: {
+              title: title,
+              body: message,
+            },
             sound: "default",
+            badge: 1,
           },
         },
       },
     });
 
-    console.log(
-      "Receipt change FCM result:",
-      response.successCount,
-      "success,",
-      response.failureCount,
-      "failed",
-    );
+    // ==========================================================
+    // 10. RESULT
+    // ==========================================================
+    console.log("==========================================");
+    console.log("FCM SEND RESULT");
+    console.log("SUCCESS:", response.successCount);
+    console.log("FAILED:", response.failureCount);
+    console.log("==========================================");
 
-    // ----------------------------------------------------------
-    // 6. Remove invalid Firebase tokens
-    // ----------------------------------------------------------
-    if (response.responses) {
-      for (let i = 0; i < response.responses.length; i++) {
-        const result = response.responses[i];
+    // ==========================================================
+    // 11. REMOVE INVALID TOKENS
+    // ==========================================================
+    for (let i = 0; i < response.responses.length; i++) {
+      const result = response.responses[i];
 
-        if (!result.success && result.error) {
-          const errorCode = result.error.code;
+      if (!result.success) {
+        const errorCode = result.error?.code || "";
 
-          if (
-            errorCode === "messaging/registration-token-not-registered" ||
-            errorCode === "messaging/invalid-registration-token"
-          ) {
-            await pool
+        console.error(`FCM FAILED [${i}]:`, errorCode, result.error?.message);
+
+        if (
+          errorCode === "messaging/registration-token-not-registered" ||
+          errorCode === "messaging/invalid-registration-token"
+        ) {
+          const badToken = tokens[i];
+
+          console.log(
+            "DEACTIVATING INVALID TOKEN:",
+            badToken.substring(0, 30) + "...",
+          );
+
+          try {
+            await communicationPool
               .request()
-              .input("token", sql.NVarChar(sql.MAX), tokens[i]).query(`
-                DELETE FROM app_user_devices
-                WHERE fcm_token = @token
+              .input("token", sql.NVarChar(sql.MAX), badToken).query(`
+                UPDATE MA_UserDevices
+                SET
+                  IsActive = 0,
+                  LastUpdated = GETDATE()
+                WHERE DeviceToken = @token
               `);
-
-            console.log("Removed invalid FCM token.");
+          } catch (cleanupError) {
+            console.error("TOKEN CLEANUP ERROR:", cleanupError.message);
           }
         }
       }
     }
 
+    // ==========================================================
+    // 12. RETURN RESULT
+    // ==========================================================
     return {
       success: true,
       notificationSaved: true,
@@ -197,11 +300,19 @@ async function sendReceiptChangeNotification({
       failureCount: response.failureCount,
     };
   } catch (err) {
+    console.error("==========================================");
     console.error("RECEIPT CHANGE NOTIFICATION ERROR:", err);
+    console.error("==========================================");
 
     throw err;
   } finally {
-    if (pool) await pool.close();
+    if (companyPool) {
+      await companyPool.close();
+    }
+
+    if (communicationPool) {
+      await communicationPool.close();
+    }
   }
 }
 
