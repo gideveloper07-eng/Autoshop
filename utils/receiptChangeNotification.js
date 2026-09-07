@@ -140,7 +140,7 @@ async function sendReceiptChangeNotification({
       android: {
         priority: "high",
         notification: {
-          channelId: "default",
+          channelId: "receipt_change_requests",
           sound: "default",
         },
       },
