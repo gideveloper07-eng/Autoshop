@@ -1,5 +1,5 @@
 const admin = require("../firebase");
-const { sql } = require("mssql");
+const sql = require("mssql");
 const openCommunicationPool = require("./communicationPool");
 const { sql: companySql } = require("../config/db");
 const openCompanyPool = require("../utils/dynamicPoolManager");
