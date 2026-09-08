@@ -1057,7 +1057,9 @@ router.get("/dashboard-stats", async (req, res) => {
 
     pool = await openPool(databaseName);
 
-    // ---------- TODAY BOOKING ----------
+    // ======================================================
+    // TODAY BOOKING
+    // ======================================================
     const bookingToday = await pool
       .request()
       .input("prefix", sql.NVarChar(50), "")
@@ -1066,7 +1068,9 @@ router.get("/dashboard-stats", async (req, res) => {
       .input("ToDate", sql.NVarChar(50), "")
       .execute("A_SP_FOR_ApplicationChallangrid");
 
-    // ---------- YESTERDAY BOOKING ----------
+    // ======================================================
+    // YESTERDAY BOOKING
+    // ======================================================
     const bookingYesterday = await pool
       .request()
       .input("prefix", sql.NVarChar(50), "")
@@ -1075,7 +1079,9 @@ router.get("/dashboard-stats", async (req, res) => {
       .input("ToDate", sql.NVarChar(50), "")
       .execute("A_SP_FOR_ApplicationChallangrid");
 
-    // ---------- TODAY SALE ----------
+    // ======================================================
+    // TODAY SALE
+    // ======================================================
     const saleToday = await pool
       .request()
       .input("prefix", sql.NVarChar(50), "")
@@ -1084,7 +1090,9 @@ router.get("/dashboard-stats", async (req, res) => {
       .input("ToDate", sql.NVarChar(50), "")
       .execute("A_SP_FOR_ApplicationChallangrid");
 
-    // ---------- YESTERDAY SALE ----------
+    // ======================================================
+    // YESTERDAY SALE
+    // ======================================================
     const saleYesterday = await pool
       .request()
       .input("prefix", sql.NVarChar(50), "")
@@ -1093,9 +1101,16 @@ router.get("/dashboard-stats", async (req, res) => {
       .input("ToDate", sql.NVarChar(50), "")
       .execute("A_SP_FOR_ApplicationChallangrid");
 
-    // Accept ?period=7days (default) or ?period=6months from the Flutter client
+    // ======================================================
+    // TREND PERIOD
+    // ======================================================
+    // Accept ?period=7days (default)
+    // or ?period=6months
     const trendPeriod = req.query.period === "6months" ? "6months" : "7days";
 
+    // ======================================================
+    // BOOKING TREND
+    // ======================================================
     const bookingTrendResult = await pool
       .request()
       .input("prefix", sql.NVarChar(50), "")
@@ -1105,6 +1120,9 @@ router.get("/dashboard-stats", async (req, res) => {
       .input("ToDate", sql.NVarChar(50), "")
       .execute("A_SP_FOR_ApplicationChallangrid");
 
+    // ======================================================
+    // SALE TREND
+    // ======================================================
     const saleTrendResult = await pool
       .request()
       .input("prefix", sql.NVarChar(50), "")
@@ -1114,22 +1132,86 @@ router.get("/dashboard-stats", async (req, res) => {
       .input("ToDate", sql.NVarChar(50), "")
       .execute("A_SP_FOR_ApplicationChallangrid");
 
-    const todayBooking = bookingToday.recordset?.[0]?.todaybooking ?? 0;
+    // ======================================================
+    // BASIC VALUES
+    // ======================================================
 
-    const yesterdayBooking =
-      bookingYesterday.recordset?.[0]?.yesterdaybooking ?? 0;
+    const todayBooking = Number(bookingToday.recordset?.[0]?.todaybooking ?? 0);
 
-    const todaySale = saleToday.recordset?.[0]?.todaydelivery ?? 0;
+    const yesterdayBooking = Number(
+      bookingYesterday.recordset?.[0]?.yesterdaybooking ?? 0,
+    );
 
-    const yesterdaySale = saleYesterday.recordset?.[0]?.yesterdaysale ?? 0;
+    const todaySale = Number(saleToday.recordset?.[0]?.todaydelivery ?? 0);
+
+    const yesterdaySale = Number(
+      saleYesterday.recordset?.[0]?.yesterdaysale ?? 0,
+    );
+
+    // ======================================================
+    // BOOKING TREND
+    // ======================================================
 
     const bookingTrend = bookingTrendResult.recordset.map((x) =>
       Number(x.TotalBooking),
     );
 
+    // ======================================================
+    // SALE TREND
+    // ======================================================
+
     const saleTrend = saleTrendResult.recordset.map((x) => Number(x.TotalSale));
 
-    // ---------- PENDING DELIVERY ----------
+    // ======================================================
+    // LIVE BOOKING
+    // ======================================================
+
+    const liveBookingResult = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "")
+      .input("what", sql.NVarChar(50), "LiveBooking")
+      .input("FromDate", sql.NVarChar(50), "")
+      .input("ToDate", sql.NVarChar(50), "")
+      .execute("A_SP_FOR_ApplicationChallangrid");
+
+    const liveBooking = Number(
+      liveBookingResult.recordset?.[0]?.TotalLiveBooking ?? 0,
+    );
+
+    // ======================================================
+    // MTD BOOKING
+    // ======================================================
+
+    const mtdBookingResult = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "")
+      .input("what", sql.NVarChar(50), "MtdBooking")
+      .input("FromDate", sql.NVarChar(50), "")
+      .input("ToDate", sql.NVarChar(50), "")
+      .execute("A_SP_FOR_ApplicationChallangrid");
+
+    const mtdBooking = Number(
+      mtdBookingResult.recordset?.[0]?.monthlybooking ?? 0,
+    );
+
+    // ======================================================
+    // MTD SALE
+    // ======================================================
+
+    const mtdSaleResult = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "")
+      .input("what", sql.NVarChar(50), "MtdSale")
+      .input("FromDate", sql.NVarChar(50), "")
+      .input("ToDate", sql.NVarChar(50), "")
+      .execute("A_SP_FOR_ApplicationChallangrid");
+
+    const mtdSale = Number(mtdSaleResult.recordset?.[0]?.totaldelmonth ?? 0);
+
+    // ======================================================
+    // PENDING DELIVERY
+    // ======================================================
+
     const pendingDelResult = await pool
       .request()
       .input("prefix", sql.NVarChar(50), "")
@@ -1142,41 +1224,67 @@ router.get("/dashboard-stats", async (req, res) => {
       "⏳ Pending Delivery Raw Recordset:",
       JSON.stringify(pendingDelResult.recordset),
     );
+
     console.log(
       "⏳ Pending Delivery All Recordsets:",
       JSON.stringify(pendingDelResult.recordsets),
     );
 
-    // SP may return multiple recordsets — scan all to find the count row
+    // SP may return multiple recordsets.
+    // Scan all recordsets to find the count row.
     let pendingDelivery = 0;
+
     const allRecordsets = pendingDelResult.recordsets ?? [
       pendingDelResult.recordset,
     ];
+
     for (const rs of allRecordsets) {
       if (rs?.length > 0) {
         const firstVal = Object.values(rs[0])[0];
+
         const num = Number(firstVal ?? 0);
+
         if (!isNaN(num) && num > 0) {
           pendingDelivery = num;
+
           console.log(
             "✅ Pending Delivery Count:",
             pendingDelivery,
             "| Raw row:",
             rs[0],
           );
+
           break;
         }
       }
     }
+
     if (pendingDelivery === 0) {
       console.log("⚠️ Pending Delivery: could not find count in any recordset");
     }
 
+    // ======================================================
+    // DEBUG LOGS
+    // ======================================================
+
     console.log("Today Booking Row:", bookingToday.recordset?.[0]);
+
     console.log("Yesterday Booking Row:", bookingYesterday.recordset?.[0]);
 
     console.log("Today Sale Row:", saleToday.recordset?.[0]);
+
     console.log("Yesterday Sale Row:", saleYesterday.recordset?.[0]);
+
+    console.log("🔥 LIVE BOOKING:", liveBooking);
+
+    console.log("📅 MTD BOOKING:", mtdBooking);
+
+    console.log("💰 MTD SALE:", mtdSale);
+
+    // ======================================================
+    // GROWTH CALCULATION
+    // ======================================================
+
     function calculateGrowth(today, yesterday) {
       if (yesterday === 0) {
         return today > 0 ? 100 : 0;
@@ -1189,6 +1297,10 @@ router.get("/dashboard-stats", async (req, res) => {
 
     const saleGrowth = calculateGrowth(todaySale, yesterdaySale);
 
+    // ======================================================
+    // DASHBOARD CONSOLE TABLE
+    // ======================================================
+
     console.log("📊 Dashboard Stats");
 
     console.table({
@@ -1196,24 +1308,48 @@ router.get("/dashboard-stats", async (req, res) => {
       yesterdayBooking,
       bookingGrowth,
       bookingTrend,
+
       todaySale,
       yesterdaySale,
       saleGrowth,
       saleTrend,
+
+      pendingDelivery,
+
+      liveBooking,
+      mtdBooking,
+      mtdSale,
     });
+
+    // ======================================================
+    // API RESPONSE
+    // ======================================================
 
     return res.json({
       success: true,
+
       data: {
+        // Booking
         todayBooking,
         yesterdayBooking,
         bookingGrowth,
         bookingTrend,
+
+        // Sale
         todaySale,
         yesterdaySale,
         saleGrowth,
         saleTrend,
+
+        // Pending Delivery
         pendingDelivery,
+
+        // NEW
+        liveBooking,
+        mtdBooking,
+        mtdSale,
+
+        // Trend
         trendPeriod,
       },
     });
@@ -1226,6 +1362,7 @@ router.get("/dashboard-stats", async (req, res) => {
       error: err.message,
     });
   } finally {
+    // Do not close the shared pool here.
     // if (pool) {
     //   await pool.close();
     // }
