@@ -2685,7 +2685,7 @@ async function findUserInDatabase(databaseName, receiverGuid) {
             uti,
             utnm
         FROM rh_secut
-        WHERE utunqid=@guid
+        WHERE utunqid=(select utunqid from rh_secut where uti=@guid)
       `);
 
     if (result.recordset.length === 0) {
