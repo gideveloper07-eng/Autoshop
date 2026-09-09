@@ -2339,6 +2339,11 @@ router.get("/receipt/combined", async (req, res) => {
 // GET /api/challan/receipt/today-complete
 // Today's Completed Receipt Requests
 // ======================================================
+// ======================================================
+// GET /api/challan/receipt/today-complete
+// Today's Completed Receipt Requests
+// ======================================================
+
 router.get("/receipt/today-complete", async (req, res) => {
   let pool;
 
@@ -2346,6 +2351,7 @@ router.get("/receipt/today-complete", async (req, res) => {
     // ==================================================
     // AUTHENTICATION
     // ==================================================
+
     const decoded = decodeToken(req);
 
     if (!decoded) {
@@ -2358,6 +2364,7 @@ router.get("/receipt/today-complete", async (req, res) => {
     // ==================================================
     // DATABASE
     // ==================================================
+
     const databaseName = decoded.currentDatabase;
 
     if (!databaseName) {
@@ -2381,6 +2388,7 @@ router.get("/receipt/today-complete", async (req, res) => {
     // ==================================================
     // OPEN DATABASE
     // ==================================================
+
     pool = await openPool(databaseName);
 
     if (!pool) {
@@ -2391,7 +2399,10 @@ router.get("/receipt/today-complete", async (req, res) => {
 
     // ==================================================
     // GET TODAY'S COMPLETED RECEIPT REQUESTS
+    // IMPORTANT:
+    // approvedate is used for today's completed date
     // ==================================================
+
     const result = await pool.request().query(`
       SELECT
           rcl.rcl_2 AS receipt_id,
@@ -2406,6 +2417,8 @@ router.get("/receipt/today-complete", async (req, res) => {
           ) AS customer_name,
 
           arr.edate AS request_date,
+          arr.approvedate AS approved_date,
+
           arr.unqid AS request_id,
           arr.userid AS request_user_id,
           arr.ipaddress AS request_ip,
@@ -2423,14 +2436,16 @@ router.get("/receipt/today-complete", async (req, res) => {
 
       WHERE
           LOWER(LTRIM(RTRIM(arr.status))) IN ('complete', 'completed')
-          AND CAST(arr.edate AS DATE) = CAST(GETDATE() AS DATE)
+          AND arr.approvedate IS NOT NULL
+          AND CAST(arr.approvedate AS DATE) = CAST(GETDATE() AS DATE)
 
-      ORDER BY arr.edate DESC;
+      ORDER BY arr.approvedate DESC;
     `);
 
     // ==================================================
     // LOG RESULT
     // ==================================================
+
     console.log("==============================================");
     console.log("TODAY COMPLETE RECEIPT RESULT");
     console.log("ROWS :", result.recordset.length);
@@ -2448,6 +2463,7 @@ router.get("/receipt/today-complete", async (req, res) => {
     // ==================================================
     // RESPONSE
     // ==================================================
+
     return res.status(200).json({
       success: true,
       count: result.recordset.length,
@@ -2457,6 +2473,7 @@ router.get("/receipt/today-complete", async (req, res) => {
     // ==================================================
     // ERROR
     // ==================================================
+
     console.error("");
     console.error("==============================================");
     console.error("❌ TODAY COMPLETE RECEIPT API ERROR");
@@ -2479,11 +2496,6 @@ router.get("/receipt/today-complete", async (req, res) => {
     // Do NOT call pool.close() here.
   }
 });
-
-// ======================================================
-// POST /api/challan/receipt/update
-// Update Receipt Request
-// ======================================================
 
 // ======================================================
 // POST /api/challan/receipt/update
@@ -2581,6 +2593,10 @@ router.post("/receipt/update", async (req, res) => {
 
     pool = await openPool(databaseName);
 
+    if (!pool) {
+      throw new Error(`Unable to connect to database: ${databaseName}`);
+    }
+
     // ==================================================
     // CALL STORED PROCEDURE
     // ==================================================
@@ -2635,6 +2651,34 @@ router.post("/receipt/update", async (req, res) => {
     }
 
     // ==================================================
+    // UPDATE STATUS + APPROVED DATE
+    // ==================================================
+    // IMPORTANT:
+    // This executes ONLY after the stored procedure succeeds.
+    //
+    // approvedate = exact date/time when receipt was completed.
+    // ==================================================
+
+    const completionResult = await pool
+      .request()
+      .input("request_unqid", sql.NVarChar(100), String(request_unqid).trim())
+      .query(`
+        UPDATE app_receipt_request
+        SET
+            status = 'complete',
+            approvedate = GETDATE()
+        WHERE unqid = @request_unqid;
+      `);
+
+    console.log("==============================================");
+    console.log("RECEIPT COMPLETION UPDATED");
+    console.log("REQUEST UNQID :", request_unqid);
+    console.log("STATUS        : complete");
+    console.log("APPROVEDATE   : GETDATE()");
+    console.log("ROWS UPDATED  :", completionResult.rowsAffected?.[0] ?? 0);
+    console.log("==============================================");
+
+    // ==================================================
     // SUCCESS RESPONSE
     // ==================================================
 
@@ -2658,6 +2702,11 @@ router.post("/receipt/update", async (req, res) => {
       message: "Receipt update failed",
       error: err.message,
     });
+  } finally {
+    // ==================================================
+    // DO NOT CLOSE POOL
+    // ==================================================
+    // Dynamic pool manager handles the connection.
   }
 });
 // ─────────────────────────────────────────────────────────────────────────────
