@@ -1,30 +1,16 @@
 const { sql } = require("../config/db");
 const { decodeToken } = require("../middleware/authMiddleware");
 
-async function openPool(databaseName) {
-  const pool = await new sql.ConnectionPool({
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    server: process.env.DB_HOST,
-    port: parseInt(process.env.DB_PORT || "1433"),
-    database: databaseName,
-    options: {
-      encrypt: false,
-      trustServerCertificate: true,
-    },
-  }).connect();
-
-  return pool;
-}
-
+// IMPORTANT:
+// Use the shared dynamic pool manager.
+// DO NOT create/close a new pool inside this controller.
+const openPool = require("../utils/dynamicPoolManager");
 
 // ============================================================
 // GET NOTIFICATIONS
 // GET /api/notifications
 // ============================================================
 const getNotifications = async (req, res) => {
-  let pool;
-
   try {
     const decoded = decodeToken(req);
 
@@ -36,9 +22,7 @@ const getNotifications = async (req, res) => {
     }
 
     const databaseName =
-      decoded.currentDatabase ||
-      decoded.loginDatabase ||
-      decoded.database;
+      decoded.currentDatabase || decoded.loginDatabase || decoded.database;
 
     const { userId } = decoded;
 
@@ -49,11 +33,9 @@ const getNotifications = async (req, res) => {
       });
     }
 
-    pool = await openPool(databaseName);
+    const pool = await openPool(databaseName);
 
-    const result = await pool
-      .request()
-      .input("userId", sql.NVarChar, userId)
+    const result = await pool.request().input("userId", sql.NVarChar, userId)
       .query(`
         SELECT
           id,
@@ -73,7 +55,6 @@ const getNotifications = async (req, res) => {
       success: true,
       data: result.recordset,
     });
-
   } catch (err) {
     console.error("NOTIFICATION ERROR:", err.message);
 
@@ -81,20 +62,17 @@ const getNotifications = async (req, res) => {
       success: false,
       message: err.message,
     });
-
-  } finally {
-    if (pool) await pool.close();
   }
-};
 
+  // ❌ DO NOT CLOSE pool here.
+  // dynamicPoolManager owns the shared connection.
+};
 
 // ============================================================
 // GET UNREAD COUNT
 // GET /api/notifications/unread-count
 // ============================================================
 const getUnreadNotificationCount = async (req, res) => {
-  let pool;
-
   try {
     const decoded = decodeToken(req);
 
@@ -106,9 +84,7 @@ const getUnreadNotificationCount = async (req, res) => {
     }
 
     const databaseName =
-      decoded.currentDatabase ||
-      decoded.loginDatabase ||
-      decoded.database;
+      decoded.currentDatabase || decoded.loginDatabase || decoded.database;
 
     const { userId } = decoded;
 
@@ -119,11 +95,9 @@ const getUnreadNotificationCount = async (req, res) => {
       });
     }
 
-    pool = await openPool(databaseName);
+    const pool = await openPool(databaseName);
 
-    const result = await pool
-      .request()
-      .input("userId", sql.NVarChar, userId)
+    const result = await pool.request().input("userId", sql.NVarChar, userId)
       .query(`
         SELECT COUNT(*) AS unread_count
         FROM app_notifications
@@ -135,7 +109,6 @@ const getUnreadNotificationCount = async (req, res) => {
       success: true,
       unread_count: result.recordset[0]?.unread_count ?? 0,
     });
-
   } catch (err) {
     console.error("UNREAD COUNT ERROR:", err.message);
 
@@ -143,20 +116,16 @@ const getUnreadNotificationCount = async (req, res) => {
       success: false,
       message: err.message,
     });
-
-  } finally {
-    if (pool) await pool.close();
   }
-};
 
+  // ❌ DO NOT CLOSE pool here.
+};
 
 // ============================================================
 // MARK NOTIFICATION AS READ
 // POST /api/notifications/read/:id
 // ============================================================
 const markNotificationAsRead = async (req, res) => {
-  let pool;
-
   try {
     const decoded = decodeToken(req);
 
@@ -168,9 +137,7 @@ const markNotificationAsRead = async (req, res) => {
     }
 
     const databaseName =
-      decoded.currentDatabase ||
-      decoded.loginDatabase ||
-      decoded.database;
+      decoded.currentDatabase || decoded.loginDatabase || decoded.database;
 
     const { userId } = decoded;
     const { id } = req.params;
@@ -182,13 +149,12 @@ const markNotificationAsRead = async (req, res) => {
       });
     }
 
-    pool = await openPool(databaseName);
+    const pool = await openPool(databaseName);
 
     await pool
       .request()
       .input("id", sql.NVarChar, id)
-      .input("userId", sql.NVarChar, userId)
-      .query(`
+      .input("userId", sql.NVarChar, userId).query(`
         UPDATE app_notifications
         SET is_read = 1
         WHERE id = @id
@@ -198,7 +164,6 @@ const markNotificationAsRead = async (req, res) => {
     return res.json({
       success: true,
     });
-
   } catch (err) {
     console.error("MARK READ ERROR:", err.message);
 
@@ -206,13 +171,14 @@ const markNotificationAsRead = async (req, res) => {
       success: false,
       message: err.message,
     });
-
-  } finally {
-    if (pool) await pool.close();
   }
+
+  // ❌ DO NOT CLOSE pool here.
 };
 
-
+// ============================================================
+// EXPORTS
+// ============================================================
 module.exports = {
   getNotifications,
   getUnreadNotificationCount,
