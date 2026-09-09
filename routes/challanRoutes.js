@@ -1248,7 +1248,7 @@ router.get("/dashboard-stats", async (req, res) => {
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
       .execute("A_SP_FOR_ApplicationChallangrid");
-
+    console.log("Booking Today Result:", bookingToday.recordset);
     // ======================================================
     // YESTERDAY BOOKING
     // ======================================================
@@ -1259,7 +1259,7 @@ router.get("/dashboard-stats", async (req, res) => {
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
       .execute("A_SP_FOR_ApplicationChallangrid");
-
+    console.log("Booking Yesterday Result:", bookingYesterday.recordset);
     // ======================================================
     // TODAY SALE
     // ======================================================
@@ -1270,7 +1270,7 @@ router.get("/dashboard-stats", async (req, res) => {
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
       .execute("A_SP_FOR_ApplicationChallangrid");
-
+    console.log("Sale Today Result:", saleToday.recordset);
     // ======================================================
     // YESTERDAY SALE
     // ======================================================
@@ -1281,6 +1281,7 @@ router.get("/dashboard-stats", async (req, res) => {
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
       .execute("A_SP_FOR_ApplicationChallangrid");
+    console.log("Sale Yesterday Result:", saleYesterday.recordset);
 
     // ======================================================
     // TREND PERIOD
@@ -1300,7 +1301,7 @@ router.get("/dashboard-stats", async (req, res) => {
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
       .execute("A_SP_FOR_ApplicationChallangrid");
-
+    console.log("Booking Trend Result:", bookingTrendResult.recordset);
     // ======================================================
     // SALE TREND
     // ======================================================
@@ -1312,7 +1313,7 @@ router.get("/dashboard-stats", async (req, res) => {
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
       .execute("A_SP_FOR_ApplicationChallangrid");
-
+    console.log("Sale Trend Result:", saleTrendResult.recordset);
     // ======================================================
     // BASIC VALUES
     // ======================================================
