@@ -2335,6 +2335,10 @@ router.get("/receipt/combined", async (req, res) => {
 // Today's Completed Receipt Requests
 // ======================================================
 
+// ======================================================
+// GET /api/challan/receipt/today-complete
+// Today's Completed Receipt Requests
+// ======================================================
 router.get("/receipt/today-complete", async (req, res) => {
   let pool;
 
@@ -2342,7 +2346,6 @@ router.get("/receipt/today-complete", async (req, res) => {
     // ==================================================
     // AUTHENTICATION
     // ==================================================
-
     const decoded = decodeToken(req);
 
     if (!decoded) {
@@ -2355,7 +2358,6 @@ router.get("/receipt/today-complete", async (req, res) => {
     // ==================================================
     // DATABASE
     // ==================================================
-
     const databaseName = decoded.currentDatabase;
 
     if (!databaseName) {
@@ -2365,81 +2367,116 @@ router.get("/receipt/today-complete", async (req, res) => {
       });
     }
 
-    console.log("======================================");
-    console.log("TODAY COMPLETE RECEIPT API");
-    console.log("DATABASE:", databaseName);
-    console.log("======================================");
+    console.log("");
+    console.log("==============================================");
+    console.log("       TODAY COMPLETE RECEIPT API");
+    console.log("==============================================");
+    console.log("DATABASE :", databaseName);
+    console.log(
+      "USER ID  :",
+      decoded.userid || decoded.userId || decoded.user || "",
+    );
+    console.log("==============================================");
 
+    // ==================================================
+    // OPEN DATABASE
+    // ==================================================
     pool = await openPool(databaseName);
 
-    // ==================================================
-    // GET TODAY COMPLETED RECEIPTS
-    // ==================================================
+    if (!pool) {
+      throw new Error(`Unable to connect to database: ${databaseName}`);
+    }
 
+    console.log("DATABASE CONNECTED:", databaseName);
+
+    // ==================================================
+    // GET TODAY'S COMPLETED RECEIPT REQUESTS
+    // ==================================================
     const result = await pool.request().query(`
-      SELECT 
-        rcl.rcl_2 AS receipt_id,
-        rcl.rcl_9 AS receipt_no,
-        rcl.rcl_7 AS receipt_date,
+      SELECT
+          rcl.rcl_2 AS receipt_id,
+          rcl.rcl_9 AS receipt_no,
+          rcl.rcl_7 AS receipt_date,
 
-        (
-          SELECT TOP 1 m1.m1_7
-          FROM rh_m1 m1
-          WHERE m1.m1_2 = rcl.rcl_54
-        ) AS customer_name,
+          (
+              SELECT TOP 1
+                  m1.m1_7
+              FROM rh_m1 m1
+              WHERE m1.m1_2 = rcl.rcl_54
+          ) AS customer_name,
 
-        arr.edate AS request_date,
-        arr.unqid AS request_id,
-        arr.userid AS request_user_id,
-        arr.ipaddress AS request_ip,
-        arr.recpt_unqid AS request_receipt_id,
-        arr.req_type AS request_type,
-        arr.val_frm AS value_from,
-        arr.val_to AS value_to,
-        arr.status AS status,
-        arr.change_reason AS reason
+          arr.edate AS request_date,
+          arr.unqid AS request_id,
+          arr.userid AS request_user_id,
+          arr.ipaddress AS request_ip,
+          arr.recpt_unqid AS request_receipt_id,
+          arr.req_type AS request_type,
+          arr.val_frm AS value_from,
+          arr.val_to AS value_to,
+          arr.status AS status,
+          arr.change_reason AS reason
 
-      FROM rh_rcl rcl
+      FROM app_receipt_request arr
 
-      RIGHT JOIN app_receipt_request arr
-        ON arr.recpt_unqid = rcl.rcl_2
+      LEFT JOIN rh_rcl rcl
+          ON arr.recpt_unqid = rcl.rcl_2
 
       WHERE
-        LOWER(LTRIM(RTRIM(arr.status))) IN ('complete', 'completed')
-        AND CAST(arr.edate AS DATE) = CAST(GETDATE() AS DATE)
+          LOWER(LTRIM(RTRIM(arr.status))) IN ('complete', 'completed')
+          AND CAST(arr.edate AS DATE) = CAST(GETDATE() AS DATE)
 
       ORDER BY arr.edate DESC;
     `);
 
     // ==================================================
-    // LOG
+    // LOG RESULT
     // ==================================================
+    console.log("==============================================");
+    console.log("TODAY COMPLETE RECEIPT RESULT");
+    console.log("ROWS :", result.recordset.length);
+    console.log("==============================================");
 
-    console.log("TODAY COMPLETE RECEIPT ROWS:", result.recordset.length);
-
-    console.log(
-      "TODAY COMPLETE DATA:",
-      JSON.stringify(result.recordset, null, 2),
-    );
+    if (result.recordset.length > 0) {
+      console.log(
+        "FIRST COMPLETED RECEIPT:",
+        JSON.stringify(result.recordset[0], null, 2),
+      );
+    } else {
+      console.log("NO COMPLETED RECEIPTS FOUND FOR TODAY");
+    }
 
     // ==================================================
     // RESPONSE
     // ==================================================
-
-    return res.json({
+    return res.status(200).json({
       success: true,
+      count: result.recordset.length,
       data: result.recordset,
     });
   } catch (err) {
-    console.error("TODAY COMPLETE RECEIPT ERROR:", err);
+    // ==================================================
+    // ERROR
+    // ==================================================
+    console.error("");
+    console.error("==============================================");
+    console.error("❌ TODAY COMPLETE RECEIPT API ERROR");
+    console.error("==============================================");
+    console.error("ERROR :", err.message);
+    console.error("STACK :", err.stack);
+    console.error("==============================================");
 
     return res.status(500).json({
       success: false,
-      message: "Server Error",
+      message: "Failed to fetch today's completed receipts",
       error: err.message,
+      data: [],
     });
   } finally {
-    // Do not close dynamic pool
+    // ==================================================
+    // DO NOT CLOSE POOL
+    // ==================================================
+    // openPool() is managed by the dynamic pool manager.
+    // Do NOT call pool.close() here.
   }
 });
 
