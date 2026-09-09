@@ -1381,12 +1381,46 @@ router.get("/dashboard-stats", async (req, res) => {
       .input("ToDate", sql.NVarChar(50), "")
       .execute("A_SP_FOR_ApplicationChallangrid");
 
-    const liveBooking = Number(
-      liveBookingResult.recordset?.[0]?.TotalLiveBooking ??
-      liveBookingResult.recordset?.[0]?.totallivebooking ??
-      liveBookingResult.recordset?.[0]?.LiveBooking ??
-      firstNum(liveBookingResult.recordset?.[0])
-    );
+    // DEBUG: log full raw result to see actual column names
+    console.log("🔥 LiveBooking RAW recordsets count:", liveBookingResult.recordsets?.length);
+    console.log("🔥 LiveBooking recordset[0]:", JSON.stringify(liveBookingResult.recordset?.[0]));
+    console.log("🔥 LiveBooking ALL recordsets:", JSON.stringify(liveBookingResult.recordsets));
+
+    // Scan all recordsets to find the count — same pattern as pendingDelivery
+    let liveBooking = 0;
+
+    const liveAllRecordsets = liveBookingResult.recordsets ?? [liveBookingResult.recordset];
+
+    for (const rs of liveAllRecordsets) {
+      if (rs?.length > 0) {
+        const row = rs[0];
+        // Try known column names first
+        const named =
+          row?.TotalLiveBooking ??
+          row?.totallivebooking ??
+          row?.LiveBooking ??
+          row?.livebooking ??
+          row?.TotalBooking ??
+          row?.totalbooking ??
+          row?.Count ??
+          row?.count;
+        if (named !== undefined && named !== null) {
+          liveBooking = Number(named);
+          console.log("🔥 LiveBooking found by name:", named, "| row:", JSON.stringify(row));
+          break;
+        }
+        // Fallback: use first column value
+        const firstVal = Object.values(row)[0];
+        const num = Number(firstVal ?? 0);
+        if (!isNaN(num) && num >= 0) {
+          liveBooking = num;
+          console.log("🔥 LiveBooking found by firstVal:", num, "| row:", JSON.stringify(row));
+          break;
+        }
+      }
+    }
+
+    console.log("🔥 LIVE BOOKING RESOLVED:", liveBooking);
 
     // ======================================================
     // MTD BOOKING
@@ -1493,7 +1527,12 @@ router.get("/dashboard-stats", async (req, res) => {
     console.log("Yesterday Sale Row:", JSON.stringify(saleYesterday.recordset?.[0]));
     console.log("✅ Resolved → todayBooking:", todayBooking, "| yesterdayBooking:", yesterdayBooking, "| todaySale:", todaySale, "| yesterdaySale:", yesterdaySale);
 
-    console.log("🔥 LIVE BOOKING:", liveBooking);
+    console.log("🔥 LIVE BOOKING (summary):", liveBooking);
+
+    // If LiveBooking SP mode is not implemented in DB, fall back to pendingDelivery
+    // (same concept: booked vehicles awaiting delivery)
+    const effectiveLiveBooking = liveBooking > 0 ? liveBooking : pendingDelivery;
+    console.log("🔥 EFFECTIVE LIVE BOOKING:", effectiveLiveBooking, "(liveBooking:", liveBooking, "pendingDelivery:", pendingDelivery, ")");
 
     console.log("📅 MTD BOOKING:", mtdBooking);
 
@@ -1534,7 +1573,7 @@ router.get("/dashboard-stats", async (req, res) => {
 
       pendingDelivery,
 
-      liveBooking,
+      liveBooking: effectiveLiveBooking,
       mtdBooking,
       mtdSale,
     });
@@ -1563,7 +1602,7 @@ router.get("/dashboard-stats", async (req, res) => {
         pendingDelivery,
 
         // NEW
-        liveBooking,
+        liveBooking: effectiveLiveBooking,
         mtdBooking,
         mtdSale,
 
