@@ -1327,32 +1327,32 @@ router.get("/dashboard-stats", async (req, res) => {
 
     const todayBooking = Number(
       bookingToday.recordset?.[0]?.todaybooking ??
-      bookingToday.recordset?.[0]?.TodayBooking ??
-      bookingToday.recordset?.[0]?.Todaybooking ??
-      firstNum(bookingToday.recordset?.[0])
+        bookingToday.recordset?.[0]?.TodayBooking ??
+        bookingToday.recordset?.[0]?.Todaybooking ??
+        firstNum(bookingToday.recordset?.[0]),
     );
 
     const yesterdayBooking = Number(
       bookingYesterday.recordset?.[0]?.yesterdaybooking ??
-      bookingYesterday.recordset?.[0]?.YesterdayBooking ??
-      bookingYesterday.recordset?.[0]?.Yesterdaybooking ??
-      firstNum(bookingYesterday.recordset?.[0])
+        bookingYesterday.recordset?.[0]?.YesterdayBooking ??
+        bookingYesterday.recordset?.[0]?.Yesterdaybooking ??
+        firstNum(bookingYesterday.recordset?.[0]),
     );
 
     const todaySale = Number(
       saleToday.recordset?.[0]?.todaydelivery ??
-      saleToday.recordset?.[0]?.TodayDelivery ??
-      saleToday.recordset?.[0]?.TodaySale ??
-      saleToday.recordset?.[0]?.todaysale ??
-      firstNum(saleToday.recordset?.[0])
+        saleToday.recordset?.[0]?.TodayDelivery ??
+        saleToday.recordset?.[0]?.TodaySale ??
+        saleToday.recordset?.[0]?.todaysale ??
+        firstNum(saleToday.recordset?.[0]),
     );
 
     const yesterdaySale = Number(
       saleYesterday.recordset?.[0]?.yesterdaysale ??
-      saleYesterday.recordset?.[0]?.YesterdaySale ??
-      saleYesterday.recordset?.[0]?.yesterdaydelivery ??
-      saleYesterday.recordset?.[0]?.YesterdayDelivery ??
-      firstNum(saleYesterday.recordset?.[0])
+        saleYesterday.recordset?.[0]?.YesterdaySale ??
+        saleYesterday.recordset?.[0]?.yesterdaydelivery ??
+        saleYesterday.recordset?.[0]?.YesterdayDelivery ??
+        firstNum(saleYesterday.recordset?.[0]),
     );
 
     // ======================================================
@@ -1376,11 +1376,9 @@ router.get("/dashboard-stats", async (req, res) => {
     // ======================================================
     let liveBooking = 0;
     try {
-      const liveBookingResult = await pool
-        .request()
-        .query(`
+      const liveBookingResult = await pool.request().query(`
           SELECT COUNT(*) AS liveBooking
-          FROM [RM-TATA-93000].dbo.rh_sp_46
+          FROM dbo.rh_sp_46
           WHERE sp_558 IN ('Customer Challan', 'CSD Challan')
             AND sp_582 <> '1900-01-01 00:00:00.000'
             AND sp_597 = '1900-01-01 00:00:00.000'
@@ -1397,12 +1395,10 @@ router.get("/dashboard-stats", async (req, res) => {
     // ======================================================
     let mtdBooking = 0;
     try {
-      const mtdBookingResult = await pool
-        .request()
-        .query(`
+      const mtdBookingResult = await pool.request().query(`
           DECLARE @MTD_Start DATE = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
           SELECT COUNT(*) AS mtdBooking
-          FROM [RM-TATA-93000].dbo.RH_rcl
+          FROM dbo.RH_rcl
           WHERE rcl_66 = 'booking'
             AND CONVERT(date, rcl_7) >= @MTD_Start
             AND rcl_85 = '1900-01-01 00:00:00.000'
@@ -1419,12 +1415,10 @@ router.get("/dashboard-stats", async (req, res) => {
     // ======================================================
     let mtdSale = 0;
     try {
-      const mtdSaleResult = await pool
-        .request()
-        .query(`
+      const mtdSaleResult = await pool.request().query(`
           DECLARE @MTD_Start DATE = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
           SELECT COUNT(*) AS mtdSale
-          FROM [RM-TATA-93000].dbo.rh_sp_46
+          FROM dbo.rh_sp_46
           WHERE sp_558 IN ('customer challan', 'csd challan')
             AND dbo.ONLYDATE(sp_597) >= @MTD_Start
         `);
@@ -1432,6 +1426,7 @@ router.get("/dashboard-stats", async (req, res) => {
       console.log("💰 MTD SALE:", mtdSale);
     } catch (e) {
       console.warn("⚠️ MtdSale query failed:", e.message);
+      mtdSale = 0;
     }
 
     // ======================================================
@@ -1493,14 +1488,33 @@ router.get("/dashboard-stats", async (req, res) => {
     // DEBUG LOGS
     // ======================================================
 
-    console.log("Today Booking Row:", JSON.stringify(bookingToday.recordset?.[0]));
-    console.log("Yesterday Booking Row:", JSON.stringify(bookingYesterday.recordset?.[0]));
+    console.log(
+      "Today Booking Row:",
+      JSON.stringify(bookingToday.recordset?.[0]),
+    );
+    console.log(
+      "Yesterday Booking Row:",
+      JSON.stringify(bookingYesterday.recordset?.[0]),
+    );
     console.log("Today Sale Row:", JSON.stringify(saleToday.recordset?.[0]));
-    console.log("Yesterday Sale Row:", JSON.stringify(saleYesterday.recordset?.[0]));
-    console.log("✅ Resolved → todayBooking:", todayBooking, "| yesterdayBooking:", yesterdayBooking, "| todaySale:", todaySale, "| yesterdaySale:", yesterdaySale);
+    console.log(
+      "Yesterday Sale Row:",
+      JSON.stringify(saleYesterday.recordset?.[0]),
+    );
+    console.log(
+      "✅ Resolved → todayBooking:",
+      todayBooking,
+      "| yesterdayBooking:",
+      yesterdayBooking,
+      "| todaySale:",
+      todaySale,
+      "| yesterdaySale:",
+      yesterdaySale,
+    );
 
     // If LiveBooking query returned 0, fall back to pendingDelivery (same concept)
-    const effectiveLiveBooking = liveBooking > 0 ? liveBooking : pendingDelivery;
+    const effectiveLiveBooking =
+      liveBooking > 0 ? liveBooking : pendingDelivery;
     console.log("🔥 EFFECTIVE LIVE BOOKING:", effectiveLiveBooking);
 
     // ======================================================
