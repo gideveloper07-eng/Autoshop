@@ -48,7 +48,7 @@ async function findUserInDatabase(databaseName, receiverGuid) {
     console.log("QUERY FINISHED");
     return result.recordset[0];
   } finally {
-    if (pool) await pool.close();
+    // if (pool) await pool.close();
   }
 }
 
@@ -2315,7 +2315,7 @@ router.get("/get-tasks", async (req, res) => {
   } finally {
     if (pool) {
       try {
-        await pool.close();
+        // await pool.close();
       } catch (closeError) {
         console.error("POOL CLOSE ERROR:", closeError.message);
       }

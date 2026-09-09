@@ -54,7 +54,7 @@ async function getGroupDatabase(groupId, fallbackDb) {
     console.error("getGroupDatabase initial lookup failed:", err.message);
   } finally {
     if (pool) {
-      await pool.close();
+      // await pool.close();
       pool = null;
     }
   }
@@ -126,7 +126,7 @@ ORDER BY r.utnm
       message: err.message,
     });
   } finally {
-    if (pool) await pool.close();
+    //if (pool) await pool.close();
   }
 });
 
@@ -193,7 +193,7 @@ ORDER BY r.utnm
           }),
         });
       } finally {
-        if (pool) await pool.close();
+        //   if (pool) await pool.close();
       }
     }
 
@@ -364,7 +364,7 @@ ORDER BY r.utnm
           }),
         });
       } finally {
-        if (pool) await pool.close();
+        // if (pool) await pool.close();
       }
     }
 
@@ -453,7 +453,7 @@ ORDER BY r.utnm
           dbErr.message,
         );
       } finally {
-        if (pool) await pool.close();
+        // if (pool) await pool.close();
       }
     }
 
@@ -469,7 +469,7 @@ ORDER BY r.utnm
     console.error("MERGED-USERS ERROR:", err);
     return res.status(500).json({ success: false, message: err.message });
   } finally {
-    if (masterPool) await masterPool.close();
+    //if (masterPool) await masterPool.close();
   }
 });
 // ── GET /api/group/merged-users ───────────────────────────────────────────────
@@ -2694,7 +2694,7 @@ async function findUserInDatabase(databaseName, receiverGuid) {
     console.log("QUERY FINISHED");
     return result.recordset[0];
   } finally {
-    if (pool) await pool.close();
+    //if (pool) await pool.close();
   }
 }
 router.get("/tasks", async (req, res) => {
