@@ -1317,16 +1317,42 @@ router.get("/dashboard-stats", async (req, res) => {
     // BASIC VALUES
     // ======================================================
 
-    const todayBooking = Number(bookingToday.recordset?.[0]?.todaybooking ?? 0);
+    // Helper: read the first numeric value from an SP recordset row,
+    // regardless of column name casing. Falls back to 0 if absent.
+    function firstNum(row) {
+      if (!row) return 0;
+      const val = Object.values(row)[0];
+      return Number(val ?? 0);
+    }
 
-    const yesterdayBooking = Number(
-      bookingYesterday.recordset?.[0]?.yesterdaybooking ?? 0,
+    const todayBooking = Number(
+      bookingToday.recordset?.[0]?.todaybooking ??
+      bookingToday.recordset?.[0]?.TodayBooking ??
+      bookingToday.recordset?.[0]?.Todaybooking ??
+      firstNum(bookingToday.recordset?.[0])
     );
 
-    const todaySale = Number(saleToday.recordset?.[0]?.todaydelivery ?? 0);
+    const yesterdayBooking = Number(
+      bookingYesterday.recordset?.[0]?.yesterdaybooking ??
+      bookingYesterday.recordset?.[0]?.YesterdayBooking ??
+      bookingYesterday.recordset?.[0]?.Yesterdaybooking ??
+      firstNum(bookingYesterday.recordset?.[0])
+    );
+
+    const todaySale = Number(
+      saleToday.recordset?.[0]?.todaydelivery ??
+      saleToday.recordset?.[0]?.TodayDelivery ??
+      saleToday.recordset?.[0]?.TodaySale ??
+      saleToday.recordset?.[0]?.todaysale ??
+      firstNum(saleToday.recordset?.[0])
+    );
 
     const yesterdaySale = Number(
-      saleYesterday.recordset?.[0]?.yesterdaysale ?? 0,
+      saleYesterday.recordset?.[0]?.yesterdaysale ??
+      saleYesterday.recordset?.[0]?.YesterdaySale ??
+      saleYesterday.recordset?.[0]?.yesterdaydelivery ??
+      saleYesterday.recordset?.[0]?.YesterdayDelivery ??
+      firstNum(saleYesterday.recordset?.[0])
     );
 
     // ======================================================
@@ -1356,7 +1382,10 @@ router.get("/dashboard-stats", async (req, res) => {
       .execute("A_SP_FOR_ApplicationChallangrid");
 
     const liveBooking = Number(
-      liveBookingResult.recordset?.[0]?.TotalLiveBooking ?? 0,
+      liveBookingResult.recordset?.[0]?.TotalLiveBooking ??
+      liveBookingResult.recordset?.[0]?.totallivebooking ??
+      liveBookingResult.recordset?.[0]?.LiveBooking ??
+      firstNum(liveBookingResult.recordset?.[0])
     );
 
     // ======================================================
@@ -1372,7 +1401,11 @@ router.get("/dashboard-stats", async (req, res) => {
       .execute("A_SP_FOR_ApplicationChallangrid");
 
     const mtdBooking = Number(
-      mtdBookingResult.recordset?.[0]?.monthlybooking ?? 0,
+      mtdBookingResult.recordset?.[0]?.monthlybooking ??
+      mtdBookingResult.recordset?.[0]?.MonthlyBooking ??
+      mtdBookingResult.recordset?.[0]?.mtdbooking ??
+      mtdBookingResult.recordset?.[0]?.MtdBooking ??
+      firstNum(mtdBookingResult.recordset?.[0])
     );
 
     // ======================================================
@@ -1387,7 +1420,13 @@ router.get("/dashboard-stats", async (req, res) => {
       .input("ToDate", sql.NVarChar(50), "")
       .execute("A_SP_FOR_ApplicationChallangrid");
 
-    const mtdSale = Number(mtdSaleResult.recordset?.[0]?.totaldelmonth ?? 0);
+    const mtdSale = Number(
+      mtdSaleResult.recordset?.[0]?.totaldelmonth ??
+      mtdSaleResult.recordset?.[0]?.TotalDelMonth ??
+      mtdSaleResult.recordset?.[0]?.mtdsale ??
+      mtdSaleResult.recordset?.[0]?.MtdSale ??
+      firstNum(mtdSaleResult.recordset?.[0])
+    );
 
     // ======================================================
     // PENDING DELIVERY
@@ -1448,13 +1487,11 @@ router.get("/dashboard-stats", async (req, res) => {
     // DEBUG LOGS
     // ======================================================
 
-    console.log("Today Booking Row:", bookingToday.recordset?.[0]);
-
-    console.log("Yesterday Booking Row:", bookingYesterday.recordset?.[0]);
-
-    console.log("Today Sale Row:", saleToday.recordset?.[0]);
-
-    console.log("Yesterday Sale Row:", saleYesterday.recordset?.[0]);
+    console.log("Today Booking Row:", JSON.stringify(bookingToday.recordset?.[0]));
+    console.log("Yesterday Booking Row:", JSON.stringify(bookingYesterday.recordset?.[0]));
+    console.log("Today Sale Row:", JSON.stringify(saleToday.recordset?.[0]));
+    console.log("Yesterday Sale Row:", JSON.stringify(saleYesterday.recordset?.[0]));
+    console.log("✅ Resolved → todayBooking:", todayBooking, "| yesterdayBooking:", yesterdayBooking, "| todaySale:", todaySale, "| yesterdaySale:", yesterdaySale);
 
     console.log("🔥 LIVE BOOKING:", liveBooking);
 
