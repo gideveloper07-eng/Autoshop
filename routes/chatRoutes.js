@@ -1970,6 +1970,68 @@ VALUES
     // pool is only closed on application shutdown in communicationPool.js
   }
 });
+
+async function findUserInDatabase(databaseName, assignedTo) {
+  let pool;
+
+  try {
+    const identifier = assignedTo?.toString().trim();
+
+    if (!databaseName || !identifier) {
+      return null;
+    }
+
+    console.log("==============================================");
+    console.log("🔎 FIND ASSIGNED USER");
+    console.log("Database:", databaseName);
+    console.log("AssignedTo:", identifier);
+
+    pool = await openPool(databaseName);
+
+    const result = await pool
+      .request()
+      .input("identifier", sql.NVarChar(100), identifier).query(`
+        SELECT TOP (1)
+            utunqid,
+            uti,
+            utnm
+        FROM rh_secut
+        WHERE
+            CONVERT(NVARCHAR(36), utunqid) =
+                LTRIM(RTRIM(@identifier))
+            OR
+            UPPER(LTRIM(RTRIM(ISNULL(uti, '')))) =
+                UPPER(LTRIM(RTRIM(@identifier)))
+      `);
+
+    if (result.recordset.length === 0) {
+      console.log("⚠️ ASSIGNED USER NOT FOUND:", identifier);
+      return null;
+    }
+
+    const user = result.recordset[0];
+
+    console.log("✅ ASSIGNED USER FOUND:", {
+      utunqid: user.utunqid,
+      uti: user.uti,
+      utnm: user.utnm,
+    });
+
+    return user;
+  } catch (error) {
+    console.error("❌ FIND USER ERROR:", {
+      DatabaseName: databaseName,
+      AssignedTo: assignedTo,
+      Error: error.message,
+    });
+
+    throw error;
+  } finally {
+    // IMPORTANT:
+    // Do NOT close the shared dynamic pool.
+  }
+}
+
 // ── GET /api/chat/individual-tasks ───────────────────────────────────────────
 // Returns individual tasks (GroupId=NULL) for the logged-in user
 // from the communication DB — filtered by current company's database name.

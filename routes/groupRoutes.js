@@ -2670,33 +2670,96 @@ ORDER BY m.MessageTime ASC
     // if (pool) await pool.close();
   }
 });
-async function findUserInDatabase(databaseName, receiverGuid) {
+
+async function findUserInDatabase(databaseName, assignedTo) {
   let pool;
 
   try {
-    console.log("OPENING DB:", databaseName);
+    const identifier = assignedTo?.toString().trim();
+
+    if (!databaseName || !identifier) {
+      return null;
+    }
+
+    console.log("==============================================");
+    console.log("🔎 FIND ASSIGNED USER");
+    console.log("Database:", databaseName);
+    console.log("AssignedTo:", identifier);
+
     pool = await openPool(databaseName);
-    console.log("DB OPENED");
+
     const result = await pool
       .request()
-      .input("guid", sql.UniqueIdentifier, receiverGuid).query(`
+      .input("identifier", sql.NVarChar(100), identifier).query(`
         SELECT TOP (1)
             utunqid,
             uti,
             utnm
         FROM rh_secut
-        WHERE utunqid=(select utunqid from rh_secut where uti=@guid)
+        WHERE
+            CONVERT(NVARCHAR(36), utunqid) =
+                LTRIM(RTRIM(@identifier))
+            OR
+            UPPER(LTRIM(RTRIM(ISNULL(uti, '')))) =
+                UPPER(LTRIM(RTRIM(@identifier)))
       `);
 
     if (result.recordset.length === 0) {
+      console.log("⚠️ ASSIGNED USER NOT FOUND:", identifier);
       return null;
     }
-    console.log("QUERY FINISHED");
-    return result.recordset[0];
+
+    const user = result.recordset[0];
+
+    console.log("✅ ASSIGNED USER FOUND:", {
+      utunqid: user.utunqid,
+      uti: user.uti,
+      utnm: user.utnm,
+    });
+
+    return user;
+  } catch (error) {
+    console.error("❌ FIND USER ERROR:", {
+      DatabaseName: databaseName,
+      AssignedTo: assignedTo,
+      Error: error.message,
+    });
+
+    throw error;
   } finally {
-    //if (pool) await pool.close();
+    // IMPORTANT:
+    // Do NOT close the pool here.
+    // dynamicPoolManager returns a shared cached pool.
   }
 }
+
+// async function findUserInDatabase(databaseName, receiverGuid) {
+//   let pool;
+
+//   try {
+//     console.log("OPENING DB:", databaseName);
+//     pool = await openPool(databaseName);
+//     console.log("DB OPENED");
+//     const result = await pool
+//       .request()
+//       .input("guid", sql.UniqueIdentifier, receiverGuid).query(`
+//         SELECT TOP (1)
+//             utunqid,
+//             uti,
+//             utnm
+//         FROM rh_secut
+//         WHERE utunqid=(select utunqid from rh_secut where uti=@guid)
+//       `);
+
+//     if (result.recordset.length === 0) {
+//       return null;
+//     }
+//     console.log("QUERY FINISHED");
+//     return result.recordset[0];
+//   } finally {
+//     //if (pool) await pool.close();
+//   }
+// }
 router.get("/tasks", async (req, res) => {
   let pool;
 
