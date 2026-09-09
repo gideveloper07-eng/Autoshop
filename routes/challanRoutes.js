@@ -204,6 +204,187 @@ router.get("/retail-incentive", async (req, res) => {
     // }
   }
 });
+// ============================================================
+// TODAY APPROVED CHALLANS
+// ============================================================
+router.get("/today-approve", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { currentDatabase, userId, isAdmin = false } = decoded;
+
+    if (!currentDatabase) {
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
+    }
+
+    pool = await openPool(currentDatabase);
+
+    let query = `
+      SELECT
+          S.sp_462 AS sp_462,
+          S.sp_582 AS date,
+          S.sp_468 AS sp_468,
+          M.m1_7 AS sp_469,
+          S.sp_463 AS challanmade
+      FROM rh_sp_46 AS S
+      LEFT JOIN rh_m1 AS M
+          ON M.m1_2 = S.sp_469
+      WHERE
+          S.sp_582 <> '1900-01-01 00:00:00.000'
+          AND CONVERT(date, S.sp_582) = CONVERT(date, GETDATE())
+          AND S.sp_558 IN (
+              'Customer Challan',
+              'CSD Challan',
+              'Inter Delear Challan'
+          )
+    `;
+
+    // --------------------------------------------------------
+    // USER ACCESS FILTER
+    // --------------------------------------------------------
+    if (!isAdmin) {
+      query += `
+        AND EXISTS (
+          SELECT 1
+          FROM MA_ChallanChatMembers AS C
+          WHERE C.ChallanId = S.sp_462
+            AND C.UserId = @userId
+            AND C.IsActive = 1
+        )
+      `;
+    }
+
+    query += `
+      ORDER BY S.sp_582 DESC, S.sp_468 DESC
+    `;
+
+    const request = pool.request();
+
+    if (!isAdmin) {
+      request.input("userId", sql.NVarChar(100), userId);
+    }
+
+    const result = await request.query(query);
+
+    console.log("TODAY APPROVED CHALLANS:", result.recordset.length);
+
+    return res.json({
+      success: true,
+      data: result.recordset,
+    });
+  } catch (err) {
+    console.error("TODAY APPROVE ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+});
+// ============================================================
+// TODAY REJECTED CHALLANS
+// ============================================================
+router.get("/today-reject", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { currentDatabase, userId, isAdmin = false } = decoded;
+
+    if (!currentDatabase) {
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
+    }
+
+    pool = await openPool(currentDatabase);
+
+    let query = `
+      SELECT
+          S.sp_462 AS sp_462,
+          S.sp_578 AS date,
+          S.sp_468 AS sp_468,
+          M.m1_7 AS sp_469,
+          S.sp_463 AS challanmade
+      FROM rh_sp_46 AS S
+      LEFT JOIN rh_m1 AS M
+          ON M.m1_2 = S.sp_469
+      WHERE
+          S.sp_578 <> '1900-01-01 00:00:00.000'
+          AND CONVERT(date, S.sp_578) = CONVERT(date, GETDATE())
+          AND ISNULL(S.sp_581, '') <> ''
+          AND S.sp_558 IN (
+              'Customer Challan',
+              'CSD Challan',
+              'Inter Delear Challan'
+          )
+    `;
+
+    // --------------------------------------------------------
+    // USER ACCESS FILTER
+    // --------------------------------------------------------
+    if (!isAdmin) {
+      query += `
+        AND EXISTS (
+          SELECT 1
+          FROM MA_ChallanChatMembers AS C
+          WHERE C.ChallanId = S.sp_462
+            AND C.UserId = @userId
+            AND C.IsActive = 1
+        )
+      `;
+    }
+
+    query += `
+      ORDER BY S.sp_578 DESC, S.sp_468 DESC
+    `;
+
+    const request = pool.request();
+
+    if (!isAdmin) {
+      request.input("userId", sql.NVarChar(100), userId);
+    }
+
+    const result = await request.query(query);
+
+    console.log("TODAY REJECTED CHALLANS:", result.recordset.length);
+
+    return res.json({
+      success: true,
+      data: result.recordset,
+    });
+  } catch (err) {
+    console.error("TODAY REJECT ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+});
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/challan/edit/:sp_462
 // Calls A_SP_FOR_ApplicationChallangrid with @what = 'Edit' and @sp_462
