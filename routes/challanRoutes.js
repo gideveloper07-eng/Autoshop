@@ -1370,97 +1370,69 @@ router.get("/dashboard-stats", async (req, res) => {
     const saleTrend = saleTrendResult.recordset.map((x) => Number(x.TotalSale));
 
     // ======================================================
-    // LIVE BOOKING
+    // LIVE BOOKING — direct query (SP has no LiveBooking mode)
+    // Live booking = bookings that are approved (sp_582 != epoch)
+    // but not yet delivered (sp_597 = epoch)
     // ======================================================
-
-    const liveBookingResult = await pool
-      .request()
-      .input("prefix", sql.NVarChar(50), "")
-      .input("what", sql.NVarChar(50), "LiveBooking")
-      .input("FromDate", sql.NVarChar(50), "")
-      .input("ToDate", sql.NVarChar(50), "")
-      .execute("A_SP_FOR_ApplicationChallangrid");
-
-    // DEBUG: log full raw result to see actual column names
-    console.log("🔥 LiveBooking RAW recordsets count:", liveBookingResult.recordsets?.length);
-    console.log("🔥 LiveBooking recordset[0]:", JSON.stringify(liveBookingResult.recordset?.[0]));
-    console.log("🔥 LiveBooking ALL recordsets:", JSON.stringify(liveBookingResult.recordsets));
-
-    // Scan all recordsets to find the count — same pattern as pendingDelivery
     let liveBooking = 0;
-
-    const liveAllRecordsets = liveBookingResult.recordsets ?? [liveBookingResult.recordset];
-
-    for (const rs of liveAllRecordsets) {
-      if (rs?.length > 0) {
-        const row = rs[0];
-        // Try known column names first
-        const named =
-          row?.TotalLiveBooking ??
-          row?.totallivebooking ??
-          row?.LiveBooking ??
-          row?.livebooking ??
-          row?.TotalBooking ??
-          row?.totalbooking ??
-          row?.Count ??
-          row?.count;
-        if (named !== undefined && named !== null) {
-          liveBooking = Number(named);
-          console.log("🔥 LiveBooking found by name:", named, "| row:", JSON.stringify(row));
-          break;
-        }
-        // Fallback: use first column value
-        const firstVal = Object.values(row)[0];
-        const num = Number(firstVal ?? 0);
-        if (!isNaN(num) && num >= 0) {
-          liveBooking = num;
-          console.log("🔥 LiveBooking found by firstVal:", num, "| row:", JSON.stringify(row));
-          break;
-        }
-      }
+    try {
+      const liveBookingResult = await pool
+        .request()
+        .query(`
+          SELECT COUNT(*) AS liveBooking
+          FROM [RM-TATA-93000].dbo.rh_sp_46
+          WHERE sp_558 IN ('Customer Challan', 'CSD Challan')
+            AND sp_582 <> '1900-01-01 00:00:00.000'
+            AND sp_597 = '1900-01-01 00:00:00.000'
+        `);
+      liveBooking = Number(liveBookingResult.recordset?.[0]?.liveBooking ?? 0);
+      console.log("🔥 LIVE BOOKING:", liveBooking);
+    } catch (e) {
+      console.warn("⚠️ LiveBooking query failed:", e.message);
     }
 
-    console.log("🔥 LIVE BOOKING RESOLVED:", liveBooking);
+    // ======================================================
+    // MTD BOOKING — direct query (SP has no MtdBooking mode)
+    // Month-to-date bookings from rcl table
+    // ======================================================
+    let mtdBooking = 0;
+    try {
+      const mtdBookingResult = await pool
+        .request()
+        .query(`
+          DECLARE @MTD_Start DATE = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
+          SELECT COUNT(*) AS mtdBooking
+          FROM [RM-TATA-93000].dbo.RH_rcl
+          WHERE rcl_66 = 'booking'
+            AND CONVERT(date, rcl_7) >= @MTD_Start
+            AND rcl_85 = '1900-01-01 00:00:00.000'
+        `);
+      mtdBooking = Number(mtdBookingResult.recordset?.[0]?.mtdBooking ?? 0);
+      console.log("📅 MTD BOOKING:", mtdBooking);
+    } catch (e) {
+      console.warn("⚠️ MtdBooking query failed:", e.message);
+    }
 
     // ======================================================
-    // MTD BOOKING
+    // MTD SALE — direct query (SP has no MtdSale mode)
+    // Month-to-date deliveries from challan table
     // ======================================================
-
-    const mtdBookingResult = await pool
-      .request()
-      .input("prefix", sql.NVarChar(50), "")
-      .input("what", sql.NVarChar(50), "MtdBooking")
-      .input("FromDate", sql.NVarChar(50), "")
-      .input("ToDate", sql.NVarChar(50), "")
-      .execute("A_SP_FOR_ApplicationChallangrid");
-
-    const mtdBooking = Number(
-      mtdBookingResult.recordset?.[0]?.monthlybooking ??
-      mtdBookingResult.recordset?.[0]?.MonthlyBooking ??
-      mtdBookingResult.recordset?.[0]?.mtdbooking ??
-      mtdBookingResult.recordset?.[0]?.MtdBooking ??
-      firstNum(mtdBookingResult.recordset?.[0])
-    );
-
-    // ======================================================
-    // MTD SALE
-    // ======================================================
-
-    const mtdSaleResult = await pool
-      .request()
-      .input("prefix", sql.NVarChar(50), "")
-      .input("what", sql.NVarChar(50), "MtdSale")
-      .input("FromDate", sql.NVarChar(50), "")
-      .input("ToDate", sql.NVarChar(50), "")
-      .execute("A_SP_FOR_ApplicationChallangrid");
-
-    const mtdSale = Number(
-      mtdSaleResult.recordset?.[0]?.totaldelmonth ??
-      mtdSaleResult.recordset?.[0]?.TotalDelMonth ??
-      mtdSaleResult.recordset?.[0]?.mtdsale ??
-      mtdSaleResult.recordset?.[0]?.MtdSale ??
-      firstNum(mtdSaleResult.recordset?.[0])
-    );
+    let mtdSale = 0;
+    try {
+      const mtdSaleResult = await pool
+        .request()
+        .query(`
+          DECLARE @MTD_Start DATE = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
+          SELECT COUNT(*) AS mtdSale
+          FROM [RM-TATA-93000].dbo.rh_sp_46
+          WHERE sp_558 IN ('customer challan', 'csd challan')
+            AND dbo.ONLYDATE(sp_597) >= @MTD_Start
+        `);
+      mtdSale = Number(mtdSaleResult.recordset?.[0]?.mtdSale ?? 0);
+      console.log("💰 MTD SALE:", mtdSale);
+    } catch (e) {
+      console.warn("⚠️ MtdSale query failed:", e.message);
+    }
 
     // ======================================================
     // PENDING DELIVERY
@@ -1527,16 +1499,9 @@ router.get("/dashboard-stats", async (req, res) => {
     console.log("Yesterday Sale Row:", JSON.stringify(saleYesterday.recordset?.[0]));
     console.log("✅ Resolved → todayBooking:", todayBooking, "| yesterdayBooking:", yesterdayBooking, "| todaySale:", todaySale, "| yesterdaySale:", yesterdaySale);
 
-    console.log("🔥 LIVE BOOKING (summary):", liveBooking);
-
-    // If LiveBooking SP mode is not implemented in DB, fall back to pendingDelivery
-    // (same concept: booked vehicles awaiting delivery)
+    // If LiveBooking query returned 0, fall back to pendingDelivery (same concept)
     const effectiveLiveBooking = liveBooking > 0 ? liveBooking : pendingDelivery;
-    console.log("🔥 EFFECTIVE LIVE BOOKING:", effectiveLiveBooking, "(liveBooking:", liveBooking, "pendingDelivery:", pendingDelivery, ")");
-
-    console.log("📅 MTD BOOKING:", mtdBooking);
-
-    console.log("💰 MTD SALE:", mtdSale);
+    console.log("🔥 EFFECTIVE LIVE BOOKING:", effectiveLiveBooking);
 
     // ======================================================
     // GROWTH CALCULATION
