@@ -2331,6 +2331,119 @@ router.get("/receipt/combined", async (req, res) => {
 });
 
 // ======================================================
+// GET /api/challan/receipt/today-complete
+// Today's Completed Receipt Requests
+// ======================================================
+
+router.get("/receipt/today-complete", async (req, res) => {
+  let pool;
+
+  try {
+    // ==================================================
+    // AUTHENTICATION
+    // ==================================================
+
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    // ==================================================
+    // DATABASE
+    // ==================================================
+
+    const databaseName = decoded.currentDatabase;
+
+    if (!databaseName) {
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
+    }
+
+    console.log("======================================");
+    console.log("TODAY COMPLETE RECEIPT API");
+    console.log("DATABASE:", databaseName);
+    console.log("======================================");
+
+    pool = await openPool(databaseName);
+
+    // ==================================================
+    // GET TODAY COMPLETED RECEIPTS
+    // ==================================================
+
+    const result = await pool.request().query(`
+      SELECT 
+        rcl.rcl_2 AS receipt_id,
+        rcl.rcl_9 AS receipt_no,
+        rcl.rcl_7 AS receipt_date,
+
+        (
+          SELECT TOP 1 m1.m1_7
+          FROM rh_m1 m1
+          WHERE m1.m1_2 = rcl.rcl_54
+        ) AS customer_name,
+
+        arr.edate AS request_date,
+        arr.unqid AS request_id,
+        arr.userid AS request_user_id,
+        arr.ipaddress AS request_ip,
+        arr.recpt_unqid AS request_receipt_id,
+        arr.req_type AS request_type,
+        arr.val_frm AS value_from,
+        arr.val_to AS value_to,
+        arr.status AS status,
+        arr.change_reason AS reason
+
+      FROM rh_rcl rcl
+
+      RIGHT JOIN app_receipt_request arr
+        ON arr.recpt_unqid = rcl.rcl_2
+
+      WHERE
+        LOWER(LTRIM(RTRIM(arr.status))) IN ('complete', 'completed')
+        AND CAST(arr.edate AS DATE) = CAST(GETDATE() AS DATE)
+
+      ORDER BY arr.edate DESC;
+    `);
+
+    // ==================================================
+    // LOG
+    // ==================================================
+
+    console.log("TODAY COMPLETE RECEIPT ROWS:", result.recordset.length);
+
+    console.log(
+      "TODAY COMPLETE DATA:",
+      JSON.stringify(result.recordset, null, 2),
+    );
+
+    // ==================================================
+    // RESPONSE
+    // ==================================================
+
+    return res.json({
+      success: true,
+      data: result.recordset,
+    });
+  } catch (err) {
+    console.error("TODAY COMPLETE RECEIPT ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  } finally {
+    // Do not close dynamic pool
+  }
+});
+
+// ======================================================
 // POST /api/challan/receipt/update
 // Update Receipt Request
 // ======================================================
