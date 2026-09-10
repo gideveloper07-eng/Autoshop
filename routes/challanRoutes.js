@@ -1212,6 +1212,400 @@ router.post("/reject", async (req, res) => {
   }
 });*/
 
+// router.get("/dashboard-stats", async (req, res) => {
+//   let pool;
+
+//   try {
+//     const decoded = decodeToken(req);
+
+//     if (!decoded) {
+//       return res.status(401).json({
+//         success: false,
+//         message: "Unauthorized",
+//       });
+//     }
+
+//     const { currentDatabase: databaseName } = decoded;
+
+//     if (!databaseName) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Database not found in token",
+//       });
+//     }
+
+//     console.log("📊 DASHBOARD STATS — DB:", databaseName);
+
+//     pool = await openPool(databaseName);
+
+//     // ======================================================
+//     // TODAY BOOKING
+//     // ======================================================
+//     const bookingToday = await pool
+//       .request()
+//       .input("prefix", sql.NVarChar(50), "")
+//       .input("what", sql.NVarChar(50), "TodayBooking")
+//       .input("FromDate", sql.NVarChar(50), "")
+//       .input("ToDate", sql.NVarChar(50), "")
+//       .execute("A_SP_FOR_ApplicationChallangrid");
+//     console.log("Booking Today Result:", bookingToday.recordset);
+//     // ======================================================
+//     // YESTERDAY BOOKING
+//     // ======================================================
+//     const bookingYesterday = await pool
+//       .request()
+//       .input("prefix", sql.NVarChar(50), "")
+//       .input("what", sql.NVarChar(50), "YesterdayBooking")
+//       .input("FromDate", sql.NVarChar(50), "")
+//       .input("ToDate", sql.NVarChar(50), "")
+//       .execute("A_SP_FOR_ApplicationChallangrid");
+//     console.log("Booking Yesterday Result:", bookingYesterday.recordset);
+//     // ======================================================
+//     // TODAY SALE
+//     // ======================================================
+//     const saleToday = await pool
+//       .request()
+//       .input("prefix", sql.NVarChar(50), "")
+//       .input("what", sql.NVarChar(50), "TodaySale")
+//       .input("FromDate", sql.NVarChar(50), "")
+//       .input("ToDate", sql.NVarChar(50), "")
+//       .execute("A_SP_FOR_ApplicationChallangrid");
+//     console.log("Sale Today Result:", saleToday.recordset);
+//     // ======================================================
+//     // YESTERDAY SALE
+//     // ======================================================
+//     const saleYesterday = await pool
+//       .request()
+//       .input("prefix", sql.NVarChar(50), "")
+//       .input("what", sql.NVarChar(50), "YesterdaySale")
+//       .input("FromDate", sql.NVarChar(50), "")
+//       .input("ToDate", sql.NVarChar(50), "")
+//       .execute("A_SP_FOR_ApplicationChallangrid");
+//     console.log("Sale Yesterday Result:", saleYesterday.recordset);
+
+//     // ======================================================
+//     // TREND PERIOD
+//     // ======================================================
+//     // Accept ?period=7days (default)
+//     // or ?period=6months
+//     const trendPeriod = req.query.period === "6months" ? "6months" : "7days";
+
+//     // ======================================================
+//     // BOOKING TREND
+//     // ======================================================
+//     const bookingTrendResult = await pool
+//       .request()
+//       .input("prefix", sql.NVarChar(50), "")
+//       .input("what", sql.NVarChar(50), "BookingTrend")
+//       .input("period", sql.NVarChar(50), trendPeriod)
+//       .input("FromDate", sql.NVarChar(50), "")
+//       .input("ToDate", sql.NVarChar(50), "")
+//       .execute("A_SP_FOR_ApplicationChallangrid");
+//     console.log("Booking Trend Result:", bookingTrendResult.recordset);
+//     // ======================================================
+//     // SALE TREND
+//     // ======================================================
+//     const saleTrendResult = await pool
+//       .request()
+//       .input("prefix", sql.NVarChar(50), "")
+//       .input("what", sql.NVarChar(50), "SaleTrend")
+//       .input("period", sql.NVarChar(50), trendPeriod)
+//       .input("FromDate", sql.NVarChar(50), "")
+//       .input("ToDate", sql.NVarChar(50), "")
+//       .execute("A_SP_FOR_ApplicationChallangrid");
+//     console.log("Sale Trend Result:", saleTrendResult.recordset);
+//     // ======================================================
+//     // BASIC VALUES
+//     // ======================================================
+
+//     // Helper: read the first numeric value from an SP recordset row,
+//     // regardless of column name casing. Falls back to 0 if absent.
+//     function firstNum(row) {
+//       if (!row) return 0;
+//       const val = Object.values(row)[0];
+//       return Number(val ?? 0);
+//     }
+
+//     const todayBooking = Number(
+//       bookingToday.recordset?.[0]?.todaybooking ??
+//         bookingToday.recordset?.[0]?.TodayBooking ??
+//         bookingToday.recordset?.[0]?.Todaybooking ??
+//         firstNum(bookingToday.recordset?.[0]),
+//     );
+
+//     const yesterdayBooking = Number(
+//       bookingYesterday.recordset?.[0]?.yesterdaybooking ??
+//         bookingYesterday.recordset?.[0]?.YesterdayBooking ??
+//         bookingYesterday.recordset?.[0]?.Yesterdaybooking ??
+//         firstNum(bookingYesterday.recordset?.[0]),
+//     );
+
+//     const todaySale = Number(
+//       saleToday.recordset?.[0]?.todaydelivery ??
+//         saleToday.recordset?.[0]?.TodayDelivery ??
+//         saleToday.recordset?.[0]?.TodaySale ??
+//         saleToday.recordset?.[0]?.todaysale ??
+//         firstNum(saleToday.recordset?.[0]),
+//     );
+
+//     const yesterdaySale = Number(
+//       saleYesterday.recordset?.[0]?.yesterdaysale ??
+//         saleYesterday.recordset?.[0]?.YesterdaySale ??
+//         saleYesterday.recordset?.[0]?.yesterdaydelivery ??
+//         saleYesterday.recordset?.[0]?.YesterdayDelivery ??
+//         firstNum(saleYesterday.recordset?.[0]),
+//     );
+
+//     // ======================================================
+//     // BOOKING TREND
+//     // ======================================================
+
+//     const bookingTrend = bookingTrendResult.recordset.map((x) =>
+//       Number(x.TotalBooking),
+//     );
+
+//     // ======================================================
+//     // SALE TREND
+//     // ======================================================
+
+//     const saleTrend = saleTrendResult.recordset.map((x) => Number(x.TotalSale));
+
+//     // ======================================================
+//     // LIVE BOOKING — direct query (SP has no LiveBooking mode)
+//     // Live booking = bookings that are approved (sp_582 != epoch)
+//     // but not yet delivered (sp_597 = epoch)
+//     // ======================================================
+//     let liveBooking = 0;
+//     try {
+//       const liveBookingResult = await pool.request().query(`
+//           SELECT COUNT(*) AS liveBooking
+//           FROM dbo.rh_sp_46
+//           WHERE sp_558 IN ('Customer Challan', 'CSD Challan')
+//             AND sp_582 <> '1900-01-01 00:00:00.000'
+//             AND sp_597 = '1900-01-01 00:00:00.000'
+//         `);
+//       liveBooking = Number(liveBookingResult.recordset?.[0]?.liveBooking ?? 0);
+//       console.log("🔥 LIVE BOOKING:", liveBooking);
+//     } catch (e) {
+//       console.warn("⚠️ LiveBooking query failed:", e.message);
+//     }
+
+//     // ======================================================
+//     // MTD BOOKING — direct query (SP has no MtdBooking mode)
+//     // Month-to-date bookings from rcl table
+//     // ======================================================
+//     let mtdBooking = 0;
+//     try {
+//       const mtdBookingResult = await pool.request().query(`
+//           DECLARE @MTD_Start DATE = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
+//           SELECT COUNT(*) AS mtdBooking
+//           FROM dbo.RH_rcl
+//           WHERE rcl_66 = 'booking'
+//             AND CONVERT(date, rcl_7) >= @MTD_Start
+//             AND rcl_85 = '1900-01-01 00:00:00.000'
+//         `);
+//       mtdBooking = Number(mtdBookingResult.recordset?.[0]?.mtdBooking ?? 0);
+//       console.log("📅 MTD BOOKING:", mtdBooking);
+//     } catch (e) {
+//       console.warn("⚠️ MtdBooking query failed:", e.message);
+//     }
+
+//     // ======================================================
+//     // MTD SALE — direct query (SP has no MtdSale mode)
+//     // Month-to-date deliveries from challan table
+//     // ======================================================
+//     let mtdSale = 0;
+//     try {
+//       const mtdSaleResult = await pool.request().query(`
+//           DECLARE @MTD_Start DATE = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
+//           SELECT COUNT(*) AS mtdSale
+//           FROM dbo.rh_sp_46
+//           WHERE sp_558 IN ('customer challan', 'csd challan')
+//             AND dbo.ONLYDATE(sp_597) >= @MTD_Start
+//         `);
+//       mtdSale = Number(mtdSaleResult.recordset?.[0]?.mtdSale ?? 0);
+//       console.log("💰 MTD SALE:", mtdSale);
+//     } catch (e) {
+//       console.warn("⚠️ MtdSale query failed:", e.message);
+//       mtdSale = 0;
+//     }
+
+//     // ======================================================
+//     // PENDING DELIVERY
+//     // ======================================================
+
+//     const pendingDelResult = await pool
+//       .request()
+//       .input("prefix", sql.NVarChar(50), "")
+//       .input("what", sql.NVarChar(50), "pendingdelcount")
+//       .input("FromDate", sql.NVarChar(50), "")
+//       .input("ToDate", sql.NVarChar(50), "")
+//       .execute("A_SP_FOR_ApplicationChallangrid");
+
+//     console.log(
+//       "⏳ Pending Delivery Raw Recordset:",
+//       JSON.stringify(pendingDelResult.recordset),
+//     );
+
+//     console.log(
+//       "⏳ Pending Delivery All Recordsets:",
+//       JSON.stringify(pendingDelResult.recordsets),
+//     );
+
+//     // SP may return multiple recordsets.
+//     // Scan all recordsets to find the count row.
+//     let pendingDelivery = 0;
+
+//     const allRecordsets = pendingDelResult.recordsets ?? [
+//       pendingDelResult.recordset,
+//     ];
+
+//     for (const rs of allRecordsets) {
+//       if (rs?.length > 0) {
+//         const firstVal = Object.values(rs[0])[0];
+
+//         const num = Number(firstVal ?? 0);
+
+//         if (!isNaN(num) && num > 0) {
+//           pendingDelivery = num;
+
+//           console.log(
+//             "✅ Pending Delivery Count:",
+//             pendingDelivery,
+//             "| Raw row:",
+//             rs[0],
+//           );
+
+//           break;
+//         }
+//       }
+//     }
+
+//     if (pendingDelivery === 0) {
+//       console.log("⚠️ Pending Delivery: could not find count in any recordset");
+//     }
+
+//     // ======================================================
+//     // DEBUG LOGS
+//     // ======================================================
+
+//     console.log(
+//       "Today Booking Row:",
+//       JSON.stringify(bookingToday.recordset?.[0]),
+//     );
+//     console.log(
+//       "Yesterday Booking Row:",
+//       JSON.stringify(bookingYesterday.recordset?.[0]),
+//     );
+//     console.log("Today Sale Row:", JSON.stringify(saleToday.recordset?.[0]));
+//     console.log(
+//       "Yesterday Sale Row:",
+//       JSON.stringify(saleYesterday.recordset?.[0]),
+//     );
+//     console.log(
+//       "✅ Resolved → todayBooking:",
+//       todayBooking,
+//       "| yesterdayBooking:",
+//       yesterdayBooking,
+//       "| todaySale:",
+//       todaySale,
+//       "| yesterdaySale:",
+//       yesterdaySale,
+//     );
+
+//     // If LiveBooking query returned 0, fall back to pendingDelivery (same concept)
+//     const effectiveLiveBooking =
+//       liveBooking > 0 ? liveBooking : pendingDelivery;
+//     console.log("🔥 EFFECTIVE LIVE BOOKING:", effectiveLiveBooking);
+
+//     // ======================================================
+//     // GROWTH CALCULATION
+//     // ======================================================
+
+//     function calculateGrowth(today, yesterday) {
+//       if (yesterday === 0) {
+//         return today > 0 ? 100 : 0;
+//       }
+
+//       return Number((((today - yesterday) / yesterday) * 100).toFixed(1));
+//     }
+
+//     const bookingGrowth = calculateGrowth(todayBooking, yesterdayBooking);
+
+//     const saleGrowth = calculateGrowth(todaySale, yesterdaySale);
+
+//     // ======================================================
+//     // DASHBOARD CONSOLE TABLE
+//     // ======================================================
+
+//     console.log("📊 Dashboard Stats");
+
+//     console.table({
+//       todayBooking,
+//       yesterdayBooking,
+//       bookingGrowth,
+//       bookingTrend,
+
+//       todaySale,
+//       yesterdaySale,
+//       saleGrowth,
+//       saleTrend,
+
+//       pendingDelivery,
+
+//       liveBooking: effectiveLiveBooking,
+//       mtdBooking,
+//       mtdSale,
+//     });
+
+//     // ======================================================
+//     // API RESPONSE
+//     // ======================================================
+
+//     return res.json({
+//       success: true,
+
+//       data: {
+//         // Booking
+//         todayBooking,
+//         yesterdayBooking,
+//         bookingGrowth,
+//         bookingTrend,
+
+//         // Sale
+//         todaySale,
+//         yesterdaySale,
+//         saleGrowth,
+//         saleTrend,
+
+//         // Pending Delivery
+//         pendingDelivery,
+
+//         // NEW
+//         liveBooking: effectiveLiveBooking,
+//         mtdBooking,
+//         mtdSale,
+
+//         // Trend
+//         trendPeriod,
+//       },
+//     });
+//   } catch (err) {
+//     console.error("❌ DASHBOARD STATS ERROR:", err);
+
+//     return res.status(500).json({
+//       success: false,
+//       message: "Server Error",
+//       error: err.message,
+//     });
+//   } finally {
+//     // Do not close the shared pool here.
+//     // if (pool) {
+//     //   await pool.close();
+//     // }
+//   }
+// });
+
 router.get("/dashboard-stats", async (req, res) => {
   let pool;
 
@@ -1241,6 +1635,7 @@ router.get("/dashboard-stats", async (req, res) => {
     // ======================================================
     // TODAY BOOKING
     // ======================================================
+
     const bookingToday = await pool
       .request()
       .input("prefix", sql.NVarChar(50), "")
@@ -1248,10 +1643,13 @@ router.get("/dashboard-stats", async (req, res) => {
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
       .execute("A_SP_FOR_ApplicationChallangrid");
+
     console.log("Booking Today Result:", bookingToday.recordset);
+
     // ======================================================
     // YESTERDAY BOOKING
     // ======================================================
+
     const bookingYesterday = await pool
       .request()
       .input("prefix", sql.NVarChar(50), "")
@@ -1259,10 +1657,13 @@ router.get("/dashboard-stats", async (req, res) => {
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
       .execute("A_SP_FOR_ApplicationChallangrid");
+
     console.log("Booking Yesterday Result:", bookingYesterday.recordset);
+
     // ======================================================
     // TODAY SALE
     // ======================================================
+
     const saleToday = await pool
       .request()
       .input("prefix", sql.NVarChar(50), "")
@@ -1270,10 +1671,13 @@ router.get("/dashboard-stats", async (req, res) => {
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
       .execute("A_SP_FOR_ApplicationChallangrid");
+
     console.log("Sale Today Result:", saleToday.recordset);
+
     // ======================================================
     // YESTERDAY SALE
     // ======================================================
+
     const saleYesterday = await pool
       .request()
       .input("prefix", sql.NVarChar(50), "")
@@ -1281,18 +1685,19 @@ router.get("/dashboard-stats", async (req, res) => {
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
       .execute("A_SP_FOR_ApplicationChallangrid");
+
     console.log("Sale Yesterday Result:", saleYesterday.recordset);
 
     // ======================================================
     // TREND PERIOD
     // ======================================================
-    // Accept ?period=7days (default)
-    // or ?period=6months
+
     const trendPeriod = req.query.period === "6months" ? "6months" : "7days";
 
     // ======================================================
     // BOOKING TREND
     // ======================================================
+
     const bookingTrendResult = await pool
       .request()
       .input("prefix", sql.NVarChar(50), "")
@@ -1301,10 +1706,13 @@ router.get("/dashboard-stats", async (req, res) => {
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
       .execute("A_SP_FOR_ApplicationChallangrid");
+
     console.log("Booking Trend Result:", bookingTrendResult.recordset);
+
     // ======================================================
     // SALE TREND
     // ======================================================
+
     const saleTrendResult = await pool
       .request()
       .input("prefix", sql.NVarChar(50), "")
@@ -1313,18 +1721,24 @@ router.get("/dashboard-stats", async (req, res) => {
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
       .execute("A_SP_FOR_ApplicationChallangrid");
+
     console.log("Sale Trend Result:", saleTrendResult.recordset);
+
     // ======================================================
-    // BASIC VALUES
+    // HELPER
     // ======================================================
 
-    // Helper: read the first numeric value from an SP recordset row,
-    // regardless of column name casing. Falls back to 0 if absent.
     function firstNum(row) {
       if (!row) return 0;
+
       const val = Object.values(row)[0];
+
       return Number(val ?? 0);
     }
+
+    // ======================================================
+    // TODAY BOOKING VALUE
+    // ======================================================
 
     const todayBooking = Number(
       bookingToday.recordset?.[0]?.todaybooking ??
@@ -1333,12 +1747,20 @@ router.get("/dashboard-stats", async (req, res) => {
         firstNum(bookingToday.recordset?.[0]),
     );
 
+    // ======================================================
+    // YESTERDAY BOOKING VALUE
+    // ======================================================
+
     const yesterdayBooking = Number(
       bookingYesterday.recordset?.[0]?.yesterdaybooking ??
         bookingYesterday.recordset?.[0]?.YesterdayBooking ??
         bookingYesterday.recordset?.[0]?.Yesterdaybooking ??
         firstNum(bookingYesterday.recordset?.[0]),
     );
+
+    // ======================================================
+    // TODAY SALE VALUE
+    // ======================================================
 
     const todaySale = Number(
       saleToday.recordset?.[0]?.todaydelivery ??
@@ -1347,6 +1769,10 @@ router.get("/dashboard-stats", async (req, res) => {
         saleToday.recordset?.[0]?.todaysale ??
         firstNum(saleToday.recordset?.[0]),
     );
+
+    // ======================================================
+    // YESTERDAY SALE VALUE
+    // ======================================================
 
     const yesterdaySale = Number(
       saleYesterday.recordset?.[0]?.yesterdaysale ??
@@ -1371,62 +1797,94 @@ router.get("/dashboard-stats", async (req, res) => {
     const saleTrend = saleTrendResult.recordset.map((x) => Number(x.TotalSale));
 
     // ======================================================
-    // LIVE BOOKING — direct query (SP has no LiveBooking mode)
-    // Live booking = bookings that are approved (sp_582 != epoch)
-    // but not yet delivered (sp_597 = epoch)
+    // LIVE BOOKING
+    // NOW USING STORED PROCEDURE
     // ======================================================
+
     let liveBooking = 0;
+
     try {
-      const liveBookingResult = await pool.request().query(`
-          SELECT COUNT(*) AS liveBooking
-          FROM dbo.rh_sp_46
-          WHERE sp_558 IN ('Customer Challan', 'CSD Challan')
-            AND sp_582 <> '1900-01-01 00:00:00.000'
-            AND sp_597 = '1900-01-01 00:00:00.000'
-        `);
-      liveBooking = Number(liveBookingResult.recordset?.[0]?.liveBooking ?? 0);
+      const liveBookingResult = await pool
+        .request()
+        .input("prefix", sql.NVarChar(50), "")
+        .input("what", sql.NVarChar(50), "LiveBooking")
+        .input("FromDate", sql.NVarChar(50), "")
+        .input("ToDate", sql.NVarChar(50), "")
+        .execute("A_SP_FOR_ApplicationChallangrid");
+
+      console.log("🔥 Live Booking SP Result:", liveBookingResult.recordset);
+
+      liveBooking = Number(
+        liveBookingResult.recordset?.[0]?.liveBooking ??
+          liveBookingResult.recordset?.[0]?.LiveBooking ??
+          firstNum(liveBookingResult.recordset?.[0]),
+      );
+
       console.log("🔥 LIVE BOOKING:", liveBooking);
     } catch (e) {
-      console.warn("⚠️ LiveBooking query failed:", e.message);
+      console.warn("⚠️ LiveBooking SP failed:", e.message);
     }
 
     // ======================================================
-    // MTD BOOKING — direct query (SP has no MtdBooking mode)
-    // Month-to-date bookings from rcl table
+    // MONTHLY BOOKING
+    // NOW USING STORED PROCEDURE
     // ======================================================
+
     let mtdBooking = 0;
+
     try {
-      const mtdBookingResult = await pool.request().query(`
-          DECLARE @MTD_Start DATE = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
-          SELECT COUNT(*) AS mtdBooking
-          FROM dbo.RH_rcl
-          WHERE rcl_66 = 'booking'
-            AND CONVERT(date, rcl_7) >= @MTD_Start
-            AND rcl_85 = '1900-01-01 00:00:00.000'
-        `);
-      mtdBooking = Number(mtdBookingResult.recordset?.[0]?.mtdBooking ?? 0);
-      console.log("📅 MTD BOOKING:", mtdBooking);
+      const monthlyBookingResult = await pool
+        .request()
+        .input("prefix", sql.NVarChar(50), "")
+        .input("what", sql.NVarChar(50), "MonthlyBooking")
+        .input("FromDate", sql.NVarChar(50), "")
+        .input("ToDate", sql.NVarChar(50), "")
+        .execute("A_SP_FOR_ApplicationChallangrid");
+
+      console.log(
+        "📅 Monthly Booking SP Result:",
+        monthlyBookingResult.recordset,
+      );
+
+      mtdBooking = Number(
+        monthlyBookingResult.recordset?.[0]?.monthlyBooking ??
+          monthlyBookingResult.recordset?.[0]?.MonthlyBooking ??
+          firstNum(monthlyBookingResult.recordset?.[0]),
+      );
+
+      console.log("📅 MONTHLY BOOKING:", mtdBooking);
     } catch (e) {
-      console.warn("⚠️ MtdBooking query failed:", e.message);
+      console.warn("⚠️ MonthlyBooking SP failed:", e.message);
     }
 
     // ======================================================
-    // MTD SALE — direct query (SP has no MtdSale mode)
-    // Month-to-date deliveries from challan table
+    // MONTHLY SALE
+    // NOW USING STORED PROCEDURE
     // ======================================================
+
     let mtdSale = 0;
+
     try {
-      const mtdSaleResult = await pool.request().query(`
-          DECLARE @MTD_Start DATE = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
-          SELECT COUNT(*) AS mtdSale
-          FROM dbo.rh_sp_46
-          WHERE sp_558 IN ('customer challan', 'csd challan')
-            AND dbo.ONLYDATE(sp_597) >= @MTD_Start
-        `);
-      mtdSale = Number(mtdSaleResult.recordset?.[0]?.mtdSale ?? 0);
-      console.log("💰 MTD SALE:", mtdSale);
+      const monthlySaleResult = await pool
+        .request()
+        .input("prefix", sql.NVarChar(50), "")
+        .input("what", sql.NVarChar(50), "MonthlySale")
+        .input("FromDate", sql.NVarChar(50), "")
+        .input("ToDate", sql.NVarChar(50), "")
+        .execute("A_SP_FOR_ApplicationChallangrid");
+
+      console.log("💰 Monthly Sale SP Result:", monthlySaleResult.recordset);
+
+      mtdSale = Number(
+        monthlySaleResult.recordset?.[0]?.monthlySale ??
+          monthlySaleResult.recordset?.[0]?.MonthlySale ??
+          firstNum(monthlySaleResult.recordset?.[0]),
+      );
+
+      console.log("💰 MONTHLY SALE:", mtdSale);
     } catch (e) {
-      console.warn("⚠️ MtdSale query failed:", e.message);
+      console.warn("⚠️ MonthlySale SP failed:", e.message);
+
       mtdSale = 0;
     }
 
@@ -1452,8 +1910,10 @@ router.get("/dashboard-stats", async (req, res) => {
       JSON.stringify(pendingDelResult.recordsets),
     );
 
-    // SP may return multiple recordsets.
-    // Scan all recordsets to find the count row.
+    // ======================================================
+    // PENDING DELIVERY COUNT
+    // ======================================================
+
     let pendingDelivery = 0;
 
     const allRecordsets = pendingDelResult.recordsets ?? [
@@ -1493,15 +1953,19 @@ router.get("/dashboard-stats", async (req, res) => {
       "Today Booking Row:",
       JSON.stringify(bookingToday.recordset?.[0]),
     );
+
     console.log(
       "Yesterday Booking Row:",
       JSON.stringify(bookingYesterday.recordset?.[0]),
     );
+
     console.log("Today Sale Row:", JSON.stringify(saleToday.recordset?.[0]));
+
     console.log(
       "Yesterday Sale Row:",
       JSON.stringify(saleYesterday.recordset?.[0]),
     );
+
     console.log(
       "✅ Resolved → todayBooking:",
       todayBooking,
@@ -1513,9 +1977,13 @@ router.get("/dashboard-stats", async (req, res) => {
       yesterdaySale,
     );
 
-    // If LiveBooking query returned 0, fall back to pendingDelivery (same concept)
+    // ======================================================
+    // LIVE BOOKING FALLBACK
+    // ======================================================
+
     const effectiveLiveBooking =
       liveBooking > 0 ? liveBooking : pendingDelivery;
+
     console.log("🔥 EFFECTIVE LIVE BOOKING:", effectiveLiveBooking);
 
     // ======================================================
@@ -1542,19 +2010,27 @@ router.get("/dashboard-stats", async (req, res) => {
 
     console.table({
       todayBooking,
+
       yesterdayBooking,
+
       bookingGrowth,
+
       bookingTrend,
 
       todaySale,
+
       yesterdaySale,
+
       saleGrowth,
+
       saleTrend,
 
       pendingDelivery,
 
       liveBooking: effectiveLiveBooking,
+
       mtdBooking,
+
       mtdSale,
     });
 
@@ -1568,22 +2044,30 @@ router.get("/dashboard-stats", async (req, res) => {
       data: {
         // Booking
         todayBooking,
+
         yesterdayBooking,
+
         bookingGrowth,
+
         bookingTrend,
 
         // Sale
         todaySale,
+
         yesterdaySale,
+
         saleGrowth,
+
         saleTrend,
 
         // Pending Delivery
         pendingDelivery,
 
-        // NEW
+        // Live / Monthly
         liveBooking: effectiveLiveBooking,
+
         mtdBooking,
+
         mtdSale,
 
         // Trend
@@ -1595,7 +2079,9 @@ router.get("/dashboard-stats", async (req, res) => {
 
     return res.status(500).json({
       success: false,
+
       message: "Server Error",
+
       error: err.message,
     });
   } finally {
