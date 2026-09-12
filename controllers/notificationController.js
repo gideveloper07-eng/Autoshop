@@ -177,10 +177,61 @@ const markNotificationAsRead = async (req, res) => {
 };
 
 // ============================================================
+// CLEAR ALL NOTIFICATIONS
+// DELETE /api/notifications/clear-all
+// ============================================================
+const clearAllNotifications = async (req, res) => {
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const databaseName =
+      decoded.currentDatabase || decoded.loginDatabase || decoded.database;
+
+    const { userId } = decoded;
+
+    if (!databaseName || !userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid token database/user information",
+      });
+    }
+
+    const pool = await openPool(databaseName);
+
+    await pool.request().input("userId", sql.NVarChar, userId).query(`
+      DELETE FROM app_notifications
+      WHERE user_id = @userId
+    `);
+
+    return res.json({
+      success: true,
+      message: "All notifications cleared",
+    });
+  } catch (err) {
+    console.error("CLEAR ALL NOTIFICATIONS ERROR:", err.message);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+
+  // ❌ DO NOT CLOSE pool here.
+};
+
+// ============================================================
 // EXPORTS
 // ============================================================
 module.exports = {
   getNotifications,
   getUnreadNotificationCount,
   markNotificationAsRead,
+  clearAllNotifications,
 };

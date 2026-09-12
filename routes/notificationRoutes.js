@@ -8,6 +8,7 @@ const {
   getNotifications,
   getUnreadNotificationCount,
   markNotificationAsRead,
+  clearAllNotifications,
 } = require("../controllers/notificationController");
 
 const {
@@ -24,6 +25,8 @@ router.get(
 );
 
 router.post("/notifications/read/:id", verifyToken, markNotificationAsRead);
+
+router.delete("/notifications/clear-all", verifyToken, clearAllNotifications);
 
 router.post(
   "/notifications/receipt-change-request",
