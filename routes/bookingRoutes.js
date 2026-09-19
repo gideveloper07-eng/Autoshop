@@ -18,6 +18,24 @@ function decodeToken(req) {
   }
 }
 
+function getClientIp(req) {
+  const forwardedFor = req.headers["x-forwarded-for"];
+  const rawIp = Array.isArray(forwardedFor)
+    ? forwardedFor[0]
+    : forwardedFor?.split(",")[0] ||
+      req.headers["x-real-ip"] ||
+      req.headers["cf-connecting-ip"] ||
+      req.socket?.remoteAddress ||
+      req.ip ||
+      "";
+  return String(rawIp).replace(/^::ffff:/, "").trim();
+}
+
+function str(v) {
+  if (v === null || v === undefined) return "";
+  return String(v).trim();
+}
+
 /**
  * Build a parameterised request against A_SP_FOR_Receipt.
  * Only @prefix, @what, and optional @Rcl_71 (model unq — needed for vardata)
