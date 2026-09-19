@@ -23,6 +23,7 @@ const groupRoutes = require("./routes/groupRoutes");
 const chatRoutes = require("./routes/chatRoutes");
 const aiRoutes = require("./routes/aiRoutes");
 const vehicleAllocationRoutes = require("./routes/vehicleAllocationRoutes");
+const bookingRoutes = require("./routes/bookingRoutes");
 
 const {
     initializeAI
@@ -57,6 +58,7 @@ app.use("/api/chat", chatRoutes);
 app.use("/api/group", groupRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/vehicle-allocation", vehicleAllocationRoutes);
+app.use("/api/booking", bookingRoutes);
 // ── HEALTH CHECK ─────────────────────────────────────
 app.get("/", (_, res) => {
   res.json({
