@@ -250,6 +250,10 @@ router.post("/save-new", async (req, res) => {
   let pool;
 
   try {
+    // ========================================================
+    // AUTHENTICATION
+    // ========================================================
+
     const decoded = decodeToken(req);
 
     if (!decoded) {
@@ -267,6 +271,10 @@ router.post("/save-new", async (req, res) => {
         message: "Database not found in token",
       });
     }
+
+    // ========================================================
+    // REQUEST DATA
+    // ========================================================
 
     const {
       title = "",
@@ -292,27 +300,69 @@ router.post("/save-new", async (req, res) => {
     const clientIp = getClientIp(req);
     const uid = str(userId);
 
-    console.log("==============================================");
+    // ========================================================
+    // LOG REQUEST
+    // ========================================================
+
+    console.log("================================================");
 
     console.log("💾 NEW BOOKING SAVE");
 
-    console.log("==============================================");
+    console.log("================================================");
 
-    console.log("Database :", databaseName);
-    console.log("Customer :", name);
-    console.log("Mobile   :", mobileNo);
-    console.log("Model    :", modelUnq);
-    console.log("Variant  :", variantUnq);
-    console.log("Colour   :", colourUnq);
-    console.log("SC       :", scUnq);
+    console.log("Database           :", databaseName);
 
-    console.log("==============================================");
+    console.log("User ID            :", uid);
+
+    console.log("Client IP          :", clientIp);
+
+    console.log("Title              :", title);
+
+    console.log("Customer Name      :", name);
+
+    console.log("Father Name        :", fatherName);
+
+    console.log("Email              :", emailId);
+
+    console.log("Address            :", address);
+
+    console.log("State              :", state);
+
+    console.log("City               :", cityUnq);
+
+    console.log("Area               :", areaUnq);
+
+    console.log("Zip                :", zip);
+
+    console.log("Mobile             :", mobileNo);
+
+    console.log("GSTIN              :", gstin);
+
+    console.log("Aadhar             :", aadharNo);
+
+    console.log("Birth Anniversary  :", birthAnniversary);
+
+    console.log("Marriage Anniversary:", marriageAnniversary);
+
+    console.log("Model              :", modelUnq);
+
+    console.log("Variant            :", variantUnq);
+
+    console.log("Colour             :", colourUnq);
+
+    console.log("SC Name            :", scUnq);
+
+    console.log("================================================");
+
+    // ========================================================
+    // OPEN DATABASE CONNECTION
+    // ========================================================
 
     pool = await openPool(databaseName);
 
     // ========================================================
     // STEP 1
-    // Insert customer into Account Master
+    // INSERT CUSTOMER INTO ACCOUNT MASTER
     //
     // Existing stored procedure is NOT modified.
     // ========================================================
@@ -368,7 +418,7 @@ router.post("/save-new", async (req, res) => {
     }
 
     // ========================================================
-    // Check Account Master response
+    // CHECK ACCOUNT MASTER RESPONSE
     // ========================================================
 
     const errRow = acResult.recordsets?.[0]?.[0];
@@ -389,7 +439,14 @@ router.post("/save-new", async (req, res) => {
 
     // ========================================================
     // STEP 2
-    // Get customer UNQID
+    // GET CUSTOMER UNQID
+    //
+    // This is retained because the customer was created
+    // in Account Master.
+    //
+    // NOTE:
+    // custUnq is NOT inserted into sp_740.
+    // sp_740 receives CUSTOMER NAME as requested.
     // ========================================================
 
     let custUnq = "";
@@ -421,36 +478,40 @@ router.post("/save-new", async (req, res) => {
 
     // ========================================================
     // STEP 3
-    // DIRECT INSERT INTO rh_sp_73
+    // INSERT INTO rh_sp_73
     //
-    // IMPORTANT:
-    // DO NOT call A_SP_FOR_Docket here.
+    // ONLY THE REQUESTED COLUMNS ARE INSERTED.
     //
-    // DO NOT use OUTPUT here because rh_sp_73
-    // has an enabled trigger.
+    // sp_738 IS INTENTIONALLY NOT INSERTED.
+    //
+    // A_SP_FOR_Docket IS NOT CALLED.
+    //
+    // OUTPUT IS NOT USED.
     // ========================================================
 
     try {
-      await // ====================================================
-      // DIRECT INSERT
-      // ====================================================
+      await // ==================================================
+      // DIRECT INSERT INTO rh_sp_73
+      // ==================================================
 
       pool
         .request()
 
         // ----------------------------------------------------
-        // User / customer parameters
+        // SYSTEM VALUES
         // ----------------------------------------------------
 
         .input("uid", sql.NVarChar(100), uid)
 
         .input("clientIp", sql.NVarChar(100), clientIp)
 
+        // ----------------------------------------------------
+        // BOOKING VALUES
+        // ----------------------------------------------------
+
         .input("title", sql.NVarChar(100), str(title))
 
-        .input("custUnq", sql.NVarChar(100), custUnq)
-
-        .input("name", sql.NVarChar(200), str(name))
+        .input("customerName", sql.NVarChar(100), str(name))
 
         .input("fatherName", sql.NVarChar(100), str(fatherName))
 
@@ -460,9 +521,9 @@ router.post("/save-new", async (req, res) => {
 
         .input("state", sql.NVarChar(100), str(state))
 
-        .input("cityUnq", sql.NVarChar(100), str(cityUnq))
+        .input("city", sql.NVarChar(100), str(cityUnq))
 
-        .input("areaUnq", sql.NVarChar(100), str(areaUnq))
+        .input("area", sql.NVarChar(100), str(areaUnq))
 
         .input("zip", sql.NVarChar(100), str(zip))
 
@@ -472,13 +533,13 @@ router.post("/save-new", async (req, res) => {
 
         .input("aadharNo", sql.NVarChar(100), str(aadharNo))
 
-        .input("modelUnq", sql.NVarChar(100), str(modelUnq))
+        .input("model", sql.NVarChar(100), str(modelUnq))
 
-        .input("variantUnq", sql.NVarChar(100), str(variantUnq))
+        .input("variant", sql.NVarChar(100), str(variantUnq))
 
-        .input("colourUnq", sql.NVarChar(100), str(colourUnq))
+        .input("colour", sql.NVarChar(100), str(colourUnq))
 
-        .input("scUnq", sql.NVarChar(100), str(scUnq))
+        .input("scName", sql.NVarChar(100), str(scUnq))
 
         .input("birthAnniversary", sql.NVarChar(50), str(birthAnniversary))
 
@@ -489,6 +550,10 @@ router.post("/save-new", async (req, res) => {
         ).query(`
           INSERT INTO dbo.rh_sp_73
           (
+            -- ==============================================
+            -- SYSTEM COLUMNS
+            -- ==============================================
+
             sp_731,
             sp_732,
             sp_733,
@@ -496,7 +561,11 @@ router.post("/save-new", async (req, res) => {
             sp_735,
             sp_736,
             sp_737,
-            sp_738,
+
+            -- ==============================================
+            -- BOOKING COLUMNS
+            -- ==============================================
+
             sp_739,
             sp_740,
             sp_741,
@@ -505,25 +574,11 @@ router.post("/save-new", async (req, res) => {
             sp_744,
             sp_745,
             sp_746,
-            sp_747,
             sp_748,
             sp_749,
             sp_750,
             sp_751,
-            sp_752,
-            sp_753,
-            sp_754,
-            sp_755,
             sp_756,
-            sp_757,
-            sp_758,
-            sp_759,
-            sp_760,
-            sp_761,
-            sp_762,
-            sp_763,
-            sp_764,
-            sp_765,
             sp_766,
             sp_767,
             sp_768,
@@ -532,87 +587,53 @@ router.post("/save-new", async (req, res) => {
           )
           VALUES
           (
-            GETDATE(),
+            -- ==============================================
+            -- SYSTEM VALUES
+            -- ==============================================
 
-            NEWID(),
+            GETDATE(),          -- sp_731
 
-            @uid,
+            NEWID(),            -- sp_732
 
-            @clientIp,
+            @uid,               -- sp_733
 
-            NULL,
+            @clientIp,          -- sp_734
 
-            NULL,
+            NULL,               -- sp_735
 
-            GETDATE(),
+            NULL,               -- sp_736
 
-            ISNULL(
-              (
-                SELECT
-                  MAX(
-                    CAST(
-                      sp_738 AS numeric(18,0)
-                    )
-                  )
-                FROM dbo.rh_sp_73
-                WHERE ISNUMERIC(sp_738) = 1
-              ),
-              0
-            ) + 1,
+            GETDATE(),          -- sp_737
 
-            @title,
+            -- ==============================================
+            -- BOOKING VALUES
+            -- ==============================================
 
-            @custUnq,
+            @title,             -- sp_739
 
-            @address,
+            @customerName,      -- sp_740
 
-            @cityUnq,
+            @address,           -- sp_741
 
-            @areaUnq,
+            @city,              -- sp_742
 
-            @emailId,
+            @area,              -- sp_743
 
-            @mobileNo,
+            @emailId,           -- sp_744
 
-            @aadharNo,
+            @mobileNo,          -- sp_745
 
-            N'',
+            @aadharNo,          -- sp_746
 
-            @gstin,
+            @gstin,             -- sp_748
 
-            @modelUnq,
+            @model,             -- sp_749
 
-            @variantUnq,
+            @variant,           -- sp_750
 
-            @colourUnq,
+            @colour,            -- sp_751
 
-            0,
-
-            N'',
-
-            N'',
-
-            N'',
-
-            @scUnq,
-
-            N'',
-
-            N'',
-
-            @name,
-
-            NULL,
-
-            @name,
-
-            N'',
-
-            N'',
-
-            N'',
-
-            N'',
+            @scName,            -- sp_756
 
             TRY_CONVERT(
               datetime,
@@ -621,7 +642,7 @@ router.post("/save-new", async (req, res) => {
                 N''
               ),
               103
-            ),
+            ),                  -- sp_766
 
             TRY_CONVERT(
               datetime,
@@ -630,13 +651,13 @@ router.post("/save-new", async (req, res) => {
                 N''
               ),
               103
-            ),
+            ),                  -- sp_767
 
-            @zip,
+            @zip,               -- sp_768
 
-            @state,
+            @state,             -- sp_859
 
-            @fatherName
+            @fatherName         -- sp_879
           );
         `);
 
@@ -644,13 +665,15 @@ router.post("/save-new", async (req, res) => {
       // SUCCESS
       // ======================================================
 
-      console.log("==============================================");
+      console.log("================================================");
 
       console.log("✅ NEW BOOKING INSERT SUCCESS");
 
-      console.log("Customer UNQID :", custUnq);
+      console.log("Customer Name :", name);
 
-      console.log("==============================================");
+      console.log("Customer UNQID:", custUnq);
+
+      console.log("================================================");
 
       return res.json({
         success: true,
