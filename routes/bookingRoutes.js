@@ -11,6 +11,7 @@ const openPool = require("../utils/dynamicPoolManager");
 function decodeToken(req) {
   const auth = req.headers.authorization;
   if (!auth || !auth.startsWith("Bearer ")) return null;
+
   try {
     return jwt.verify(auth.split(" ")[1], process.env.JWT_SECRET);
   } catch {
@@ -20,6 +21,7 @@ function decodeToken(req) {
 
 function getClientIp(req) {
   const forwarded = req.headers["x-forwarded-for"];
+
   const raw = Array.isArray(forwarded)
     ? forwarded[0]
     : forwarded?.split(",")[0] ||
@@ -28,6 +30,7 @@ function getClientIp(req) {
       req.socket?.remoteAddress ||
       req.ip ||
       "";
+
   return String(raw)
     .replace(/^::ffff:/, "")
     .trim();
@@ -40,7 +43,10 @@ function str(v) {
 
 /**
  * Shared helper — build a parameterised call to A_SP_FOR_Receipt.
- * Only prefix, what, and rcl71 (for vardata) vary; everything else is ''.
+ *
+ * @param pool
+ * @param what
+ * @param rcl71
  */
 function makeReceiptRequest(pool, what, rcl71 = "") {
   return pool
@@ -72,16 +78,15 @@ function makeReceiptRequest(pool, what, rcl71 = "") {
 }
 
 /**
- * Build a bare A_SP_FOR_ACCOUNTMASTER request with all params defaulted to ''.
- * Caller sets what + any fields they need via .input() chaining — but since we
- * can't chain after this function returns, we instead accept a params map.
+ * Build A_SP_FOR_ACCOUNTMASTER request.
  */
 function makeAccountMasterRequest(pool, params = {}) {
-  const req = pool.request(); // mssql returns all result sets in recordsets[] by default
+  const req = pool.request();
 
   const fields = {
     prefix: ["NVarChar", 50, "rh_"],
     what: ["NVarChar", 20, ""],
+
     m1_1: ["NVarChar", 50, ""],
     m1_2: ["NVarChar", 50, ""],
     m1_3: ["NVarChar", 50, ""],
@@ -137,6 +142,7 @@ function makeAccountMasterRequest(pool, params = {}) {
     m1_53: ["NVarChar", 50, ""],
     m1_54: ["NVarChar", 50, ""],
     m1_55: ["NVarChar", 50, ""],
+
     likeclause: ["NVarChar", 50, ""],
     pageno: ["NVarChar", 50, ""],
     Err: ["NVarChar", 50, "0"],
@@ -154,20 +160,31 @@ function makeAccountMasterRequest(pool, params = {}) {
 // GET /api/booking/dropdowns
 // Returns: states, cities, areas, models, colours, scNames
 // ─────────────────────────────────────────────────────────────────────────────
+
 router.get("/dropdowns", async (req, res) => {
   let pool;
+
   try {
     const decoded = decodeToken(req);
-    if (!decoded)
-      return res.status(401).json({ success: false, message: "Unauthorized" });
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
 
     const { currentDatabase: databaseName } = decoded;
-    if (!databaseName)
-      return res
-        .status(400)
-        .json({ success: false, message: "Database not found in token" });
+
+    if (!databaseName) {
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
+    }
 
     console.log("📦 BOOKING DROPDOWNS — DB:", databaseName);
+
     pool = await openPool(databaseName);
 
     const [stateRes, cityRes, areaRes, modelRes, colorRes, staffRes] =
@@ -182,6 +199,7 @@ router.get("/dropdowns", async (req, res) => {
 
     return res.json({
       success: true,
+
       data: {
         states: stateRes.recordset || [],
         cities: cityRes.recordset || [],
@@ -193,58 +211,241 @@ router.get("/dropdowns", async (req, res) => {
     });
   } catch (err) {
     console.error("❌ BOOKING DROPDOWNS ERROR:", err.message);
-    return res
-      .status(500)
-      .json({ success: false, message: "Server Error", error: err.message });
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/booking/cities/:stateUnq
+// Returns cities filtered by selected state.
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/cities/:stateUnq", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { currentDatabase: databaseName } = decoded;
+
+    if (!databaseName) {
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
+    }
+
+    const stateUnq = str(req.params.stateUnq);
+
+    if (!stateUnq) {
+      return res.status(400).json({
+        success: false,
+        message: "State UNQID is required",
+      });
+    }
+
+    console.log("📍 BOOKING CITIES — DB:", databaseName, "state:", stateUnq);
+
+    pool = await openPool(databaseName);
+
+    const result = await makeReceiptRequest(pool, "city", stateUnq);
+
+    return res.json({
+      success: true,
+      data: result.recordset || [],
+    });
+  } catch (err) {
+    console.error("❌ BOOKING CITIES ERROR:", err.message);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/booking/areas/:cityUnq
+// Returns areas filtered by selected city.
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/areas/:cityUnq", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { currentDatabase: databaseName } = decoded;
+
+    if (!databaseName) {
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
+    }
+
+    const cityUnq = str(req.params.cityUnq);
+
+    if (!cityUnq) {
+      return res.status(400).json({
+        success: false,
+        message: "City UNQID is required",
+      });
+    }
+
+    console.log("📍 BOOKING AREAS — DB:", databaseName, "city:", cityUnq);
+
+    pool = await openPool(databaseName);
+
+    const result = await makeReceiptRequest(pool, "area", cityUnq);
+
+    return res.json({
+      success: true,
+      data: result.recordset || [],
+    });
+  } catch (err) {
+    console.error("❌ BOOKING AREAS ERROR:", err.message);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/booking/zipcodes/:areaUnq
+// Returns ZIP/PIN codes filtered by selected area.
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/zipcodes/:areaUnq", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { currentDatabase: databaseName } = decoded;
+
+    if (!databaseName) {
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
+    }
+
+    const areaUnq = str(req.params.areaUnq);
+
+    if (!areaUnq) {
+      return res.status(400).json({
+        success: false,
+        message: "Area UNQID is required",
+      });
+    }
+
+    console.log("📍 BOOKING ZIP CODES — DB:", databaseName, "area:", areaUnq);
+
+    pool = await openPool(databaseName);
+
+    const result = await makeReceiptRequest(pool, "zipcode", areaUnq);
+
+    return res.json({
+      success: true,
+      data: result.recordset || [],
+    });
+  } catch (err) {
+    console.error("❌ BOOKING ZIP CODES ERROR:", err.message);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
   }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/booking/variants/:modelUnq
-// Returns variants for a model (@what='vardata', @Rcl_71=modelUnq)
+// Returns variants for a model
+// @what='vardata'
+// @Rcl_71=modelUnq
 // ─────────────────────────────────────────────────────────────────────────────
+
 router.get("/variants/:modelUnq", async (req, res) => {
   let pool;
+
   try {
     const decoded = decodeToken(req);
-    if (!decoded)
-      return res.status(401).json({ success: false, message: "Unauthorized" });
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
 
     const { currentDatabase: databaseName } = decoded;
-    if (!databaseName)
-      return res
-        .status(400)
-        .json({ success: false, message: "Database not found in token" });
+
+    if (!databaseName) {
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
+    }
 
     const { modelUnq } = req.params;
+
     console.log("📦 BOOKING VARIANTS — DB:", databaseName, "model:", modelUnq);
 
     pool = await openPool(databaseName);
+
     const result = await makeReceiptRequest(pool, "vardata", modelUnq);
-    return res.json({ success: true, data: result.recordset || [] });
+
+    return res.json({
+      success: true,
+      data: result.recordset || [],
+    });
   } catch (err) {
     console.error("❌ BOOKING VARIANTS ERROR:", err.message);
-    return res
-      .status(500)
-      .json({ success: false, message: "Server Error", error: err.message });
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
   }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// POST /api/booking/save
-//
-// Step 1 — A_SP_FOR_ACCOUNTMASTER @what='insert'  → inserts into rh_m1
-// Step 2 — A_SP_FOR_ACCOUNTMASTER @what='getunqid' → fetch new m1_2 (custUnq)
-// Step 3 — INSERT INTO rh_sp_73   → docket row with all 18 booking fields
+// POST /api/booking/save-new
 // ─────────────────────────────────────────────────────────────────────────────
-// ============================================================
-// NEW BOOKING SAVE API
-// ============================================================
-// IMPORTANT:
-// - Existing /save API is NOT modified.
-// - Existing stored procedures are NOT modified.
-// - Flutter new API calls: /api/booking/save-new
-// ============================================================
 
 router.post("/save-new", async (req, res) => {
   let pool;
@@ -305,52 +506,30 @@ router.post("/save-new", async (req, res) => {
     // ========================================================
 
     console.log("================================================");
-
     console.log("💾 NEW BOOKING SAVE");
-
     console.log("================================================");
 
-    console.log("Database           :", databaseName);
-
-    console.log("User ID            :", uid);
-
-    console.log("Client IP          :", clientIp);
-
-    console.log("Title              :", title);
-
-    console.log("Customer Name      :", name);
-
-    console.log("Father Name        :", fatherName);
-
-    console.log("Email              :", emailId);
-
-    console.log("Address            :", address);
-
-    console.log("State              :", state);
-
-    console.log("City               :", cityUnq);
-
-    console.log("Area               :", areaUnq);
-
-    console.log("Zip                :", zip);
-
-    console.log("Mobile             :", mobileNo);
-
-    console.log("GSTIN              :", gstin);
-
-    console.log("Aadhar             :", aadharNo);
-
-    console.log("Birth Anniversary  :", birthAnniversary);
-
+    console.log("Database            :", databaseName);
+    console.log("User ID             :", uid);
+    console.log("Client IP           :", clientIp);
+    console.log("Title               :", title);
+    console.log("Customer Name       :", name);
+    console.log("Father Name         :", fatherName);
+    console.log("Email               :", emailId);
+    console.log("Address             :", address);
+    console.log("State               :", state);
+    console.log("City                :", cityUnq);
+    console.log("Area                :", areaUnq);
+    console.log("Zip                 :", zip);
+    console.log("Mobile              :", mobileNo);
+    console.log("GSTIN               :", gstin);
+    console.log("Aadhar              :", aadharNo);
+    console.log("Birth Anniversary   :", birthAnniversary);
     console.log("Marriage Anniversary:", marriageAnniversary);
-
-    console.log("Model              :", modelUnq);
-
-    console.log("Variant            :", variantUnq);
-
-    console.log("Colour             :", colourUnq);
-
-    console.log("SC Name            :", scUnq);
+    console.log("Model               :", modelUnq);
+    console.log("Variant             :", variantUnq);
+    console.log("Colour              :", colourUnq);
+    console.log("SC Name             :", scUnq);
 
     console.log("================================================");
 
@@ -363,8 +542,6 @@ router.post("/save-new", async (req, res) => {
     // ========================================================
     // STEP 1
     // INSERT CUSTOMER INTO ACCOUNT MASTER
-    //
-    // Existing stored procedure is NOT modified.
     // ========================================================
 
     let acResult;
@@ -440,13 +617,6 @@ router.post("/save-new", async (req, res) => {
     // ========================================================
     // STEP 2
     // GET CUSTOMER UNQID
-    //
-    // This is retained because the customer was created
-    // in Account Master.
-    //
-    // NOTE:
-    // custUnq is NOT inserted into sp_740.
-    // sp_740 receives CUSTOMER NAME as requested.
     // ========================================================
 
     let custUnq = "";
@@ -479,36 +649,18 @@ router.post("/save-new", async (req, res) => {
     // ========================================================
     // STEP 3
     // INSERT INTO rh_sp_73
-    //
-    // ONLY THE REQUESTED COLUMNS ARE INSERTED.
-    //
-    // sp_738 IS INTENTIONALLY NOT INSERTED.
-    //
-    // A_SP_FOR_Docket IS NOT CALLED.
-    //
-    // OUTPUT IS NOT USED.
     // ========================================================
 
     try {
-      await // ==================================================
-      // DIRECT INSERT INTO rh_sp_73
-      // ==================================================
-
-      pool
+      await pool
         .request()
 
-        // ----------------------------------------------------
         // SYSTEM VALUES
-        // ----------------------------------------------------
-
         .input("uid", sql.NVarChar(100), uid)
 
         .input("clientIp", sql.NVarChar(100), clientIp)
 
-        // ----------------------------------------------------
         // BOOKING VALUES
-        // ----------------------------------------------------
-
         .input("title", sql.NVarChar(100), str(title))
 
         .input("customerName", sql.NVarChar(100), str(name))
@@ -550,10 +702,6 @@ router.post("/save-new", async (req, res) => {
         ).query(`
           INSERT INTO dbo.rh_sp_73
           (
-            -- ==============================================
-            -- SYSTEM COLUMNS
-            -- ==============================================
-
             sp_731,
             sp_732,
             sp_733,
@@ -561,10 +709,6 @@ router.post("/save-new", async (req, res) => {
             sp_735,
             sp_736,
             sp_737,
-
-            -- ==============================================
-            -- BOOKING COLUMNS
-            -- ==============================================
 
             sp_739,
             sp_740,
@@ -587,53 +731,34 @@ router.post("/save-new", async (req, res) => {
           )
           VALUES
           (
-            -- ==============================================
-            -- SYSTEM VALUES
-            -- ==============================================
+            GETDATE(),
+            NEWID(),
+            @uid,
+            @clientIp,
+            NULL,
+            NULL,
+            GETDATE(),
 
-            GETDATE(),          -- sp_731
+            @title,
 
-            NEWID(),            -- sp_732
+            (
+              SELECT TOP 1
+                m1_2
+              FROM rh_m1
+              WHERE m1_7 = @customerName
+            ),
 
-            @uid,               -- sp_733
-
-            @clientIp,          -- sp_734
-
-            NULL,               -- sp_735
-
-            NULL,               -- sp_736
-
-            GETDATE(),          -- sp_737
-
-            -- ==============================================
-            -- BOOKING VALUES
-            -- ==============================================
-
-            @title,             -- sp_739
-
-            (select top 1 m1_2 from rh_m1 where m1_7=@customerName),      -- sp_740
-
-            @address,           -- sp_741
-
-            @city,              -- sp_742
-
-            @area,              -- sp_743
-
-            @emailId,           -- sp_744
-
-            @mobileNo,          -- sp_745
-
-            @aadharNo,          -- sp_746
-
-            @gstin,             -- sp_748
-
-            @model,             -- sp_749
-
-            @variant,           -- sp_750
-
-            @colour,            -- sp_751
-
-            @scName,            -- sp_756
+            @address,
+            @city,
+            @area,
+            @emailId,
+            @mobileNo,
+            @aadharNo,
+            @gstin,
+            @model,
+            @variant,
+            @colour,
+            @scName,
 
             TRY_CONVERT(
               datetime,
@@ -642,7 +767,7 @@ router.post("/save-new", async (req, res) => {
                 N''
               ),
               103
-            ),                  -- sp_766
+            ),
 
             TRY_CONVERT(
               datetime,
@@ -651,13 +776,11 @@ router.post("/save-new", async (req, res) => {
                 N''
               ),
               103
-            ),                  -- sp_767
+            ),
 
-            @zip,               -- sp_768
-
-            @state,             -- sp_859
-
-            @fatherName         -- sp_879
+            @zip,
+            @state,
+            @fatherName
           );
         `);
 
@@ -666,13 +789,9 @@ router.post("/save-new", async (req, res) => {
       // ======================================================
 
       console.log("================================================");
-
       console.log("✅ NEW BOOKING INSERT SUCCESS");
-
       console.log("Customer Name :", name);
-
       console.log("Customer UNQID:", custUnq);
-
       console.log("================================================");
 
       return res.json({
@@ -704,5 +823,7 @@ router.post("/save-new", async (req, res) => {
     });
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 module.exports = router;
