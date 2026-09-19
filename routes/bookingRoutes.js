@@ -75,10 +75,7 @@ function makeReceiptRequest(pool, what, rcl71 = "") {
  * can't chain after this function returns, we instead accept a params map.
  */
 function makeAccountMasterRequest(pool, params = {}) {
-  const p = (key, type, def = "") =>
-    pool.request().input; // not used directly — see below
-
-  const req = pool.request().multiple(true);  // multiple=true for dynamic-SQL SP
+  const req = pool.request();  // mssql returns all result sets in recordsets[] by default
 
   const fields = {
     prefix: ["NVarChar", 50,  "rh_"],
