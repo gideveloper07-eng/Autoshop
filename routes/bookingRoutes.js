@@ -611,7 +611,7 @@ router.post("/save-new", async (req, res) => {
 
             @title,             -- sp_739
 
-            @customerName,      -- sp_740
+            (select top 1 m1_2 from rh_m1 where m1_7=@customerName),      -- sp_740
 
             @address,           -- sp_741
 
