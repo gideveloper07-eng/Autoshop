@@ -293,8 +293,11 @@ router.post("/save-new", async (req, res) => {
     const uid = str(userId);
 
     console.log("==============================================");
+
     console.log("💾 NEW BOOKING SAVE");
+
     console.log("==============================================");
+
     console.log("Database :", databaseName);
     console.log("Customer :", name);
     console.log("Mobile   :", mobileNo);
@@ -302,6 +305,7 @@ router.post("/save-new", async (req, res) => {
     console.log("Variant  :", variantUnq);
     console.log("Colour   :", colourUnq);
     console.log("SC       :", scUnq);
+
     console.log("==============================================");
 
     pool = await openPool(databaseName);
@@ -386,9 +390,6 @@ router.post("/save-new", async (req, res) => {
     // ========================================================
     // STEP 2
     // Get customer UNQID
-    //
-    // This is the customer GUID which will be stored
-    // in rh_sp_73.sp_740.
     // ========================================================
 
     let custUnq = "";
@@ -420,257 +421,241 @@ router.post("/save-new", async (req, res) => {
 
     // ========================================================
     // STEP 3
-    //
-    // NEW DIRECT INSERT INTO rh_sp_73
+    // DIRECT INSERT INTO rh_sp_73
     //
     // IMPORTANT:
-    // We DO NOT call A_SP_FOR_Docket here.
+    // DO NOT call A_SP_FOR_Docket here.
     //
-    // rh_sp_73 currently has 189 columns.
-    // Only the columns required by this booking request
-    // are explicitly inserted.
-    //
-    // All other columns are nullable and therefore remain NULL.
+    // DO NOT use OUTPUT here because rh_sp_73
+    // has an enabled trigger.
     // ========================================================
 
     try {
-      const bookingResult =
-        await // --------------------------------------------------
-        // Direct INSERT
-        // --------------------------------------------------
+      await // ====================================================
+      // DIRECT INSERT
+      // ====================================================
 
-        pool
-          .request()
+      pool
+        .request()
 
-          // --------------------------------------------------
-          // User / customer parameters
-          // --------------------------------------------------
+        // ----------------------------------------------------
+        // User / customer parameters
+        // ----------------------------------------------------
 
-          .input("uid", sql.NVarChar(100), uid)
+        .input("uid", sql.NVarChar(100), uid)
 
-          .input("clientIp", sql.NVarChar(100), clientIp)
+        .input("clientIp", sql.NVarChar(100), clientIp)
 
-          .input("title", sql.NVarChar(100), str(title))
+        .input("title", sql.NVarChar(100), str(title))
 
-          .input("custUnq", sql.NVarChar(100), custUnq)
+        .input("custUnq", sql.NVarChar(100), custUnq)
 
-          .input("name", sql.NVarChar(200), str(name))
+        .input("name", sql.NVarChar(200), str(name))
 
-          .input("fatherName", sql.NVarChar(100), str(fatherName))
+        .input("fatherName", sql.NVarChar(100), str(fatherName))
 
-          .input("emailId", sql.NVarChar(100), str(emailId))
+        .input("emailId", sql.NVarChar(100), str(emailId))
 
-          .input("address", sql.NVarChar(sql.MAX), str(address))
+        .input("address", sql.NVarChar(sql.MAX), str(address))
 
-          .input("state", sql.NVarChar(100), str(state))
+        .input("state", sql.NVarChar(100), str(state))
 
-          .input("cityUnq", sql.NVarChar(100), str(cityUnq))
+        .input("cityUnq", sql.NVarChar(100), str(cityUnq))
 
-          .input("areaUnq", sql.NVarChar(100), str(areaUnq))
+        .input("areaUnq", sql.NVarChar(100), str(areaUnq))
 
-          .input("zip", sql.NVarChar(100), str(zip))
+        .input("zip", sql.NVarChar(100), str(zip))
 
-          .input("mobileNo", sql.NVarChar(100), str(mobileNo))
+        .input("mobileNo", sql.NVarChar(100), str(mobileNo))
 
-          .input("gstin", sql.NVarChar(100), str(gstin))
+        .input("gstin", sql.NVarChar(100), str(gstin))
 
-          .input("aadharNo", sql.NVarChar(100), str(aadharNo))
+        .input("aadharNo", sql.NVarChar(100), str(aadharNo))
 
-          .input("modelUnq", sql.NVarChar(100), str(modelUnq))
+        .input("modelUnq", sql.NVarChar(100), str(modelUnq))
 
-          .input("variantUnq", sql.NVarChar(100), str(variantUnq))
+        .input("variantUnq", sql.NVarChar(100), str(variantUnq))
 
-          .input("colourUnq", sql.NVarChar(100), str(colourUnq))
+        .input("colourUnq", sql.NVarChar(100), str(colourUnq))
 
-          .input("scUnq", sql.NVarChar(100), str(scUnq))
+        .input("scUnq", sql.NVarChar(100), str(scUnq))
 
-          .input("birthAnniversary", sql.NVarChar(50), str(birthAnniversary))
+        .input("birthAnniversary", sql.NVarChar(50), str(birthAnniversary))
 
-          .input(
-            "marriageAnniversary",
-            sql.NVarChar(50),
-            str(marriageAnniversary),
-          ).query(`
-            INSERT INTO dbo.rh_sp_73
-            (
-              sp_731,
-              sp_732,
-              sp_733,
-              sp_734,
-              sp_735,
-              sp_736,
-              sp_737,
-              sp_738,
-              sp_739,
-              sp_740,
-              sp_741,
-              sp_742,
-              sp_743,
-              sp_744,
-              sp_745,
-              sp_746,
-              sp_747,
-              sp_748,
-              sp_749,
-              sp_750,
-              sp_751,
-              sp_752,
-              sp_753,
-              sp_754,
-              sp_755,
-              sp_756,
-              sp_757,
-              sp_758,
-              sp_759,
-              sp_760,
-              sp_761,
-              sp_762,
-              sp_763,
-              sp_764,
-              sp_765,
-              sp_766,
-              sp_767,
-              sp_768,
-              sp_859,
-              sp_879
-            )
-            OUTPUT
-              inserted.sp_732 AS bookingUnq,
-              inserted.sp_738 AS docketNo
+        .input(
+          "marriageAnniversary",
+          sql.NVarChar(50),
+          str(marriageAnniversary),
+        ).query(`
+          INSERT INTO dbo.rh_sp_73
+          (
+            sp_731,
+            sp_732,
+            sp_733,
+            sp_734,
+            sp_735,
+            sp_736,
+            sp_737,
+            sp_738,
+            sp_739,
+            sp_740,
+            sp_741,
+            sp_742,
+            sp_743,
+            sp_744,
+            sp_745,
+            sp_746,
+            sp_747,
+            sp_748,
+            sp_749,
+            sp_750,
+            sp_751,
+            sp_752,
+            sp_753,
+            sp_754,
+            sp_755,
+            sp_756,
+            sp_757,
+            sp_758,
+            sp_759,
+            sp_760,
+            sp_761,
+            sp_762,
+            sp_763,
+            sp_764,
+            sp_765,
+            sp_766,
+            sp_767,
+            sp_768,
+            sp_859,
+            sp_879
+          )
+          VALUES
+          (
+            GETDATE(),
 
-            VALUES
-            (
-              GETDATE(),
+            NEWID(),
 
-              NEWID(),
+            @uid,
 
-              @uid,
+            @clientIp,
 
-              @clientIp,
+            NULL,
 
-              NULL,
+            NULL,
 
-              NULL,
+            GETDATE(),
 
-              GETDATE(),
-
-              ISNULL(
-                (
-                  SELECT
-                    MAX(
-                      CAST(
-                        sp_738 AS numeric(18,0)
-                      )
+            ISNULL(
+              (
+                SELECT
+                  MAX(
+                    CAST(
+                      sp_738 AS numeric(18,0)
                     )
-                  FROM dbo.rh_sp_73
-                  WHERE ISNUMERIC(sp_738) = 1
-                ),
-                0
-              ) + 1,
-
-              @title,
-
-              @custUnq,
-
-              @address,
-
-              @cityUnq,
-
-              @areaUnq,
-
-              @emailId,
-
-              @mobileNo,
-
-              @aadharNo,
-
-              N'',
-
-              @gstin,
-
-              @modelUnq,
-
-              @variantUnq,
-
-              @colourUnq,
-
-              0,
-
-              N'',
-
-              N'',
-
-              N'',
-
-              @scUnq,
-
-              N'',
-
-              N'',
-
-              @name,
-
-              NULL,
-
-              @name,
-
-              N'',
-
-              N'',
-
-              N'',
-
-              N'',
-
-              TRY_CONVERT(
-                datetime,
-                NULLIF(
-                  @birthAnniversary,
-                  N''
-                ),
-                103
+                  )
+                FROM dbo.rh_sp_73
+                WHERE ISNUMERIC(sp_738) = 1
               ),
+              0
+            ) + 1,
 
-              TRY_CONVERT(
-                datetime,
-                NULLIF(
-                  @marriageAnniversary,
-                  N''
-                ),
-                103
+            @title,
+
+            @custUnq,
+
+            @address,
+
+            @cityUnq,
+
+            @areaUnq,
+
+            @emailId,
+
+            @mobileNo,
+
+            @aadharNo,
+
+            N'',
+
+            @gstin,
+
+            @modelUnq,
+
+            @variantUnq,
+
+            @colourUnq,
+
+            0,
+
+            N'',
+
+            N'',
+
+            N'',
+
+            @scUnq,
+
+            N'',
+
+            N'',
+
+            @name,
+
+            NULL,
+
+            @name,
+
+            N'',
+
+            N'',
+
+            N'',
+
+            N'',
+
+            TRY_CONVERT(
+              datetime,
+              NULLIF(
+                @birthAnniversary,
+                N''
               ),
+              103
+            ),
 
-              @zip,
+            TRY_CONVERT(
+              datetime,
+              NULLIF(
+                @marriageAnniversary,
+                N''
+              ),
+              103
+            ),
 
-              @state,
+            @zip,
 
-              @fatherName
-            );
-          `);
+            @state,
 
-      const bookingRow = bookingResult.recordset?.[0];
-
-      const bookingUnq = str(bookingRow?.bookingUnq ?? "");
-
-      const docketNo = str(bookingRow?.docketNo ?? "");
-
-      console.log("==============================================");
-      console.log("✅ NEW BOOKING INSERT SUCCESS");
-      console.log("Customer UNQID :", custUnq);
-      console.log("Booking UNQID  :", bookingUnq);
-      console.log("Docket No      :", docketNo);
-      console.log("==============================================");
+            @fatherName
+          );
+        `);
 
       // ======================================================
       // SUCCESS
       // ======================================================
 
+      console.log("==============================================");
+
+      console.log("✅ NEW BOOKING INSERT SUCCESS");
+
+      console.log("Customer UNQID :", custUnq);
+
+      console.log("==============================================");
+
       return res.json({
         success: true,
         message: "Booking request saved successfully",
         custUnq: custUnq,
-        bookingUnq: bookingUnq,
-        docketNo: docketNo,
       });
     } catch (insertErr) {
       console.error(
