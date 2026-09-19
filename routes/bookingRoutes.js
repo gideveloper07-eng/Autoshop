@@ -292,13 +292,25 @@ router.post("/save-new", async (req, res) => {
     const clientIp = getClientIp(req);
     const uid = str(userId);
 
-    console.log("💾 NEW BOOKING SAVE — DB:", databaseName, "customer:", name);
+    console.log("==============================================");
+    console.log("💾 NEW BOOKING SAVE");
+    console.log("==============================================");
+    console.log("Database :", databaseName);
+    console.log("Customer :", name);
+    console.log("Mobile   :", mobileNo);
+    console.log("Model    :", modelUnq);
+    console.log("Variant  :", variantUnq);
+    console.log("Colour   :", colourUnq);
+    console.log("SC       :", scUnq);
+    console.log("==============================================");
 
     pool = await openPool(databaseName);
 
     // ========================================================
     // STEP 1
     // Insert customer into Account Master
+    //
+    // Existing stored procedure is NOT modified.
     // ========================================================
 
     let acResult;
@@ -341,7 +353,7 @@ router.post("/save-new", async (req, res) => {
       });
     } catch (spErr) {
       console.error(
-        "❌ NEW BOOKING — A_SP_FOR_ACCOUNTMASTER insert error:",
+        "❌ NEW BOOKING — A_SP_FOR_ACCOUNTMASTER INSERT ERROR:",
         spErr.message,
       );
 
@@ -360,7 +372,7 @@ router.post("/save-new", async (req, res) => {
     const errVal = str(errRow?.err ?? errRow?.Err ?? "0");
 
     console.log(
-      "🔍 NEW BOOKING — Account Master result:",
+      "🔍 ACCOUNT MASTER RESULT:",
       JSON.stringify(acResult.recordsets?.[0]),
     );
 
@@ -374,6 +386,9 @@ router.post("/save-new", async (req, res) => {
     // ========================================================
     // STEP 2
     // Get customer UNQID
+    //
+    // This is the customer GUID which will be stored
+    // in rh_sp_73.sp_740.
     // ========================================================
 
     let custUnq = "";
@@ -386,276 +401,294 @@ router.post("/save-new", async (req, res) => {
 
       custUnq = str(unqResult.recordset?.[0]?.unqid ?? "");
 
-      console.log("🔍 NEW BOOKING — Customer UNQID:", custUnq);
+      console.log("🔍 CUSTOMER UNQID:", custUnq);
     } catch (unqErr) {
-      console.warn("⚠️ NEW BOOKING — getunqid error:", unqErr.message);
-    }
-
-    // ========================================================
-    // STEP 3
-    // Insert booking/docket
-    // ========================================================
-
-    const today = new Date().toISOString().slice(0, 10);
-
-    try {
-      await pool
-        .request()
-
-        .input("prefix", sql.NVarChar(50), "rh_")
-
-        .input("what", sql.NVarChar(50), "insert")
-
-        // ----------------------------------------------------
-        // Basic booking information
-        // ----------------------------------------------------
-
-        .input("sp_731", sql.NVarChar(50), today)
-
-        .input("sp_732", sql.NVarChar(50), "")
-
-        .input("sp_733", sql.NVarChar(50), uid)
-
-        .input("sp_734", sql.NVarChar(50), clientIp)
-
-        .input("sp_735", sql.NVarChar(50), "")
-
-        .input("sp_736", sql.NVarChar(50), "")
-
-        .input("sp_737", sql.NVarChar(50), today)
-
-        .input("sp_738", sql.NVarChar(50), "")
-
-        .input("sp_739", sql.NVarChar(50), str(title))
-
-        .input("sp_740", sql.NVarChar(50), custUnq)
-
-        .input("sp_741", sql.NVarChar(sql.MAX), str(address))
-
-        .input("sp_742", sql.NVarChar(50), str(cityUnq))
-
-        .input("sp_743", sql.NVarChar(50), str(areaUnq))
-
-        .input("sp_744", sql.NVarChar(50), str(emailId))
-
-        .input("sp_745", sql.NVarChar(50), str(mobileNo))
-
-        .input("sp_746", sql.NVarChar(50), str(aadharNo))
-
-        .input("sp_747", sql.NVarChar(50), "")
-
-        .input("sp_748", sql.NVarChar(50), str(gstin))
-
-        .input("sp_749", sql.NVarChar(50), str(modelUnq))
-
-        .input("sp_750", sql.NVarChar(50), str(variantUnq))
-
-        .input("sp_751", sql.NVarChar(50), str(colourUnq))
-
-        .input("sp_752", sql.NVarChar(50), "")
-
-        .input("sp_753", sql.NVarChar(sql.MAX), "")
-
-        .input("sp_754", sql.NVarChar(sql.MAX), "")
-
-        .input("sp_755", sql.NVarChar(sql.MAX), "")
-
-        .input("sp_756", sql.NVarChar(50), str(scUnq))
-
-        .input("sp_757", sql.NVarChar(50), "")
-
-        .input("sp_758", sql.NVarChar(50), "")
-
-        .input("sp_759", sql.NVarChar(50), str(name))
-
-        .input("sp_760", sql.NVarChar(50), "")
-
-        .input("sp_761", sql.NVarChar(50), str(name))
-
-        .input("sp_762", sql.NVarChar(50), "")
-
-        .input("sp_763", sql.NVarChar(50), "")
-
-        .input("sp_764", sql.NVarChar(50), "")
-
-        .input("sp_765", sql.NVarChar(50), "")
-
-        // ----------------------------------------------------
-        // Birth / Anniversary / Zip
-        // ----------------------------------------------------
-
-        .input("sp_766", sql.NVarChar(50), str(birthAnniversary))
-
-        .input("sp_767", sql.NVarChar(50), str(marriageAnniversary))
-
-        .input("sp_768", sql.NVarChar(50), str(zip))
-
-        // ----------------------------------------------------
-        // Remaining parameters
-        // ----------------------------------------------------
-
-        .input("sp_769", sql.NVarChar(50), "")
-        .input("sp_770", sql.NVarChar(50), "")
-        .input("sp_771", sql.NVarChar(50), "")
-        .input("sp_772", sql.NVarChar(50), "")
-        .input("sp_773", sql.NVarChar(50), "")
-        .input("sp_774", sql.NVarChar(50), "")
-        .input("sp_775", sql.NVarChar(50), "")
-        .input("sp_776", sql.NVarChar(50), "")
-        .input("sp_777", sql.NVarChar(50), "")
-        .input("sp_778", sql.NVarChar(50), "")
-        .input("sp_779", sql.NVarChar(50), "")
-        .input("sp_780", sql.NVarChar(50), "")
-        .input("sp_781", sql.NVarChar(50), "")
-        .input("sp_782", sql.NVarChar(50), "")
-        .input("sp_783", sql.NVarChar(50), "")
-        .input("sp_784", sql.NVarChar(50), "")
-        .input("sp_785", sql.NVarChar(50), "")
-        .input("sp_786", sql.NVarChar(50), "")
-        .input("sp_787", sql.NVarChar(50), "")
-        .input("sp_788", sql.NVarChar(50), "")
-        .input("sp_789", sql.NVarChar(50), "")
-        .input("sp_790", sql.NVarChar(50), "")
-        .input("sp_791", sql.NVarChar(50), "")
-        .input("sp_792", sql.NVarChar(50), "")
-        .input("sp_793", sql.NVarChar(50), "")
-        .input("sp_794", sql.NVarChar(50), "")
-        .input("sp_795", sql.NVarChar(50), "")
-        .input("sp_796", sql.NVarChar(50), "")
-        .input("sp_797", sql.NVarChar(50), "")
-        .input("sp_798", sql.NVarChar(50), "")
-        .input("sp_799", sql.NVarChar(50), "")
-        .input("sp_800", sql.NVarChar(50), "")
-        .input("sp_801", sql.NVarChar(50), "")
-        .input("sp_802", sql.NVarChar(50), "")
-        .input("sp_803", sql.NVarChar(50), "")
-        .input("sp_804", sql.NVarChar(50), "")
-        .input("sp_805", sql.NVarChar(50), "")
-        .input("sp_806", sql.NVarChar(50), "")
-        .input("sp_807", sql.NVarChar(50), "")
-        .input("sp_808", sql.NVarChar(50), "")
-        .input("sp_809", sql.NVarChar(50), "")
-        .input("sp_810", sql.NVarChar(50), "")
-        .input("sp_811", sql.NVarChar(50), "")
-        .input("sp_812", sql.NVarChar(50), "")
-        .input("sp_813", sql.NVarChar(50), "")
-        .input("sp_814", sql.NVarChar(50), "")
-        .input("sp_815", sql.NVarChar(50), "")
-        .input("sp_816", sql.NVarChar(50), "")
-        .input("sp_817", sql.NVarChar(50), "")
-        .input("sp_818", sql.NVarChar(50), "")
-        .input("sp_819", sql.NVarChar(50), "")
-        .input("sp_820", sql.NVarChar(50), "")
-        .input("sp_821", sql.NVarChar(50), "")
-        .input("sp_822", sql.NVarChar(50), "")
-        .input("sp_823", sql.NVarChar(50), "")
-        .input("sp_824", sql.NVarChar(50), "")
-        .input("sp_825", sql.NVarChar(50), "")
-        .input("sp_826", sql.NVarChar(50), "")
-        .input("sp_827", sql.NVarChar(50), "")
-        .input("sp_828", sql.NVarChar(50), "")
-        .input("sp_829", sql.NVarChar(50), "")
-        .input("sp_830", sql.NVarChar(50), "")
-        .input("sp_831", sql.NVarChar(50), "")
-        .input("sp_832", sql.NVarChar(50), "")
-        .input("sp_833", sql.NVarChar(50), "")
-        .input("sp_834", sql.NVarChar(50), "")
-        .input("sp_835", sql.NVarChar(50), "")
-        .input("sp_836", sql.NVarChar(50), "")
-        .input("sp_837", sql.NVarChar(50), "")
-        .input("sp_838", sql.NVarChar(50), "")
-        .input("sp_839", sql.NVarChar(50), "")
-        .input("sp_840", sql.NVarChar(50), "")
-        .input("sp_841", sql.NVarChar(50), "")
-        .input("sp_842", sql.NVarChar(50), "")
-        .input("sp_843", sql.NVarChar(50), "")
-        .input("sp_844", sql.NVarChar(50), "")
-        .input("sp_845", sql.NVarChar(50), "")
-        .input("sp_846", sql.NVarChar(50), "")
-        .input("sp_847", sql.NVarChar(50), "")
-        .input("sp_848", sql.NVarChar(50), "")
-        .input("sp_849", sql.NVarChar(50), "")
-        .input("sp_850", sql.NVarChar(50), "")
-        .input("sp_851", sql.NVarChar(50), "")
-        .input("sp_852", sql.NVarChar(50), "")
-        .input("sp_853", sql.NVarChar(50), "")
-        .input("sp_854", sql.NVarChar(50), "")
-        .input("sp_855", sql.NVarChar(50), "")
-        .input("sp_856", sql.NVarChar(50), "")
-        .input("sp_857", sql.NVarChar(50), "")
-        .input("sp_858", sql.NVarChar(50), "")
-
-        .input("sp_859", sql.NVarChar(50), str(state))
-
-        .input("sp_860", sql.NVarChar(50), "")
-        .input("sp_861", sql.NVarChar(50), "")
-        .input("sp_862", sql.NVarChar(50), "")
-        .input("sp_863", sql.NVarChar(50), "")
-        .input("sp_864", sql.NVarChar(50), "")
-        .input("sp_865", sql.NVarChar(50), "")
-        .input("sp_866", sql.NVarChar(50), "")
-        .input("sp_867", sql.NVarChar(50), "")
-        .input("sp_868", sql.NVarChar(50), "")
-        .input("sp_869", sql.NVarChar(50), "")
-        .input("sp_870", sql.NVarChar(50), "")
-        .input("sp_871", sql.NVarChar(50), "")
-        .input("sp_872", sql.NVarChar(50), "")
-        .input("sp_873", sql.NVarChar(50), "")
-        .input("sp_874", sql.NVarChar(50), "")
-        .input("sp_875", sql.NVarChar(50), "")
-        .input("sp_876", sql.NVarChar(50), "")
-        .input("sp_877", sql.NVarChar(50), "")
-        .input("sp_878", sql.NVarChar(50), "")
-
-        .input("sp_879", sql.NVarChar(50), str(fatherName))
-
-        // ----------------------------------------------------
-        // Child table parameters
-        // ----------------------------------------------------
-
-        .input("sp_73_1_1", sql.NVarChar(50), "")
-        .input("sp_73_1_2", sql.NVarChar(50), "")
-        .input("sp_73_1_3", sql.NVarChar(50), "")
-        .input("sp_73_1_4", sql.NVarChar(50), "")
-        .input("sp_73_1_5", sql.NVarChar(50), "")
-        .input("sp_73_1_6", sql.NVarChar(50), "")
-
-        .input("sp_73_2_1", sql.NVarChar(50), "")
-        .input("sp_73_2_2", sql.NVarChar(50), "")
-        .input("sp_73_2_3", sql.NVarChar(50), "")
-        .input("sp_73_2_4", sql.NVarChar(50), "")
-        .input("sp_73_2_5", sql.NVarChar(50), "")
-
-        .execute("A_SP_FOR_Docket");
-
-      console.log("✅ NEW BOOKING SAVE — A_SP_FOR_Docket insert OK");
-    } catch (sp73Err) {
-      console.error(
-        "❌ NEW BOOKING SAVE — Docket insert error:",
-        sp73Err.message,
-      );
+      console.error("❌ GET CUSTOMER UNQID ERROR:", unqErr.message);
 
       return res.status(500).json({
         success: false,
-        message: "Docket insert failed: " + sp73Err.message,
+        message: "Unable to get customer UNQID: " + unqErr.message,
+      });
+    }
+
+    if (!custUnq) {
+      return res.status(500).json({
+        success: false,
+        message: "Customer UNQID was not generated.",
       });
     }
 
     // ========================================================
-    // SUCCESS
+    // STEP 3
+    //
+    // NEW DIRECT INSERT INTO rh_sp_73
+    //
+    // IMPORTANT:
+    // We DO NOT call A_SP_FOR_Docket here.
+    //
+    // rh_sp_73 currently has 189 columns.
+    // Only the columns required by this booking request
+    // are explicitly inserted.
+    //
+    // All other columns are nullable and therefore remain NULL.
     // ========================================================
 
-    console.log("✅ NEW BOOKING SAVED — customer:", name, "custUnq:", custUnq);
+    try {
+      const bookingResult =
+        await // --------------------------------------------------
+        // Direct INSERT
+        // --------------------------------------------------
 
-    return res.json({
-      success: true,
-      message: "Booking request saved successfully",
-      custUnq: custUnq,
-    });
+        pool
+          .request()
+
+          // --------------------------------------------------
+          // User / customer parameters
+          // --------------------------------------------------
+
+          .input("uid", sql.NVarChar(100), uid)
+
+          .input("clientIp", sql.NVarChar(100), clientIp)
+
+          .input("title", sql.NVarChar(100), str(title))
+
+          .input("custUnq", sql.NVarChar(100), custUnq)
+
+          .input("name", sql.NVarChar(200), str(name))
+
+          .input("fatherName", sql.NVarChar(100), str(fatherName))
+
+          .input("emailId", sql.NVarChar(100), str(emailId))
+
+          .input("address", sql.NVarChar(sql.MAX), str(address))
+
+          .input("state", sql.NVarChar(100), str(state))
+
+          .input("cityUnq", sql.NVarChar(100), str(cityUnq))
+
+          .input("areaUnq", sql.NVarChar(100), str(areaUnq))
+
+          .input("zip", sql.NVarChar(100), str(zip))
+
+          .input("mobileNo", sql.NVarChar(100), str(mobileNo))
+
+          .input("gstin", sql.NVarChar(100), str(gstin))
+
+          .input("aadharNo", sql.NVarChar(100), str(aadharNo))
+
+          .input("modelUnq", sql.NVarChar(100), str(modelUnq))
+
+          .input("variantUnq", sql.NVarChar(100), str(variantUnq))
+
+          .input("colourUnq", sql.NVarChar(100), str(colourUnq))
+
+          .input("scUnq", sql.NVarChar(100), str(scUnq))
+
+          .input("birthAnniversary", sql.NVarChar(50), str(birthAnniversary))
+
+          .input(
+            "marriageAnniversary",
+            sql.NVarChar(50),
+            str(marriageAnniversary),
+          ).query(`
+            INSERT INTO dbo.rh_sp_73
+            (
+              sp_731,
+              sp_732,
+              sp_733,
+              sp_734,
+              sp_735,
+              sp_736,
+              sp_737,
+              sp_738,
+              sp_739,
+              sp_740,
+              sp_741,
+              sp_742,
+              sp_743,
+              sp_744,
+              sp_745,
+              sp_746,
+              sp_747,
+              sp_748,
+              sp_749,
+              sp_750,
+              sp_751,
+              sp_752,
+              sp_753,
+              sp_754,
+              sp_755,
+              sp_756,
+              sp_757,
+              sp_758,
+              sp_759,
+              sp_760,
+              sp_761,
+              sp_762,
+              sp_763,
+              sp_764,
+              sp_765,
+              sp_766,
+              sp_767,
+              sp_768,
+              sp_859,
+              sp_879
+            )
+            OUTPUT
+              inserted.sp_732 AS bookingUnq,
+              inserted.sp_738 AS docketNo
+
+            VALUES
+            (
+              GETDATE(),
+
+              NEWID(),
+
+              @uid,
+
+              @clientIp,
+
+              NULL,
+
+              NULL,
+
+              GETDATE(),
+
+              ISNULL(
+                (
+                  SELECT
+                    MAX(
+                      CAST(
+                        sp_738 AS numeric(18,0)
+                      )
+                    )
+                  FROM dbo.rh_sp_73
+                  WHERE ISNUMERIC(sp_738) = 1
+                ),
+                0
+              ) + 1,
+
+              @title,
+
+              @custUnq,
+
+              @address,
+
+              @cityUnq,
+
+              @areaUnq,
+
+              @emailId,
+
+              @mobileNo,
+
+              @aadharNo,
+
+              N'',
+
+              @gstin,
+
+              @modelUnq,
+
+              @variantUnq,
+
+              @colourUnq,
+
+              0,
+
+              N'',
+
+              N'',
+
+              N'',
+
+              @scUnq,
+
+              N'',
+
+              N'',
+
+              @name,
+
+              NULL,
+
+              @name,
+
+              N'',
+
+              N'',
+
+              N'',
+
+              N'',
+
+              TRY_CONVERT(
+                datetime,
+                NULLIF(
+                  @birthAnniversary,
+                  N''
+                ),
+                103
+              ),
+
+              TRY_CONVERT(
+                datetime,
+                NULLIF(
+                  @marriageAnniversary,
+                  N''
+                ),
+                103
+              ),
+
+              @zip,
+
+              @state,
+
+              @fatherName
+            );
+          `);
+
+      const bookingRow = bookingResult.recordset?.[0];
+
+      const bookingUnq = str(bookingRow?.bookingUnq ?? "");
+
+      const docketNo = str(bookingRow?.docketNo ?? "");
+
+      console.log("==============================================");
+      console.log("✅ NEW BOOKING INSERT SUCCESS");
+      console.log("Customer UNQID :", custUnq);
+      console.log("Booking UNQID  :", bookingUnq);
+      console.log("Docket No      :", docketNo);
+      console.log("==============================================");
+
+      // ======================================================
+      // SUCCESS
+      // ======================================================
+
+      return res.json({
+        success: true,
+        message: "Booking request saved successfully",
+        custUnq: custUnq,
+        bookingUnq: bookingUnq,
+        docketNo: docketNo,
+      });
+    } catch (insertErr) {
+      console.error(
+        "❌ NEW BOOKING — rh_sp_73 INSERT ERROR:",
+        insertErr.message,
+      );
+
+      console.error("❌ SQL ERROR DETAILS:", insertErr);
+
+      return res.status(500).json({
+        success: false,
+        message: "Booking insert failed: " + insertErr.message,
+      });
+    }
   } catch (err) {
     console.error("❌ NEW BOOKING SAVE ERROR:", err.message);
 
-    console.error("   Stack:", err.stack);
+    console.error("❌ STACK:", err.stack);
 
     return res.status(500).json({
       success: false,
