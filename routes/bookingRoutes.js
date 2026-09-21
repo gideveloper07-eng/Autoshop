@@ -770,7 +770,109 @@ router.post("/save-new", async (req, res) => {
     });
   }
 });
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/booking/request-grid
+// Returns pending booking requests
+// ─────────────────────────────────────────────────────────────────────────────
 
+router.get("/request-grid", async (req, res) => {
+  let pool;
+
+  try {
+    // ========================================================
+    // AUTHENTICATION
+    // ========================================================
+
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { currentDatabase: databaseName } = decoded;
+
+    if (!databaseName) {
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
+    }
+
+    console.log("📋 BOOKING REQUEST GRID — DB:", databaseName);
+
+    // ========================================================
+    // OPEN DATABASE
+    // ========================================================
+
+    pool = await openPool(databaseName);
+
+    // ========================================================
+    // GET BOOKING REQUESTS
+    // ========================================================
+
+    const result = await pool.request().query(`
+      SELECT
+        m1.m1_7 AS customername,
+
+        (
+          SELECT TOP 1
+            sp20.sp_207
+          FROM rh_sp_20 sp20
+          WHERE sp20.sp_202 = sp73.sp_749
+        ) AS Model,
+
+        (
+          SELECT TOP 1
+            sp20c.sp_20_3
+          FROM rh_sp_20_c sp20c
+          WHERE sp20c.sp_20_2 = sp73.sp_750
+        ) AS Variant,
+
+        (
+          SELECT TOP 1
+            sp14.sp_147
+          FROM rh_sp_14 sp14
+          WHERE sp14.sp_142 = sp73.sp_751
+        ) AS Color
+
+      FROM rh_m1 m1
+
+      INNER JOIN rh_sp_73 sp73
+        ON m1.m1_2 = sp73.sp_740
+
+      WHERE m1.m1_2 NOT IN
+      (
+        SELECT rcl.rcl_11
+        FROM rh_rcl rcl
+        WHERE rcl.rcl_66 = 'booking'
+          AND rcl.rcl_85 = ''
+      )
+
+      ORDER BY m1.m1_7
+    `);
+
+    console.log(
+      "📋 BOOKING REQUEST GRID COUNT:",
+      result.recordset?.length || 0,
+    );
+
+    return res.json({
+      success: true,
+      data: result.recordset || [],
+    });
+  } catch (err) {
+    console.error("❌ BOOKING REQUEST GRID ERROR:", err.message);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+});
 // ─────────────────────────────────────────────────────────────────────────────
 
 module.exports = router;
