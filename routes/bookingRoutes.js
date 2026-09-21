@@ -700,6 +700,7 @@ router.post("/save-new", async (req, res) => {
             @emailId,
             @mobileNo,
             @aadharNo,
+            @panNo,
             @gstin,
             @model,
             @variant,
