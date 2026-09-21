@@ -820,12 +820,13 @@ router.get("/request-grid", async (req, res) => {
     SELECT
       m1.m1_7 AS customername,
 
-      (
-        SELECT TOP 1
-          sp20.sp_207
-        FROM rh_sp_20 sp20
-        WHERE sp20.sp_202 = sp73.sp_749
-      ) AS Model,
+  (
+    SELECT TOP 1
+        sp20.sp_207
+    FROM rh_sp_20 sp20
+    WHERE sp20.sp_202 = sp73.sp_749
+    ORDER BY sp20.sp_207 DESC
+) AS Model,
 
       (
         SELECT TOP 1
