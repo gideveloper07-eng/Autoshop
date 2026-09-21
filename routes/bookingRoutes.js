@@ -335,63 +335,6 @@ router.get("/areas/:cityUnq", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GET /api/booking/zipcodes/:areaUnq
-// Returns ZIP/PIN codes filtered by selected area.
-// ─────────────────────────────────────────────────────────────────────────────
-
-router.get("/zipcodes/:areaUnq", async (req, res) => {
-  let pool;
-
-  try {
-    const decoded = decodeToken(req);
-
-    if (!decoded) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized",
-      });
-    }
-
-    const { currentDatabase: databaseName } = decoded;
-
-    if (!databaseName) {
-      return res.status(400).json({
-        success: false,
-        message: "Database not found in token",
-      });
-    }
-
-    const areaUnq = str(req.params.areaUnq);
-
-    if (!areaUnq) {
-      return res.status(400).json({
-        success: false,
-        message: "Area UNQID is required",
-      });
-    }
-
-    console.log("📍 BOOKING ZIP CODES — DB:", databaseName, "area:", areaUnq);
-
-    pool = await openPool(databaseName);
-
-    const result = await makeReceiptRequest(pool, "zipcode", areaUnq);
-
-    return res.json({
-      success: true,
-      data: result.recordset || [],
-    });
-  } catch (err) {
-    console.error("❌ BOOKING ZIP CODES ERROR:", err.message);
-
-    return res.status(500).json({
-      success: false,
-      message: "Server Error",
-      error: err.message,
-    });
-  }
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
 // GET /api/booking/variants/:modelUnq
 // Returns variants for a model
 // @what='vardata'
