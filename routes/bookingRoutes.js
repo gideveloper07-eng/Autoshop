@@ -340,6 +340,8 @@ router.get("/areas/:cityUnq", async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 router.get("/zipcodes/:areaUnq", async (req, res) => {
+  let pool;
+
   try {
     const decoded = decodeToken(req);
 
@@ -350,10 +352,16 @@ router.get("/zipcodes/:areaUnq", async (req, res) => {
       });
     }
 
+    const { currentDatabase: databaseName } = decoded;
+
+    if (!databaseName) {
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
+    }
+
     const areaUnq = str(req.params.areaUnq);
-    const areaName = str(req.query.areaName);
-    const cityName = str(req.query.cityName);
-    const stateName = str(req.query.stateName);
 
     if (!areaUnq) {
       return res.status(400).json({
@@ -362,133 +370,22 @@ router.get("/zipcodes/:areaUnq", async (req, res) => {
       });
     }
 
-    if (!areaName) {
-      return res.status(400).json({
-        success: false,
-        message: "Area name is required",
-      });
-    }
+    console.log("📍 BOOKING ZIP CODES — DB:", databaseName, "area:", areaUnq);
 
-    console.log("📍 BOOKING ZIP LOOKUP");
-    console.log("Area UNQID :", areaUnq);
-    console.log("Area Name  :", areaName);
-    console.log("City Name  :", cityName);
-    console.log("State Name :", stateName);
+    pool = await openPool(databaseName);
 
-    // ---------------------------------------------------------
-    // Search online postal directory
-    // ---------------------------------------------------------
-
-    const searchText = [areaName, cityName, stateName]
-      .filter(Boolean)
-      .join(" ");
-
-    const apiUrl = `https://api.pincodeapi.in/api/v1/search?q=${encodeURIComponent(searchText)}`;
-
-    console.log("🌐 PINCODE API:", apiUrl);
-
-    const apiResponse = await fetch(apiUrl);
-
-    if (!apiResponse.ok) {
-      console.error("❌ PINCODE API STATUS:", apiResponse.status);
-
-      return res.json({
-        success: true,
-        data: [],
-      });
-    }
-
-    const apiData = await apiResponse.json();
-
-    console.log("🌐 PINCODE API RESPONSE:", JSON.stringify(apiData));
-
-    if (
-      apiData.success !== true ||
-      !apiData.data ||
-      !Array.isArray(apiData.data.post_offices)
-    ) {
-      return res.json({
-        success: true,
-        data: [],
-      });
-    }
-
-    const postOffices = apiData.data.post_offices;
-
-    // ---------------------------------------------------------
-    // Match state/city as much as possible
-    // ---------------------------------------------------------
-
-    const cleanState = stateName.toLowerCase().trim();
-    const cleanCity = cityName.toLowerCase().trim();
-    const cleanArea = areaName.toLowerCase().trim();
-
-    const matched = postOffices.filter((office) => {
-      const officeName = String(office.office_name || "").toLowerCase();
-
-      const district = String(office.district || "").toLowerCase();
-
-      const state = String(office.state || "").toLowerCase();
-
-      const stateMatch = !cleanState || state.includes(cleanState);
-
-      const cityMatch =
-        !cleanCity ||
-        district.includes(cleanCity) ||
-        cleanCity.includes(district);
-
-      const areaMatch =
-        officeName.includes(cleanArea) || cleanArea.includes(officeName);
-
-      return stateMatch && cityMatch && areaMatch;
-    });
-
-    // If exact matching doesn't find anything,
-    // use state + city/district matching.
-    const fallback = postOffices.filter((office) => {
-      const district = String(office.district || "").toLowerCase();
-
-      const state = String(office.state || "").toLowerCase();
-
-      const stateMatch = !cleanState || state.includes(cleanState);
-
-      const cityMatch =
-        !cleanCity ||
-        district.includes(cleanCity) ||
-        cleanCity.includes(district);
-
-      return stateMatch && cityMatch;
-    });
-
-    const finalResults = matched.length > 0 ? matched : fallback;
-
-    const data = finalResults
-      .filter((office) => office.pincode)
-      .map((office) => ({
-        zipcode: String(office.pincode),
-        pincode: String(office.pincode),
-        officeName: office.office_name || "",
-        district: office.district || "",
-        state: office.state || "",
-      }));
-
-    // Remove duplicate PIN codes
-    const unique = Array.from(
-      new Map(data.map((item) => [item.zipcode, item])).values(),
-    );
-
-    console.log("📮 ZIP RESULTS:", unique);
+    const result = await makeReceiptRequest(pool, "zipcode", areaUnq);
 
     return res.json({
       success: true,
-      data: unique,
+      data: result.recordset || [],
     });
   } catch (err) {
-    console.error("❌ BOOKING ZIP LOOKUP ERROR:", err.message);
+    console.error("❌ BOOKING ZIP CODES ERROR:", err.message);
 
     return res.status(500).json({
       success: false,
-      message: "Unable to fetch ZIP code",
+      message: "Server Error",
       error: err.message,
     });
   }
