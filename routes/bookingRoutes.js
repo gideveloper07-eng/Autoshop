@@ -435,6 +435,7 @@ router.post("/save-new", async (req, res) => {
       birthAnniversary = "",
       marriageAnniversary = "",
       aadharNo = "",
+      panNo = "",
       modelUnq = "",
       variantUnq = "",
       colourUnq = "",
@@ -515,7 +516,7 @@ router.post("/save-new", async (req, res) => {
 
         m1_47: str(mobileNo),
         m1_48: str(aadharNo),
-
+        m1_40: str(panNo),
         m1_49: "CUST",
 
         m1_50: str(fatherName),
@@ -627,6 +628,7 @@ router.post("/save-new", async (req, res) => {
         .input("gstin", sql.NVarChar(100), str(gstin))
 
         .input("aadharNo", sql.NVarChar(100), str(aadharNo))
+        .input("panNo", sql.NVarChar(100), str(panNo))
 
         .input("model", sql.NVarChar(100), str(modelUnq))
 
@@ -661,6 +663,7 @@ router.post("/save-new", async (req, res) => {
             sp_744,
             sp_745,
             sp_746,
+            sp_747,
             sp_748,
             sp_749,
             sp_750,
