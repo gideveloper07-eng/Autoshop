@@ -825,7 +825,7 @@ router.get("/request-grid", async (req, res) => {
         sp20.sp_207
     FROM rh_sp_20 sp20
     WHERE sp20.sp_202 = sp73.sp_749
-    ORDER BY sp20.sp_207 DESC
+    ORDER BY sp20.sp_207 
 ) AS Model,
 
       (
