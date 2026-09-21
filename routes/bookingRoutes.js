@@ -792,7 +792,9 @@ router.get("/request-grid", async (req, res) => {
       });
     }
 
-    const { currentDatabase: databaseName } = decoded;
+    const { currentDatabase: databaseName, userId } = decoded;
+
+    const uid = str(userId);
 
     if (!databaseName) {
       return res.status(400).json({
@@ -813,46 +815,47 @@ router.get("/request-grid", async (req, res) => {
     // GET BOOKING REQUESTS
     // ========================================================
 
-    const result = await pool.request().query(`
-      SELECT
-        m1.m1_7 AS customername,
+    const result = await pool.request().input("userId", sql.NVarChar(100), uid)
+      .query(`
+    SELECT
+      m1.m1_7 AS customername,
 
-        (
-          SELECT TOP 1
-            sp20.sp_207
-          FROM rh_sp_20 sp20
-          WHERE sp20.sp_202 = sp73.sp_749
-        ) AS Model,
+      (
+        SELECT TOP 1
+          sp20.sp_207
+        FROM rh_sp_20 sp20
+        WHERE sp20.sp_202 = sp73.sp_749
+      ) AS Model,
 
-        (
-          SELECT TOP 1
-            sp20c.sp_20_3
-          FROM rh_sp_20_c sp20c
-          WHERE sp20c.sp_20_2 = sp73.sp_750
-        ) AS Variant,
+      (
+        SELECT TOP 1
+          sp20c.sp_20_3
+        FROM rh_sp_20_c sp20c
+        WHERE sp20c.sp_20_2 = sp73.sp_750
+      ) AS Variant,
 
-        (
-          SELECT TOP 1
-            sp14.sp_147
-          FROM rh_sp_14 sp14
-          WHERE sp14.sp_142 = sp73.sp_751
-        ) AS Color
+      (
+        SELECT TOP 1
+          sp14.sp_147
+        FROM rh_sp_14 sp14
+        WHERE sp14.sp_142 = sp73.sp_751
+      ) AS Color
 
-      FROM rh_m1 m1
+    FROM rh_m1 m1
 
-      INNER JOIN rh_sp_73 sp73
-        ON m1.m1_2 = sp73.sp_740
+    INNER JOIN rh_sp_73 sp73
+      ON m1.m1_2 = sp73.sp_740
 
-      WHERE m1.m1_2 NOT IN
+    WHERE sp73.sp_733 = @userId
+
+      AND m1.m1_2 NOT IN
       (
         SELECT rcl.rcl_11
         FROM rh_rcl rcl
         WHERE rcl.rcl_66 = 'booking'
           AND rcl.rcl_85 = ''
       )
-
-      ORDER BY m1.m1_7
-    `);
+  `);
 
     console.log(
       "📋 BOOKING REQUEST GRID COUNT:",
