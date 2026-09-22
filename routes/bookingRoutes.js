@@ -1311,9 +1311,9 @@ router.get("/acc-cancel-docket/:custUnq", async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/booking/acc-cancel-acc-total/:unqid
-// Returns the total accessories amount for a slip by summing ALL rh_sp_43_c
-// rows (sp_43_14 × sp_43_4) regardless of cancellation/approval status.
-// This matches the "Accessories Amount" footer shown on the web page.
+// Returns the total accessories amount for a slip by summing sp_43_6
+// (stored line amount) for pending-cancellation rows only
+// (sp_43_7 <> 1900 AND sp_43_15 = 1900) — matches the web page totals bar.
 // ─────────────────────────────────────────────────────────────────────────────
 
 router.get("/acc-cancel-acc-total/:unqid", async (req, res) => {
@@ -1352,9 +1352,11 @@ router.get("/acc-cancel-acc-total/:unqid", async (req, res) => {
       .input("sp_43_1", sql.NVarChar(50), unqid)
       .query(`
         SELECT
-          ISNULL(SUM(ISNULL(c.sp_43_14, 0) * ISNULL(c.sp_43_4, 1)), 0) AS accessories_total
+          ISNULL(SUM(ISNULL(c.sp_43_6, 0)), 0) AS accessories_total
         FROM rh_sp_43_c c
         WHERE c.sp_43_1 = @sp_43_1
+          AND c.sp_43_7  <> '1900-01-01 00:00:00.000'
+          AND c.sp_43_15  = '1900-01-01 00:00:00.000'
       `);
 
     const total = result.recordset?.[0]?.accessories_total ?? 0;
