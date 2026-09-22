@@ -775,6 +775,12 @@ router.post("/save-new", async (req, res) => {
 // Returns pending booking requests
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/booking/request-grid
+// Admin     -> returns ALL pending booking requests
+// Non-admin -> returns only current user's pending booking requests
+// ─────────────────────────────────────────────────────────────────────────────
+
 router.get("/request-grid", async (req, res) => {
   let pool;
 
@@ -792,7 +798,7 @@ router.get("/request-grid", async (req, res) => {
       });
     }
 
-    const { currentDatabase: databaseName, userId } = decoded;
+    const { currentDatabase: databaseName, userId, isAdmin } = decoded;
 
     const uid = str(userId);
 
@@ -803,7 +809,17 @@ router.get("/request-grid", async (req, res) => {
       });
     }
 
-    console.log("📋 BOOKING REQUEST GRID — DB:", databaseName);
+    // IMPORTANT:
+    // Accept both boolean true and string "true"
+    const adminUser =
+      isAdmin === true || String(isAdmin).toLowerCase() === "true";
+
+    console.log("================================================");
+    console.log("📋 BOOKING REQUEST GRID");
+    console.log("Database :", databaseName);
+    console.log("User ID  :", uid);
+    console.log("Is Admin :", adminUser);
+    console.log("================================================");
 
     // ========================================================
     // OPEN DATABASE
@@ -815,48 +831,55 @@ router.get("/request-grid", async (req, res) => {
     // GET BOOKING REQUESTS
     // ========================================================
 
-    const result = await pool.request().input("userId", sql.NVarChar(100), uid)
-      .query(`
-    SELECT
-      m1.m1_7 AS customername,
+    const request = pool.request();
 
-  (
-    SELECT TOP 1
-        sp20.sp_207
-    FROM rh_sp_20 sp20
-    WHERE sp20.sp_202 = sp73.sp_749
-     ORDER BY sp20.sp_207 ASC
-) AS Model,
+    request.input("userId", sql.NVarChar(100), uid);
 
-      (
-        SELECT TOP 1
-          sp20c.sp_20_3
-        FROM rh_sp_20_c sp20c
-        WHERE sp20c.sp_20_2 = sp73.sp_750
-      ) AS Variant,
+    const result = await request.query(`
+      SELECT
+        m1.m1_7 AS customername,
 
-      (
-        SELECT TOP 1
-          sp14.sp_147
-        FROM rh_sp_14 sp14
-        WHERE sp14.sp_142 = sp73.sp_751
-      ) AS Color
+        (
+          SELECT TOP 1
+            sp20.sp_207
+          FROM rh_sp_20 sp20
+          WHERE sp20.sp_202 = sp73.sp_749
+          ORDER BY sp20.sp_207 ASC
+        ) AS Model,
 
-    FROM rh_m1 m1
+        (
+          SELECT TOP 1
+            sp20c.sp_20_3
+          FROM rh_sp_20_c sp20c
+          WHERE sp20c.sp_20_2 = sp73.sp_750
+        ) AS Variant,
 
-    INNER JOIN rh_sp_73 sp73
-      ON m1.m1_2 = sp73.sp_740
+        (
+          SELECT TOP 1
+            sp14.sp_147
+          FROM rh_sp_14 sp14
+          WHERE sp14.sp_142 = sp73.sp_751
+        ) AS Color
 
-    WHERE sp73.sp_733 = @userId
+      FROM rh_m1 m1
 
-      AND m1.m1_2 NOT IN
-      (
-        SELECT rcl.rcl_11
-        FROM rh_rcl rcl
-        WHERE rcl.rcl_66 = 'booking'
-          AND rcl.rcl_85 = ''
-      )
-  `);
+      INNER JOIN rh_sp_73 sp73
+        ON m1.m1_2 = sp73.sp_740
+
+      WHERE
+        (
+          @isAdmin = 1
+          OR sp73.sp_733 = @userId
+        )
+
+        AND m1.m1_2 NOT IN
+        (
+          SELECT rcl.rcl_11
+          FROM rh_rcl rcl
+          WHERE rcl.rcl_66 = 'booking'
+            AND rcl.rcl_85 = ''
+        )
+    `);
 
     console.log(
       "📋 BOOKING REQUEST GRID COUNT:",
@@ -865,6 +888,7 @@ router.get("/request-grid", async (req, res) => {
 
     return res.json({
       success: true,
+      isAdmin: adminUser,
       data: result.recordset || [],
     });
   } catch (err) {
