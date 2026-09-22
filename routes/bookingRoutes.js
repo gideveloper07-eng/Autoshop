@@ -1005,39 +1005,41 @@ router.get("/acc-cancel-approve-grid", async (req, res) => {
     // Columns returned match the ASPX GridView: sp_437–sp_448.
 
     const result = await pool.request().query(`
-      SELECT
-        sp43.sp_432,
-        CONVERT(NVARCHAR(11), sp43.sp_437, 103) AS sp_437,
-        sp43.sp_438,
-        (
-          SELECT TOP 1 m1.m1_7
-          FROM rh_m1 m1
-          WHERE m1.m1_2 = sp43.sp_440
-        ) AS sp_440,
-        sp43.sp_441,
-        (
-          SELECT TOP 1 sp20.sp_207
-          FROM rh_sp_20 sp20
-          WHERE sp20.sp_202 = sp43.sp_442
-        ) AS sp_442,
-        (
-          SELECT TOP 1 sp20c.sp_20_3
-          FROM rh_sp_20_c sp20c
-          WHERE sp20c.sp_20_2 = sp43.sp_443
-        ) AS sp_443,
-        sp43.sp_448
-      FROM rh_sp_43 sp43
-      WHERE
-        (
-          SELECT COUNT(*)
-          FROM rh_sp_43_c c
-          WHERE
-            c.sp_43_1  = sp43.sp_432
-            AND c.sp_43_7  <> '1900-01-01 00:00:00.000'
-            AND c.sp_43_15  = '1900-01-01 00:00:00.000'
-        ) > 0
-      ORDER BY sp43.sp_437 DESC, sp43.sp_438 DESC
-    `);
+  SELECT
+    sp43.sp_432,
+
+    CONVERT(NVARCHAR(11), sp43.sp_437, 103) AS sp_437,
+
+    sp43.sp_438,
+
+    (
+      SELECT TOP 1 m1.m1_7
+      FROM rh_m1 m1
+      WHERE m1.m1_2 = sp43.sp_440
+    ) AS sp_440,
+
+    sp43.sp_441,
+
+    (
+      SELECT TOP 1 sp20.sp_207
+      FROM rh_sp_20 sp20
+      WHERE sp20.sp_202 = sp43.sp_442
+    ) AS sp_442,
+
+    (
+      SELECT TOP 1 sp20c.sp_20_3
+      FROM rh_sp_20_c sp20c
+      WHERE sp20c.sp_20_2 = sp43.sp_443
+    ) AS sp_443,
+
+    sp43.sp_448
+
+  FROM rh_sp_43 sp43
+
+  ORDER BY
+    sp43.sp_437 DESC,
+    sp43.sp_438 DESC
+`);
 
     console.log(
       "📋 ACC CANCEL APPROVE GRID COUNT:",
@@ -1097,9 +1099,7 @@ router.get("/acc-cancel-slip/:unqid", async (req, res) => {
 
     pool = await openPool(databaseName);
 
-    const result = await pool
-      .request()
-      .input("sp_432", sql.NVarChar(50), unqid)
+    const result = await pool.request().input("sp_432", sql.NVarChar(50), unqid)
       .query(`
         SELECT
           sp43.sp_432,
@@ -1186,8 +1186,7 @@ router.get("/acc-cancel-details/:unqid", async (req, res) => {
     //   sp_43_15 = sentinel  → approval date not yet set (pending approval)
     const result = await pool
       .request()
-      .input("sp_43_1", sql.NVarChar(50), unqid)
-      .query(`
+      .input("sp_43_1", sql.NVarChar(50), unqid).query(`
         SELECT
           ROW_NUMBER() OVER (ORDER BY c.sp_43_2)          AS SNO,
           c.sp_43_2                                        AS childunq,
@@ -1215,10 +1214,7 @@ router.get("/acc-cancel-details/:unqid", async (req, res) => {
         ORDER BY SNO
       `);
 
-    console.log(
-      "📋 ACC CANCEL DETAILS COUNT:",
-      result.recordset?.length || 0,
-    );
+    console.log("📋 ACC CANCEL DETAILS COUNT:", result.recordset?.length || 0);
 
     return res.json({
       success: true,
@@ -1276,8 +1272,7 @@ router.get("/acc-cancel-docket/:custUnq", async (req, res) => {
     //   fetches from rh_sp_73_1_child joined to rh_sp_73 for the customer
     const result = await pool
       .request()
-      .input("custUnq", sql.NVarChar(50), custUnq)
-      .query(`
+      .input("custUnq", sql.NVarChar(50), custUnq).query(`
         DECLARE @dkunq NVARCHAR(50);
         SET @dkunq = (SELECT TOP 1 sp_732 FROM rh_sp_73 WHERE sp_740 = @custUnq);
 
@@ -1349,8 +1344,7 @@ router.get("/acc-cancel-acc-total/:unqid", async (req, res) => {
 
     const result = await pool
       .request()
-      .input("sp_43_1", sql.NVarChar(50), unqid)
-      .query(`
+      .input("sp_43_1", sql.NVarChar(50), unqid).query(`
         SELECT
           ISNULL(SUM(ISNULL(c.sp_43_6, 0)), 0) AS accessories_total
         FROM rh_sp_43_c c
