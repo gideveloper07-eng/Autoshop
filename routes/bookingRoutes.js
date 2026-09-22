@@ -809,10 +809,24 @@ router.get("/request-grid", async (req, res) => {
       });
     }
 
-    // IMPORTANT:
-    // Accept both boolean true and string "true"
+    // ========================================================
+    // ADMIN CHECK
+    // ========================================================
+
+    // Accept:
+    // true
+    // "true"
+    // TRUE
+    //
+    // This makes the API safe if the JWT stores the value
+    // as either boolean or string.
+
     const adminUser =
       isAdmin === true || String(isAdmin).toLowerCase() === "true";
+
+    // ========================================================
+    // LOG REQUEST
+    // ========================================================
 
     console.log("================================================");
     console.log("📋 BOOKING REQUEST GRID");
@@ -828,17 +842,28 @@ router.get("/request-grid", async (req, res) => {
     pool = await openPool(databaseName);
 
     // ========================================================
-    // GET BOOKING REQUESTS
+    // SQL REQUEST
     // ========================================================
 
     const request = pool.request();
 
+    // Current logged-in user
     request.input("userId", sql.NVarChar(100), uid);
+
+    // IMPORTANT:
+    // This was missing from the previous version.
+    request.input("isAdmin", sql.Int, adminUser ? 1 : 0);
+
+    // ========================================================
+    // GET BOOKING REQUESTS
+    // ========================================================
 
     const result = await request.query(`
       SELECT
+
         m1.m1_7 AS customername,
 
+        -- MODEL
         (
           SELECT TOP 1
             sp20.sp_207
@@ -847,6 +872,7 @@ router.get("/request-grid", async (req, res) => {
           ORDER BY sp20.sp_207 ASC
         ) AS Model,
 
+        -- VARIANT
         (
           SELECT TOP 1
             sp20c.sp_20_3
@@ -854,6 +880,7 @@ router.get("/request-grid", async (req, res) => {
           WHERE sp20c.sp_20_2 = sp73.sp_750
         ) AS Variant,
 
+        -- COLOR
         (
           SELECT TOP 1
             sp14.sp_147
@@ -867,32 +894,58 @@ router.get("/request-grid", async (req, res) => {
         ON m1.m1_2 = sp73.sp_740
 
       WHERE
+
         (
+          -- ADMIN
+          -- Admin can see ALL pending requests.
           @isAdmin = 1
-          OR sp73.sp_733 = @userId
+
+          OR
+
+          -- NORMAL USER
+          -- Normal user can see only their own requests.
+          sp73.sp_733 = @userId
         )
 
+        -- Only pending booking requests.
         AND m1.m1_2 NOT IN
         (
-          SELECT rcl.rcl_11
+          SELECT
+            rcl.rcl_11
+
           FROM rh_rcl rcl
-          WHERE rcl.rcl_66 = 'booking'
+
+          WHERE
+            rcl.rcl_66 = 'booking'
             AND rcl.rcl_85 = ''
         )
     `);
+
+    // ========================================================
+    // LOG RESULT
+    // ========================================================
 
     console.log(
       "📋 BOOKING REQUEST GRID COUNT:",
       result.recordset?.length || 0,
     );
 
+    // ========================================================
+    // RESPONSE
+    // ========================================================
+
     return res.json({
       success: true,
+
+      // Useful for debugging / Flutter if required.
       isAdmin: adminUser,
+
       data: result.recordset || [],
     });
   } catch (err) {
     console.error("❌ BOOKING REQUEST GRID ERROR:", err.message);
+
+    console.error("❌ BOOKING REQUEST GRID STACK:", err.stack);
 
     return res.status(500).json({
       success: false,
