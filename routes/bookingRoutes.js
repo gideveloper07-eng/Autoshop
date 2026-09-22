@@ -1061,5 +1061,254 @@ router.get("/acc-cancel-approve-grid", async (req, res) => {
   }
 });
 // ─────────────────────────────────────────────────────────────────────────────
+// GET /api/booking/acc-cancel-slip/:unqid
+// Returns the header row for a single requisition slip (SP what='Edit').
+// :unqid = sp_432 (primary key of rh_sp_43)
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/acc-cancel-slip/:unqid", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const { currentDatabase: databaseName } = decoded;
+    if (!databaseName) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Database not found in token" });
+    }
+
+    const unqid = str(req.params.unqid);
+    if (!unqid) {
+      return res
+        .status(400)
+        .json({ success: false, message: "UNQID is required" });
+    }
+
+    console.log("================================================");
+    console.log("📋 ACC CANCEL SLIP HEADER");
+    console.log("Database :", databaseName);
+    console.log("UNQID    :", unqid);
+    console.log("================================================");
+
+    pool = await openPool(databaseName);
+
+    const result = await pool
+      .request()
+      .input("sp_432", sql.NVarChar(50), unqid)
+      .query(`
+        SELECT
+          sp43.sp_432,
+          CONVERT(NVARCHAR(11), sp43.sp_437, 103) AS sp_437,
+          sp43.sp_438,
+          sp43.sp_440,
+          (SELECT TOP 1 m1.m1_7  FROM rh_m1     m1   WHERE m1.m1_2   = sp43.sp_440) AS sp_440_name,
+          (SELECT TOP 1 m1.m1_11 FROM rh_m1     m1   WHERE m1.m1_2   = sp43.sp_440) AS address,
+          sp43.sp_441,
+          sp43.sp_442,
+          (SELECT TOP 1 sp20.sp_207   FROM rh_sp_20   sp20  WHERE sp20.sp_202  = sp43.sp_442) AS sp_442_model,
+          sp43.sp_443,
+          (SELECT TOP 1 sp20c.sp_20_3 FROM rh_sp_20_c sp20c WHERE sp20c.sp_20_2 = sp43.sp_443) AS sp_443_variant,
+          sp43.sp_444,
+          (SELECT TOP 1 sp14.sp_147   FROM rh_sp_14   sp14  WHERE sp14.sp_142  = sp43.sp_444) AS sp_444_color,
+          sp43.sp_445,
+          sp43.sp_446,
+          sp43.sp_447,
+          sp43.sp_448,
+          sp43.sp_452,
+          sp43.sp_453,
+          sp43.sp_454
+        FROM rh_sp_43 sp43
+        WHERE sp43.sp_432 = @sp_432
+      `);
+
+    console.log("📋 ACC CANCEL SLIP HEADER FOUND:", !!result.recordset?.[0]);
+
+    return res.json({
+      success: true,
+      data: result.recordset?.[0] || null,
+    });
+  } catch (err) {
+    console.error("❌ ACC CANCEL SLIP HEADER ERROR:", err.message);
+    console.error("❌ ACC CANCEL SLIP HEADER STACK:", err.stack);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/booking/acc-cancel-details/:unqid
+// Returns cancelled-but-not-yet-approved child accessory rows for a slip.
+// SP equivalent: what='Cancel Acc_details', @sp_440=unqid (the slip's sp_432)
+// :unqid = sp_432 of the parent slip → FK sp_43_1 in rh_sp_43_c
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/acc-cancel-details/:unqid", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const { currentDatabase: databaseName } = decoded;
+    if (!databaseName) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Database not found in token" });
+    }
+
+    const unqid = str(req.params.unqid);
+    if (!unqid) {
+      return res
+        .status(400)
+        .json({ success: false, message: "UNQID is required" });
+    }
+
+    console.log("================================================");
+    console.log("📋 ACC CANCEL DETAILS");
+    console.log("Database :", databaseName);
+    console.log("UNQID    :", unqid);
+    console.log("================================================");
+
+    pool = await openPool(databaseName);
+
+    // Mirrors SP what='Cancel Acc_details':
+    //   sp_43_7 <> sentinel  → cancellation date is set
+    //   sp_43_15 = sentinel  → approval date not yet set (pending approval)
+    const result = await pool
+      .request()
+      .input("sp_43_1", sql.NVarChar(50), unqid)
+      .query(`
+        SELECT
+          ROW_NUMBER() OVER (ORDER BY c.sp_43_2)          AS SNO,
+          c.sp_43_2                                        AS childunq,
+          (SELECT TOP 1 sp43.sp_438 FROM rh_sp_43 sp43
+            WHERE sp43.sp_432 = c.sp_43_1)                AS slip,
+          CONVERT(NVARCHAR(11),
+            (SELECT TOP 1 sp43.sp_437 FROM rh_sp_43 sp43
+              WHERE sp43.sp_432 = c.sp_43_1), 103)        AS slipdate,
+          c.sp_43_5                                        AS sp_451,
+          (SELECT TOP 1 ac.ac_38 FROM rh_ac_3 ac
+            WHERE ac.ac_32 = c.sp_43_3)                   AS sp_452,
+          c.sp_43_4                                        AS sp_453,
+          c.sp_43_14                                       AS sp_43_6,
+          c.sp_43_7                                        AS canceldate,
+          c.sp_43_15                                       AS cancelappdate,
+          ISNULL(
+            (SELECT TOP 1
+               CASE WHEN sp28c.sp_28_8 = 'True' THEN 'Issued' ELSE 'Pending' END
+             FROM rh_sp_28_c sp28c
+             WHERE sp28c.sp_28_3 = c.sp_43_3), 'Pending') AS issue
+        FROM rh_sp_43_c c
+        WHERE c.sp_43_1 = @sp_43_1
+          AND c.sp_43_7  <> '1900-01-01 00:00:00.000'
+          AND c.sp_43_15  = '1900-01-01 00:00:00.000'
+        ORDER BY SNO
+      `);
+
+    console.log(
+      "📋 ACC CANCEL DETAILS COUNT:",
+      result.recordset?.length || 0,
+    );
+
+    return res.json({
+      success: true,
+      data: result.recordset || [],
+    });
+  } catch (err) {
+    console.error("❌ ACC CANCEL DETAILS ERROR:", err.message);
+    console.error("❌ ACC CANCEL DETAILS STACK:", err.stack);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/booking/acc-cancel-docket/:custUnq
+// Returns docket/package rows for a customer (SP what='Docket_details').
+// :custUnq = sp_440 of rh_sp_43 (customer unqid = m1_2 in rh_m1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/acc-cancel-docket/:custUnq", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const { currentDatabase: databaseName } = decoded;
+    if (!databaseName) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Database not found in token" });
+    }
+
+    const custUnq = str(req.params.custUnq);
+    if (!custUnq) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Customer UNQID is required" });
+    }
+
+    console.log("================================================");
+    console.log("📋 ACC CANCEL DOCKET");
+    console.log("Database :", databaseName);
+    console.log("CustUnq  :", custUnq);
+    console.log("================================================");
+
+    pool = await openPool(databaseName);
+
+    // Mirrors SP what='Docket_details':
+    //   fetches from rh_sp_73_1_child joined to rh_sp_73 for the customer
+    const result = await pool
+      .request()
+      .input("custUnq", sql.NVarChar(50), custUnq)
+      .query(`
+        DECLARE @dkunq NVARCHAR(50);
+        SET @dkunq = (SELECT TOP 1 sp_732 FROM rh_sp_73 WHERE sp_740 = @custUnq);
+
+        SELECT
+          (SELECT TOP 1 sp75.sp_758 FROM rh_sp_75 sp75
+            WHERE sp75.sp_752 = ch.sp_73_1_3)  AS Category,
+          ch.sp_73_1_4                           AS qty,
+          ch.sp_73_1_5                           AS mrp,
+          ch.sp_73_1_6                           AS status
+        FROM rh_sp_73_1_child ch
+        INNER JOIN rh_sp_73 sp73 ON ch.sp_73_1_1 = sp73.sp_732
+        WHERE ch.sp_73_1_1 = @dkunq
+      `);
+
+    console.log("📋 ACC CANCEL DOCKET COUNT:", result.recordset?.length || 0);
+
+    return res.json({
+      success: true,
+      data: result.recordset || [],
+    });
+  } catch (err) {
+    console.error("❌ ACC CANCEL DOCKET ERROR:", err.message);
+    console.error("❌ ACC CANCEL DOCKET STACK:", err.stack);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 module.exports = router;
