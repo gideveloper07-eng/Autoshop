@@ -1373,5 +1373,233 @@ router.get("/acc-cancel-acc-total/:unqid", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// POST /api/booking/acc-cancel-approve/:childUnq
+// Approves a single accessory cancellation request.
+// Sets sp_43_15 = GETDATE(), sp_43_16 = userid, sp_43_17 = ipadd
+// then recalculates sp_46 amounts — mirrors SP what='approvedeletechild'.
+// :childUnq = sp_43_2 (child row primary key in rh_sp_43_c)
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.post("/acc-cancel-approve/:childUnq", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const { currentDatabase: databaseName, userId } = decoded;
+    if (!databaseName) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Database not found in token" });
+    }
+
+    const childUnq = str(req.params.childUnq);
+    if (!childUnq) {
+      return res
+        .status(400)
+        .json({ success: false, message: "childUnq is required" });
+    }
+
+    const uid     = str(userId);
+    const clientIp = getClientIp(req);
+
+    console.log("================================================");
+    console.log("✅ ACC CANCEL APPROVE");
+    console.log("Database  :", databaseName);
+    console.log("childUnq  :", childUnq);
+    console.log("userId    :", uid);
+    console.log("IP        :", clientIp);
+    console.log("================================================");
+
+    pool = await openPool(databaseName);
+
+    // Stamp approval date / user / ip on the child row
+    await pool
+      .request()
+      .input("sp_43_16", sql.NVarChar(50),  uid)
+      .input("sp_43_17", sql.NVarChar(50),  clientIp)
+      .input("sp_43_2",  sql.NVarChar(50),  childUnq)
+      .query(`
+        UPDATE rh_sp_43_c
+        SET sp_43_15 = GETDATE(),
+            sp_43_16 = @sp_43_16,
+            sp_43_17 = @sp_43_17
+        WHERE sp_43_2 = @sp_43_2
+      `);
+
+    // Recalculate parent totals and sp_46 amounts (mirrors SP logic)
+    await pool
+      .request()
+      .input("sp_43_2", sql.NVarChar(50), childUnq)
+      .query(`
+        DECLARE @parentUnq  NVARCHAR(50);
+        DECLARE @custUnq    NVARCHAR(50);
+        DECLARE @hyamt      NUMERIC(18,2);
+        DECLARE @oaamt      NUMERIC(18,2);
+
+        SET @parentUnq = (SELECT TOP 1 sp_43_1 FROM rh_sp_43_c WHERE sp_43_2 = @sp_43_2);
+        SET @custUnq   = (SELECT TOP 1 sp_440  FROM rh_sp_43   WHERE sp_432  = @parentUnq);
+
+        -- update parent header totals (only non-approved rows count)
+        UPDATE rh_sp_43
+        SET sp_445 = (
+              SELECT ISNULL(SUM(sp_43_4 * sp_43_14), 0.00)
+              FROM rh_sp_43_c
+              WHERE sp_43_1 = sp_432
+                AND sp_43_15 = '1900-01-01 00:00:00.000'
+            ),
+            sp_448 = (
+              SELECT ISNULL(SUM(sp_43_4 * sp_43_14), 0.00)
+              FROM rh_sp_43_c
+              WHERE sp_43_1 = sp_432
+                AND sp_43_7 = '1900-01-01 00:00:00.000'
+            )
+        WHERE sp_432 = @parentUnq;
+
+        SET @hyamt = ISNULL((
+          SELECT SUM(total) FROM (
+            SELECT CASE
+              WHEN SUBSTRING((SELECT ac_38 FROM rh_ac_3 WHERE ac_32 = sp_43_3), 1, 2) <> 'RH'
+              THEN SUM(CAST(sp_43_4 * sp_43_14 AS NUMERIC(18,2)))
+              ELSE 0
+            END AS total
+            FROM rh_sp_43_c
+            WHERE sp_43_1 IN (SELECT sp_432 FROM rh_sp_43 WHERE sp_440 = @custUnq)
+              AND sp_43_15 = '1900-01-01 00:00:00.000'
+            GROUP BY sp_43_3
+          ) ae
+        ), 0.00);
+
+        SET @oaamt = ISNULL((
+          SELECT SUM(total) FROM (
+            SELECT CASE
+              WHEN SUBSTRING((SELECT ac_38 FROM rh_ac_3 WHERE ac_32 = sp_43_3), 1, 2) = 'RH'
+              THEN SUM(CAST(sp_43_4 * sp_43_14 AS NUMERIC(18,2)))
+              ELSE 0
+            END AS total
+            FROM rh_sp_43_c
+            WHERE sp_43_1 IN (SELECT sp_432 FROM rh_sp_43 WHERE sp_440 = @custUnq)
+              AND sp_43_15 = '1900-01-01 00:00:00.000'
+            GROUP BY sp_43_3
+          ) ae
+        ), 0.00);
+
+        UPDATE rh_sp_46
+        SET sp_478 = @hyamt,
+            sp_573 = @oaamt
+        WHERE sp_469 = @custUnq;
+
+        UPDATE rh_sp_46
+        SET sp_521 = (sp_503 + sp_520 + sp_500 + sp_477 + sp_478 + sp_573 + sp_481 + sp_475 + sp_596 + sp_474 + sp_476)
+        WHERE sp_469 = @custUnq;
+
+        UPDATE rh_sp_46
+        SET sp_545 = (sp_521 - sp_546)
+        WHERE sp_469 = @custUnq;
+      `);
+
+    console.log("✅ ACC CANCEL APPROVE SUCCESS:", childUnq);
+
+    return res.json({ success: true, message: "Approved successfully" });
+  } catch (err) {
+    console.error("❌ ACC CANCEL APPROVE ERROR:", err.message);
+    console.error("❌ ACC CANCEL APPROVE STACK:", err.stack);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/booking/acc-cancel-reject/:childUnq
+// Rejects an accessory cancellation request (keeps the item, records reason).
+// Body: { reason: "string" }
+// Sets sp_43_18 = timestamp|reason, sp_43_19 = userid, sp_43_20 = ipadd
+// Does NOT touch sp_43_7 (cancellation request date stays intact).
+// Mirrors SP what='rejectcancelchild'.
+// :childUnq = sp_43_2 (child row primary key in rh_sp_43_c)
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.post("/acc-cancel-reject/:childUnq", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const { currentDatabase: databaseName, userId } = decoded;
+    if (!databaseName) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Database not found in token" });
+    }
+
+    const childUnq = str(req.params.childUnq);
+    if (!childUnq) {
+      return res
+        .status(400)
+        .json({ success: false, message: "childUnq is required" });
+    }
+
+    const reason    = str(req.body?.reason ?? "");
+    const uid       = str(userId);
+    const clientIp  = getClientIp(req);
+
+    // reason is required
+    if (!reason) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Rejection reason is required" });
+    }
+
+    console.log("================================================");
+    console.log("❌ ACC CANCEL REJECT");
+    console.log("Database  :", databaseName);
+    console.log("childUnq  :", childUnq);
+    console.log("userId    :", uid);
+    console.log("IP        :", clientIp);
+    console.log("Reason    :", reason);
+    console.log("================================================");
+
+    pool = await openPool(databaseName);
+
+    // Store rejection: timestamp|reason, userid, ipadd
+    // sp_43_7 is NOT changed — the original cancel request date is preserved
+    await pool
+      .request()
+      .input("sp_43_18", sql.NVarChar(sql.MAX), reason)
+      .input("sp_43_19", sql.NVarChar(50),      uid)
+      .input("sp_43_20", sql.NVarChar(50),      clientIp)
+      .input("sp_43_2",  sql.NVarChar(50),      childUnq)
+      .query(`
+        UPDATE rh_sp_43_c
+        SET sp_43_18 = CONVERT(NVARCHAR(30), GETDATE(), 120) + '|' + @sp_43_18,
+            sp_43_19 = @sp_43_19,
+            sp_43_20 = @sp_43_20
+        WHERE sp_43_2 = @sp_43_2
+      `);
+
+    console.log("❌ ACC CANCEL REJECT SUCCESS:", childUnq);
+
+    return res.json({ success: true, message: "Rejected successfully" });
+  } catch (err) {
+    console.error("❌ ACC CANCEL REJECT ERROR:", err.message);
+    console.error("❌ ACC CANCEL REJECT STACK:", err.stack);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 module.exports = router;
