@@ -955,5 +955,111 @@ router.get("/request-grid", async (req, res) => {
   }
 });
 // ─────────────────────────────────────────────────────────────────────────────
+// GET /api/booking/acc-cancel-approve-grid
+// Returns requisition slips that have at least one child accessory row where
+// cancellation has been requested (sp_43_7 <> '1900-01-01') but not yet
+// approved (sp_43_15 = '1900-01-01').
+// Mirrors the SP what='gridcancelapprove' logic.
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/acc-cancel-approve-grid", async (req, res) => {
+  let pool;
+
+  try {
+    // ── AUTHENTICATION ────────────────────────────────────────────────────
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const { currentDatabase: databaseName, userId, isAdmin } = decoded;
+    const uid = str(userId);
+
+    if (!databaseName) {
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
+    }
+
+    const adminUser =
+      isAdmin === true || String(isAdmin).toLowerCase() === "true";
+
+    console.log("================================================");
+    console.log("📋 ACC CANCEL APPROVE GRID");
+    console.log("Database :", databaseName);
+    console.log("User ID  :", uid);
+    console.log("Is Admin :", adminUser);
+    console.log("================================================");
+
+    // ── OPEN DATABASE ─────────────────────────────────────────────────────
+    pool = await openPool(databaseName);
+
+    // ── QUERY ─────────────────────────────────────────────────────────────
+    // Selects requisition slips from rh_sp_43 that have at least one child
+    // row in rh_sp_43_c where:
+    //   sp_43_7 <> '1900-01-01 00:00:00.000'  (cancellation date is set)
+    //   sp_43_15 = '1900-01-01 00:00:00.000'  (approval date is NOT yet set)
+    //
+    // Columns returned match the ASPX GridView: sp_437–sp_448.
+
+    const result = await pool.request().query(`
+      SELECT
+        sp43.sp_432,
+        CONVERT(NVARCHAR(11), sp43.sp_437, 103) AS sp_437,
+        sp43.sp_438,
+        (
+          SELECT TOP 1 m1.m1_7
+          FROM rh_m1 m1
+          WHERE m1.m1_2 = sp43.sp_440
+        ) AS sp_440,
+        sp43.sp_441,
+        (
+          SELECT TOP 1 sp20.sp_207
+          FROM rh_sp_20 sp20
+          WHERE sp20.sp_202 = sp43.sp_442
+        ) AS sp_442,
+        (
+          SELECT TOP 1 sp20c.sp_20_3
+          FROM rh_sp_20_c sp20c
+          WHERE sp20c.sp_20_2 = sp43.sp_443
+        ) AS sp_443,
+        sp43.sp_448
+      FROM rh_sp_43 sp43
+      WHERE
+        (
+          SELECT COUNT(*)
+          FROM rh_sp_43_c c
+          WHERE
+            c.sp_43_1  = sp43.sp_432
+            AND c.sp_43_7  <> '1900-01-01 00:00:00.000'
+            AND c.sp_43_15  = '1900-01-01 00:00:00.000'
+        ) > 0
+      ORDER BY sp43.sp_437 DESC, sp43.sp_438 DESC
+    `);
+
+    console.log(
+      "📋 ACC CANCEL APPROVE GRID COUNT:",
+      result.recordset?.length || 0,
+    );
+
+    return res.json({
+      success: true,
+      isAdmin: adminUser,
+      data: result.recordset || [],
+    });
+  } catch (err) {
+    console.error("❌ ACC CANCEL APPROVE GRID ERROR:", err.message);
+    console.error("❌ ACC CANCEL APPROVE GRID STACK:", err.stack);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+});
+// ─────────────────────────────────────────────────────────────────────────────
 
 module.exports = router;
