@@ -1310,5 +1310,72 @@ router.get("/acc-cancel-docket/:custUnq", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GET /api/booking/acc-cancel-acc-total/:unqid
+// Returns the total accessories amount for a slip by summing ALL rh_sp_43_c
+// rows (sp_43_14 × sp_43_4) regardless of cancellation/approval status.
+// This matches the "Accessories Amount" footer shown on the web page.
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/acc-cancel-acc-total/:unqid", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const { currentDatabase: databaseName } = decoded;
+    if (!databaseName) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Database not found in token" });
+    }
+
+    const unqid = str(req.params.unqid);
+    if (!unqid) {
+      return res
+        .status(400)
+        .json({ success: false, message: "UNQID is required" });
+    }
+
+    console.log("================================================");
+    console.log("📋 ACC CANCEL ACC TOTAL");
+    console.log("Database :", databaseName);
+    console.log("UNQID    :", unqid);
+    console.log("================================================");
+
+    pool = await openPool(databaseName);
+
+    const result = await pool
+      .request()
+      .input("sp_43_1", sql.NVarChar(50), unqid)
+      .query(`
+        SELECT
+          ISNULL(SUM(ISNULL(c.sp_43_14, 0) * ISNULL(c.sp_43_4, 1)), 0) AS accessories_total
+        FROM rh_sp_43_c c
+        WHERE c.sp_43_1 = @sp_43_1
+      `);
+
+    const total = result.recordset?.[0]?.accessories_total ?? 0;
+
+    console.log("📋 ACC CANCEL ACC TOTAL:", total);
+
+    return res.json({
+      success: true,
+      data: { accessories_total: total },
+    });
+  } catch (err) {
+    console.error("❌ ACC CANCEL ACC TOTAL ERROR:", err.message);
+    console.error("❌ ACC CANCEL ACC TOTAL STACK:", err.stack);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 module.exports = router;
