@@ -18,7 +18,7 @@ async function syncUserDirectory(user) {
       ? branchResult.recordset[0].BranchName
       : "";
   const pool = await openCommunicationPool();
-  
+
   await pool
     .request()
     .input("UserGuid", sql.UniqueIdentifier, user.userGuid)
@@ -28,57 +28,53 @@ async function syncUserDirectory(user) {
     .input("PropertyDB", sql.NVarChar, user.loginDatabase)
     .input("BranchUnq", sql.NVarChar, user.branchUnq)
     .input("BranchName", sql.NVarChar, branchName).query(`
-MERGE MA_UserDirectory AS T
+MERGE dbo.MA_UserDirectory AS T
+
 USING
 (
-SELECT
-    @LoginId AS LoginId,
-    @PropertyDB AS PropertyDB
-) S
+    SELECT
+        @UserGuid AS UserGuid,
+        @LoginId AS LoginId,
+        @PropertyDB AS PropertyDB
+) AS S
 
-ON
-    T.LoginId = S.LoginId
-AND T.PropertyDB = S.PropertyDB
+ON T.UserGuid = S.UserGuid
 
 WHEN MATCHED THEN
-UPDATE SET
+    UPDATE SET
+        LoginId = @LoginId,
+        PropertyCode = @PropertyCode,
+        PropertyName = @PropertyName,
+        PropertyDB = @PropertyDB,
+        BranchUnq = @BranchUnq,
+        BranchName = @BranchName,
+        LastLogin = GETDATE()
 
-UserGuid=@UserGuid,
-LoginId=@LoginId,
-PropertyCode=@PropertyCode,
-PropertyName=@PropertyName,
-PropertyDB=@PropertyDB,
-BranchUnq=@BranchUnq,
-BranchName=@BranchName,
-LastLogin=GETDATE()
-
-WHEN NOT MATCHED THEN
-
-INSERT
-(
-UserGuid,
-LoginId,
-EmployeeName,
-PropertyCode,
-PropertyName,
-PropertyDB,
-BranchUnq,
-BranchName,
-LastLogin
-)
-
-VALUES
-(
-@UserGuid,
-@LoginId,
-@LoginId,
-@PropertyCode,
-@PropertyName,
-@PropertyDB,
-@BranchUnq,
-@BranchName,
-GETDATE()
-);
+WHEN NOT MATCHED BY TARGET THEN
+    INSERT
+    (
+        UserGuid,
+        LoginId,
+        EmployeeName,
+        PropertyCode,
+        PropertyName,
+        PropertyDB,
+        BranchUnq,
+        BranchName,
+        LastLogin
+    )
+    VALUES
+    (
+        @UserGuid,
+        @LoginId,
+        @LoginId,
+        @PropertyCode,
+        @PropertyName,
+        @PropertyDB,
+        @BranchUnq,
+        @BranchName,
+        GETDATE()
+    );
 `);
 }
 
