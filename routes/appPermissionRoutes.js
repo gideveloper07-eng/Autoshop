@@ -57,7 +57,10 @@ router.get("/", verifyToken, async (req, res) => {
     // Admin gets all active screens
     // ============================================================
 
-    if (isAdmin) {
+    if (
+      isAdmin ||
+      userGroupId.toUpperCase() === "4848C835-2A09-4A80-A7E2-383C95926C54"
+    ) {
       const result = await pool.request().query(`
         SELECT
           S.unqid,
