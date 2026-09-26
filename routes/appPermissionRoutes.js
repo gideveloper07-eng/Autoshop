@@ -12,7 +12,7 @@ const { verifyToken } = require("../middleware/authMiddleware");
 
 router.get("/", verifyToken, async (req, res) => {
   try {
-    const userGroupId = req.user.utg;
+    const userGroupId = (req.user.utg || "").trim();
     const databaseName = req.user.currentDatabase;
     const isAdmin = req.user.isAdmin === true;
 
@@ -32,6 +32,17 @@ router.get("/", verifyToken, async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Current database not found",
+      });
+    }
+
+    // ============================================================
+    // USER GROUP CHECK
+    // ============================================================
+
+    if (!isAdmin && !userGroupId) {
+      return res.status(403).json({
+        success: false,
+        message: "User group not found",
       });
     }
 
@@ -58,6 +69,8 @@ router.get("/", verifyToken, async (req, res) => {
         ORDER BY S.ScreenName
       `);
 
+      console.log("ADMIN ALLOWED SCREENS:", result.recordset);
+
       return res.json({
         success: true,
         isAdmin: true,
@@ -67,28 +80,20 @@ router.get("/", verifyToken, async (req, res) => {
 
     // ============================================================
     // NORMAL USER
-    // ============================================================
-
-    if (!userGroupId) {
-      return res.status(403).json({
-        success: false,
-        message: "User group not found",
-      });
-    }
-
-    // ============================================================
-    // GET PERMITTED SCREENS
     //
     // AppScreens.unqid
     //        =
     // AppScreenPermissions.ScreenID
     //
     // GroupIDs contains comma-separated Group GUIDs
+    //
+    // STRING_SPLIT is intentionally NOT used because the
+    // target SQL Server/database does not support it.
     // ============================================================
 
     const result = await pool
       .request()
-      .input("GroupID", sql.UniqueIdentifier, userGroupId).query(`
+      .input("GroupID", sql.NVarChar(100), userGroupId).query(`
         SELECT DISTINCT
           S.unqid,
           S.ScreenName,
@@ -101,22 +106,20 @@ router.get("/", verifyToken, async (req, res) => {
 
         WHERE
           S.IsActive = 1
-          AND EXISTS
-          (
-            SELECT 1
-            FROM STRING_SPLIT(
-              ISNULL(P.GroupIDs, ''),
-              ','
-            ) G
 
-            WHERE TRY_CONVERT(
-              UNIQUEIDENTIFIER,
-              LTRIM(RTRIM(G.value))
-            ) = @GroupID
-          )
+          AND CHARINDEX(
+            ',' + LOWER(LTRIM(RTRIM(@GroupID))) + ',',
+            ',' + LOWER(REPLACE(ISNULL(P.GroupIDs, ''), ' ', '')) + ','
+          ) > 0
 
         ORDER BY S.ScreenName
       `);
+
+    // ============================================================
+    // LOG RESULT
+    // ============================================================
+
+    console.log("ALLOWED SCREENS:", result.recordset);
 
     // ============================================================
     // RESPONSE
