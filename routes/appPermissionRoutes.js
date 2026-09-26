@@ -14,14 +14,19 @@ router.get("/", verifyToken, async (req, res) => {
   try {
     const userGroupId = req.user.utg;
     const databaseName = req.user.currentDatabase;
+    const isAdmin = req.user.isAdmin === true;
 
     console.log("====================================");
     console.log("APP PERMISSION REQUEST");
     console.log("User       :", req.user.userId);
     console.log("Group      :", userGroupId);
     console.log("Database   :", databaseName);
-    console.log("Is Admin   :", req.user.isAdmin);
+    console.log("Is Admin   :", isAdmin);
     console.log("====================================");
+
+    // ============================================================
+    // DATABASE CHECK
+    // ============================================================
 
     if (!databaseName) {
       return res.status(400).json({
@@ -30,24 +35,28 @@ router.get("/", verifyToken, async (req, res) => {
       });
     }
 
-    // =====================================================
+    // ============================================================
+    // OPEN DATABASE POOL
+    // ============================================================
+
+    const pool = await openPool(databaseName);
+
+    // ============================================================
     // ADMIN
-    // =====================================================
+    // Admin gets all active screens
+    // ============================================================
 
-    if (req.user.isAdmin) {
-      const pool = await openPool(databaseName);
-
+    if (isAdmin) {
       const result = await pool.request().query(`
-                    SELECT
-                        unqid,
-                        ScreenName,
-                        ScreenKey
-                    FROM AppScreens
-                    WHERE IsActive = 1
-                    ORDER BY
-                        ISNULL(DisplayOrder, 9999),
-                        ScreenName
-                `);
+        SELECT
+          S.unqid,
+          S.ScreenName,
+          S.ScreenKey,
+          S.IsActive
+        FROM AppScreens S
+        WHERE S.IsActive = 1
+        ORDER BY S.ScreenName
+      `);
 
       return res.json({
         success: true,
@@ -56,9 +65,9 @@ router.get("/", verifyToken, async (req, res) => {
       });
     }
 
-    // =====================================================
+    // ============================================================
     // NORMAL USER
-    // =====================================================
+    // ============================================================
 
     if (!userGroupId) {
       return res.status(403).json({
@@ -67,35 +76,51 @@ router.get("/", verifyToken, async (req, res) => {
       });
     }
 
-    const pool = await openPool(databaseName);
+    // ============================================================
+    // GET PERMITTED SCREENS
+    //
+    // AppScreens.unqid
+    //        =
+    // AppScreenPermissions.ScreenID
+    //
+    // GroupIDs contains comma-separated Group GUIDs
+    // ============================================================
 
     const result = await pool
       .request()
       .input("GroupID", sql.UniqueIdentifier, userGroupId).query(`
-                SELECT
-                    S.unqid,
-                    S.ScreenName,
-                    S.ScreenKey
-                FROM AppScreens S
-                INNER JOIN AppScreenPermissions P
-                    ON P.ScreenID = S.unqid
-                WHERE S.IsActive = 1
-                  AND EXISTS
-                  (
-                      SELECT 1
-                      FROM STRING_SPLIT(
-                          ISNULL(P.GroupIDs, ''),
-                          ','
-                      ) G
-                      WHERE TRY_CONVERT(
-                          UNIQUEIDENTIFIER,
-                          LTRIM(RTRIM(G.value))
-                      ) = @GroupID
-                  )
-                ORDER BY
-                    ISNULL(S.DisplayOrder, 9999),
-                    S.ScreenName
-            `);
+        SELECT DISTINCT
+          S.unqid,
+          S.ScreenName,
+          S.ScreenKey,
+          S.IsActive
+        FROM AppScreens S
+
+        INNER JOIN AppScreenPermissions P
+          ON P.ScreenID = S.unqid
+
+        WHERE
+          S.IsActive = 1
+          AND EXISTS
+          (
+            SELECT 1
+            FROM STRING_SPLIT(
+              ISNULL(P.GroupIDs, ''),
+              ','
+            ) G
+
+            WHERE TRY_CONVERT(
+              UNIQUEIDENTIFIER,
+              LTRIM(RTRIM(G.value))
+            ) = @GroupID
+          )
+
+        ORDER BY S.ScreenName
+      `);
+
+    // ============================================================
+    // RESPONSE
+    // ============================================================
 
     return res.json({
       success: true,
