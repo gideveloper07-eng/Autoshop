@@ -28,7 +28,6 @@ const asUid = (val) => ({ type: sql.NVarChar(50), value: val });
 
 // ── Helper: resolve the correct database for a group ─────────────────────────
 // Groups belong to a single dealership. DatabaseName is stored in MA_ChatGroups
-// (in the master/current DB). We look it up and return it so every group
 // operation writes to the EMPLOYEE's company DB, not the logged-in user's DB.
 async function getGroupDatabase(groupId, fallbackDb) {
   let pool;
