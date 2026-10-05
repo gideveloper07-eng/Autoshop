@@ -7,7 +7,9 @@ const {
   sendPushNotification,
   sendPushToGroup,
 } = require("../utils/pushNotificationHelper");
+const openCommunicationPool = require("../utils/communicationPool");
 const openPool = require("../utils/dynamicPoolManager");
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper: open a dynamic pool to a specific database (same pattern as authController)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -119,15 +121,17 @@ router.get("/retail-incentive", async (req, res) => {
         message: "Unauthorized",
       });
     }
-    console.log("RetailIncentive - Decoded Token:", decoded);
 
     const { currentDatabase, userId, isAdmin = false } = decoded;
 
-    console.log("database =", decoded.currentDatabase || database);
-    console.log("userId =", userId);
-    console.log("isAdmin =", isAdmin);
+    console.log("==========================================");
+    console.log("RETAIL INCENTIVE / CHALLAN");
+    console.log("Database :", currentDatabase);
+    console.log("User ID  :", userId);
+    console.log("Admin    :", isAdmin);
+    console.log("==========================================");
 
-    if (!decoded.currentDatabase) {
+    if (!currentDatabase) {
       return res.status(400).json({
         success: false,
         message: "Database not found in token",
@@ -135,23 +139,21 @@ router.get("/retail-incentive", async (req, res) => {
     }
 
     const dateType = req.query.dateType || "challan";
+
     const prefix = dateType === "challan" ? "1" : "";
 
-    console.log(
-      "📋 CHALLAN — Retail Incentive",
-      "DB:",
-      decoded.currentDatabase,
-      "User:",
-      userId,
-      "Admin:",
-      isAdmin,
-      "dateType:",
-      dateType,
-    );
+    // ========================================================
+    // 1. CURRENT DEALERSHIP DATABASE
+    // ========================================================
 
-    pool = await openPool(decoded.currentDatabase);
+    pool = await openPool(currentDatabase);
 
-    // Get challans from SP
+    console.log("Connected dealership DB:", currentDatabase);
+
+    // ========================================================
+    // 2. GET CHALLANS FROM STORED PROCEDURE
+    // ========================================================
+
     const result = await pool
       .request()
       .input("prefix", sql.NVarChar(50), prefix)
@@ -162,46 +164,89 @@ router.get("/retail-incentive", async (req, res) => {
 
     let challans = result.recordset || [];
 
-    console.log("TOTAL CHALLANS:", challans.length);
+    console.log("TOTAL CHALLANS FROM SP:", challans.length);
 
-    // Admin sees everything
+    // ========================================================
+    // 3. ADMIN = ALL CHALLANS
+    // ========================================================
+
     if (!isAdmin) {
-      const memberResult = await pool
+      console.log("Applying user challan access filter...");
+
+      // ======================================================
+      // IMPORTANT:
+      // MA_ChallanChatMembers is in
+      // AUTOSHOP_COMMUNICATION
+      // ======================================================
+
+      const communicationPool = await openCommunicationPool();
+
+      console.log("Communication DB connected");
+
+      const memberResult = await communicationPool
         .request()
-        .input("userId", sql.NVarChar(100), userId).query(`
-          SELECT ChallanId
-          FROM autoshop_communication.dbo.MA_ChallanChatMembers
-          WHERE UserId = @userId
-            AND IsActive = 1
-        `);
+        .input("userId", sql.NVarChar(100), userId)
+        .input("databaseName", sql.NVarChar(128), currentDatabase).query(`
+            SELECT
+                ChallanId,
+                UserId,
+                UserName,
+                IsActive,
+                DatabaseName
+            FROM MA_ChallanChatMembers
+            WHERE UserId = @userId
+              AND IsActive = 1
+              AND LOWER(DatabaseName) =
+                  LOWER(@databaseName)
+          `);
+
+      console.log("MEMBER ROW COUNT:", memberResult.recordset.length);
+
+      console.log("MEMBER ROWS:", memberResult.recordset);
+
+      // ======================================================
+      // Create allowed challan list
+      // ======================================================
 
       const allowedChallans = new Set(
-        memberResult.recordset.map((x) => String(x.ChallanId).toUpperCase()),
+        memberResult.recordset.map((x) =>
+          String(x.ChallanId).trim().toUpperCase(),
+        ),
       );
+
+      console.log("ALLOWED CHALLANS:", [...allowedChallans]);
+
+      console.log("CHALLANS BEFORE FILTER:", challans.length);
+
+      // ======================================================
+      // Filter SP result
+      // ======================================================
 
       challans = challans.filter((c) =>
-        allowedChallans.has(String(c.sp_462).toUpperCase()),
+        allowedChallans.has(String(c.sp_462).trim().toUpperCase()),
       );
 
-      console.log(`FILTERED CHALLANS FOR ${userId}:`, challans.length);
+      console.log("CHALLANS AFTER FILTER:", challans.length);
     }
+
+    // ========================================================
+    // 4. RESPONSE
+    // ========================================================
 
     return res.json({
       success: true,
       data: challans,
     });
   } catch (err) {
-    console.error("❌ CHALLAN ERROR:", err.message);
+    console.error("❌ RETAIL INCENTIVE ERROR");
+
+    console.error(err);
 
     return res.status(500).json({
       success: false,
       message: "Server Error",
       error: err.message,
     });
-  } finally {
-    // if (pool) {
-    //   await pool.close();
-    // }
   }
 });
 // ============================================================
@@ -3489,4 +3534,4 @@ router.get("/sales-comparison", async (req, res) => {
   }
 });
 
-module.exports = router;
+((module.exports = router), openCommunicationPool);
