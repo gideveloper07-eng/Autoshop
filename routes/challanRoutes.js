@@ -3595,5 +3595,1006 @@ router.get("/sales-comparison", async (req, res) => {
     // if (pool) await pool.close();
   }
 });
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/new/receipt-grid?customerId=X
+// Calls A_SP_FOR_Challan @what='griddata11' @sp_469=customerId
+// Returns receipt rows + totals (3 record sets)
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/new/receipt-grid", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { currentDatabase } = decoded;
+    const customerId = (req.query.customerId || "").trim();
+    if (!customerId)
+      return res
+        .status(400)
+        .json({ success: false, message: "customerId required" });
+
+    pool = await openPool(currentDatabase);
+    const result = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "rh_")
+      .input("what", sql.NVarChar(50), "griddata11")
+      .input("sp_469", sql.NVarChar(50), customerId)
+      .execute("A_SP_FOR_Challan");
+
+    const rows = result.recordsets[0] || [];
+    const rcTotal = result.recordsets[1]?.[0] || { rcamt: 0 };
+    const fiTotal = result.recordsets[2]?.[0] || { fiamt: 0 };
+    const custTotal = result.recordsets[3]?.[0] || { camt: 0 };
+
+    return res.json({ success: true, rows, rcTotal, fiTotal, custTotal });
+  } catch (err) {
+    console.error("RECEIPT-GRID ERROR:", err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/new/load/:sp462
+// Calls A_SP_FOR_Challan @what='Edit' — full row for editing
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/new/load/:sp462", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { currentDatabase } = decoded;
+    const { sp462 } = req.params;
+    if (!sp462)
+      return res
+        .status(400)
+        .json({ success: false, message: "sp462 required" });
+
+    pool = await openPool(currentDatabase);
+    const result = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "rh_")
+      .input("what", sql.NVarChar(50), "Edit")
+      .input("sp_462", sql.NVarChar(50), sp462)
+      .execute("A_SP_FOR_Challan");
+
+    if (!result.recordset || result.recordset.length === 0)
+      return res
+        .status(404)
+        .json({ success: false, message: "Challan not found" });
+
+    return res.json({ success: true, data: result.recordset[0] });
+  } catch (err) {
+    console.error("CHALLAN LOAD ERROR:", err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/challan/new/update
+// Calls A_SP_FOR_Challan @what='update' with all sp fields
+// ─────────────────────────────────────────────────────────────────────────────
+router.post("/new/update", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { currentDatabase, userId } = decoded;
+    if (!currentDatabase)
+      return res
+        .status(400)
+        .json({ success: false, message: "Database not found in token" });
+
+    const data = { ...req.body };
+    data.sp_463 = data.sp_463 || userId;
+    data.sp_464 = data.sp_464 || getClientIp(req);
+
+    if (!data.sp_462 || data.sp_462 === "0")
+      return res.status(400).json({
+        success: false,
+        message: "sp_462 (challan id) required for update",
+      });
+
+    pool = await openPool(currentDatabase);
+    const request = pool.request();
+    request.input("prefix", sql.NVarChar(50), "rh_");
+    request.input("what", sql.NVarChar(50), "update");
+
+    const maxFields = {
+      sp_524: true,
+      sp_577: true,
+      sp_581: true,
+      sp_585: true,
+      sp_590: true,
+      sp_591: true,
+      sp_592: true,
+      sp_593: true,
+    };
+    for (let i = 461; i <= 654; i++) {
+      const key = `sp_${i}`;
+      let val = data[key];
+      if (val === null || val === undefined) val = "";
+      if (Array.isArray(val)) val = val[0] ?? "";
+      if (typeof val === "object" && val !== null) val = "";
+      val = String(val).trim();
+      if (maxFields[key]) {
+        request.input(key, sql.NVarChar(sql.MAX), val);
+      } else if (key === "sp_616") {
+        request.input(key, sql.NVarChar(500), val);
+      } else {
+        request.input(key, sql.NVarChar(50), val);
+      }
+    }
+    request.input("pageno", sql.NVarChar(50), String(data.pageno || ""));
+    request.input(
+      "rows_count",
+      sql.NVarChar(50),
+      String(data.rows_count || ""),
+    );
+
+    const result = await request.execute("A_SP_FOR_Challan");
+    const msg = result.recordset?.[0]?.err || "Updated successfully";
+    return res.json({ success: true, message: msg });
+  } catch (err) {
+    console.error("CHALLAN UPDATE ERROR:", err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/new/customers-by-type?type=CSD|dealer|stb|usedcar|booking
+// Returns appropriate customer list based on challan type
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/new/customers-by-type", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { currentDatabase } = decoded;
+    const type = (req.query.type || "booking").toLowerCase();
+
+    const whatMap = {
+      booking: "custname",
+      csd: "csdname",
+      dealer: "dealername",
+      stb: "stbname",
+      usedcar: "usedcar",
+    };
+    const what = whatMap[type] || "custname";
+
+    pool = await openPool(currentDatabase);
+    const result = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "rh_")
+      .input("what", sql.NVarChar(50), what)
+      .execute("A_SP_FOR_Challan");
+
+    return res.json({ success: true, data: result.recordset || [] });
+  } catch (err) {
+    console.error("CUSTOMERS-BY-TYPE ERROR:", err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/new/cities?stateId=X
+// Calls A_SP_FOR_Challan @what='city' — city list for Add City dialog
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/new/cities", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { currentDatabase } = decoded;
+
+    pool = await openPool(currentDatabase);
+    const result = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "rh_")
+      .input("what", sql.NVarChar(50), "city")
+      .execute("A_SP_FOR_Challan");
+
+    return res.json({ success: true, data: result.recordset || [] });
+  } catch (err) {
+    console.error("CITIES ERROR:", err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/new/tcs-data?date=DD/MM/YYYY
+// Calls A_SP_FOR_Challan @what='tcsdata' @sp_467=date
+// Returns TCS percentage for the given date
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/new/tcs-data", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { currentDatabase } = decoded;
+    const date = (req.query.date || "").trim();
+
+    pool = await openPool(currentDatabase);
+    const result = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "rh_")
+      .input("what", sql.NVarChar(50), "tcsdata")
+      .input("sp_467", sql.NVarChar(50), date)
+      .execute("A_SP_FOR_Challan");
+
+    const row = result.recordset?.[0] || {};
+    return res.json({ success: true, tcs: row.tcs ?? row.sp_648 ?? 0 });
+  } catch (err) {
+    console.error("TCS-DATA ERROR:", err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/new/own-rto?branchId=X
+// Calls A_SP_FOR_Challan @what='ownrto' @sp_594=branchId
+// Returns own-branch RTO city row (rate, tax, green, reg, etc.)
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/new/own-rto", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { currentDatabase } = decoded;
+    const branchId = (req.query.branchId || "").trim();
+
+    pool = await openPool(currentDatabase);
+    const result = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "rh_")
+      .input("what", sql.NVarChar(50), "ownrto")
+      .input("sp_594", sql.NVarChar(50), branchId)
+      .execute("A_SP_FOR_Challan");
+
+    const row = result.recordset?.[0] || null;
+    return res.json({ success: true, data: row });
+  } catch (err) {
+    console.error("OWN-RTO ERROR:", err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/new/hpn-branches?hpnId=X
+// Calls A_SP_FOR_Challan @what='branchhpndata' @sp_605=hpnId
+// Returns child branch list for a hypothecation parent
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/new/hpn-branches", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { currentDatabase } = decoded;
+    const hpnId = (req.query.hpnId || "").trim();
+
+    pool = await openPool(currentDatabase);
+    const result = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "rh_")
+      .input("what", sql.NVarChar(50), "branchhpndata")
+      .input("sp_605", sql.NVarChar(50), hpnId)
+      .execute("A_SP_FOR_Challan");
+
+    return res.json({ success: true, data: result.recordset || [] });
+  } catch (err) {
+    console.error("HPN-BRANCHES ERROR:", err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELETE /api/challan/new/:sp462
+// Calls A_SP_FOR_Challan @what='delete_Raja'
+// Admin-only, checks if SI exists and if STB transferred
+// ─────────────────────────────────────────────────────────────────────────────
+router.delete("/new/:sp462", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { currentDatabase, userId, utg } = decoded;
+    const { sp462 } = req.params;
+    const sp469 = (req.query.custId || "").trim(); // customer id needed by SP
+
+    pool = await openPool(currentDatabase);
+    const result = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "rh_")
+      .input("what", sql.NVarChar(50), "delete_Raja")
+      .input("sp_462", sql.NVarChar(50), sp462)
+      .input("sp_463", sql.NVarChar(50), userId)
+      .input("sp_469", sql.NVarChar(50), sp469)
+      .execute("A_SP_FOR_Challan");
+
+    const msg = result.recordset?.[0]?.err || "Deleted";
+    const isError =
+      String(msg).startsWith("E") ||
+      String(msg).toLowerCase().includes("invoice") ||
+      String(msg).toLowerCase().includes("branch");
+    return res.json({ success: !isError, message: msg });
+  } catch (err) {
+    console.error("CHALLAN DELETE ERROR:", err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/new/retail-support?prefix=&variant=&model=&vinno=&challandate=
+// Calls A_SP_FOR_Challan @what='Retail_support'
+// Returns corporate/exchange/loyalty/dealer scheme amounts from booking master
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/new/retail-support", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { currentDatabase } = decoded;
+    const {
+      variant = "",
+      model = "",
+      vinno = "",
+      challandate = "",
+    } = req.query;
+
+    pool = await openPool(currentDatabase);
+    const result = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "rh_")
+      .input("what", sql.NVarChar(50), "Retail_support")
+      .input("sp_471", sql.NVarChar(50), variant)
+      .input("sp_470", sql.NVarChar(50), model)
+      .input("sp_473", sql.NVarChar(50), vinno)
+      .input("sp_467", sql.NVarChar(50), challandate)
+      .execute("A_SP_FOR_Challan");
+
+    const row = result.recordset?.[0] || {};
+    return res.json({
+      success: true,
+      data: {
+        exchange: row.exchange ?? 0,
+        corporate: row.Corporate ?? 0,
+        dealer: row.dealer ?? 0,
+        loyality: row.loyality ?? 0,
+      },
+    });
+  } catch (err) {
+    console.error("RETAIL-SUPPORT ERROR:", err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/new/areas
+// Calls A_SP_FOR_Challan @what='area'
+// Returns area list
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/new/areas", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { currentDatabase } = decoded;
+
+    pool = await openPool(currentDatabase);
+    const result = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "rh_")
+      .input("what", sql.NVarChar(50), "area")
+      .execute("A_SP_FOR_Challan");
+
+    return res.json({ success: true, data: result.recordset || [] });
+  } catch (err) {
+    console.error("AREAS ERROR:", err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NEW CHALLAN — DROPDOWN / FORM SUPPORT ROUTES
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/new/customers
+// Returns booking customers (VA table joined with m1) – mirrors custname SP
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/new/customers", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { currentDatabase } = decoded;
+    if (!currentDatabase)
+      return res
+        .status(400)
+        .json({ success: false, message: "Database not found" });
+
+    pool = await openPool(currentDatabase);
+    const result = await pool.request().query(`
+      SELECT DISTINCT
+        m1.m1_2  AS data,
+        m1.m1_7  AS value,
+        m1.m1_47 AS mobile,
+        m1.m1_11 AS address,
+        m1.m1_37 AS gstin,
+        m1.m1_40 AS panno,
+        m1.m1_48 AS aadhar,
+        m1.m1_51 AS title,
+        m1.m1_50 AS fathername
+      FROM rh_va AS va
+      INNER JOIN rh_m1 AS m1 ON m1.m1_2 = va.va_23
+      WHERE va.va_23 NOT IN (
+        SELECT sp_469 FROM rh_sp_46 WHERE sp_469 = va.va_23
+      )
+      ORDER BY value ASC
+    `);
+    return res.json({ success: true, data: result.recordset });
+  } catch (err) {
+    console.error("CHALLAN NEW CUSTOMERS ERROR:", err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/new/models
+// Returns vehicle models
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/new/models", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { currentDatabase } = decoded;
+    pool = await openPool(currentDatabase);
+    const result = await pool.request().query(`
+      SELECT sp_202 AS data, sp_207 AS value
+      FROM rh_sp_20
+      ORDER BY sp_207 ASC
+    `);
+    return res.json({ success: true, data: result.recordset });
+  } catch (err) {
+    console.error("CHALLAN MODELS ERROR:", err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/new/variants?modelId=...
+// Returns variants for a given model
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/new/variants", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { currentDatabase } = decoded;
+    const modelId = (req.query.modelId || "").trim();
+    if (!modelId)
+      return res
+        .status(400)
+        .json({ success: false, message: "modelId required" });
+
+    pool = await openPool(currentDatabase);
+    const result = await pool
+      .request()
+      .input("modelId", sql.NVarChar(50), modelId).query(`
+        SELECT sp_20_2 AS data, sp_20_3 AS value, sp_20_4 AS fuel
+        FROM rh_sp_20_c
+        WHERE sp_20_1 = @modelId AND sp_20_37 = 'active'
+        ORDER BY sp_20_3 ASC
+      `);
+    return res.json({ success: true, data: result.recordset });
+  } catch (err) {
+    console.error("CHALLAN VARIANTS ERROR:", err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/new/colors?variantId=...
+// Returns colors available in stock for a given variant
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/new/colors", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { currentDatabase } = decoded;
+    const variantId = (req.query.variantId || "").trim();
+    if (!variantId)
+      return res
+        .status(400)
+        .json({ success: false, message: "variantId required" });
+
+    pool = await openPool(currentDatabase);
+    const result = await pool
+      .request()
+      .input("variantId", sql.NVarChar(50), variantId).query(`
+        SELECT DISTINCT
+          sp3.sp_47 AS data,
+          sp14.sp_147 AS value
+        FROM rh_sp_3 AS sp3
+        LEFT JOIN rh_sp_14 AS sp14 ON sp14.sp_142 = sp3.sp_47
+        WHERE sp3.sp_46 = @variantId AND sp3.sp_68 != '0'
+        ORDER BY value ASC
+      `);
+    return res.json({ success: true, data: result.recordset });
+  } catch (err) {
+    console.error("CHALLAN COLORS ERROR:", err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/new/vins?variantId=...&colorId=...&challanType=...
+// Returns available VINs for the selected variant + color
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/new/vins", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { currentDatabase } = decoded;
+    const variantId = (req.query.variantId || "").trim();
+    const colorId = (req.query.colorId || "").trim();
+    const challanType = (req.query.challanType || "Customer Challan").trim();
+
+    if (!variantId)
+      return res
+        .status(400)
+        .json({ success: false, message: "variantId required" });
+
+    pool = await openPool(currentDatabase);
+    const request = pool
+      .request()
+      .input("variantId", sql.NVarChar(50), variantId)
+      .input("colorId", sql.NVarChar(50), colorId);
+
+    let query = `
+      SELECT
+        sp_55 AS data,
+        sp_55 AS value,
+        sp_71 AS fsccode,
+        sp_49 AS mfcyr,
+        sp_56 AS location,
+        sp_54 AS engine,
+        sp_67 AS price
+      FROM rh_sp_3
+      WHERE sp_46 = @variantId
+        AND sp_68 != '0'
+    `;
+    if (colorId) query += " AND sp_47 = @colorId";
+
+    // For inter-dealer challan exclude 1A-class and already booked
+    if (challanType === "Inter Delear Challan") {
+      query += " AND sp_70 != '1A' AND sp_55 NOT IN (SELECT va_29 FROM rh_va)";
+    }
+
+    query += " ORDER BY sp_55 ASC";
+    const result = await request.query(query);
+    return res.json({ success: true, data: result.recordset });
+  } catch (err) {
+    console.error("CHALLAN VINS ERROR:", err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/new/variant-details?variantId=...&challanDate=...&stateId=...
+// Returns variant pricing/charges details from rh_sp_37_c
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/new/variant-details", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { currentDatabase } = decoded;
+    const variantId = (req.query.variantId || "").trim();
+    const challanDate = (
+      req.query.challanDate || new Date().toISOString().slice(0, 10)
+    ).trim();
+    const stateId = (req.query.stateId || "").trim();
+
+    pool = await openPool(currentDatabase);
+    const result = await pool
+      .request()
+      .input("variantId", sql.NVarChar(50), variantId)
+      .input("challanDate", sql.NVarChar(50), challanDate)
+      .input("stateId", sql.NVarChar(50), stateId).query(`
+        SELECT TOP 1
+          sp_37_6  AS cess,
+          sp_37_7  AS gstunq,
+          (SELECT sp_228 FROM rh_sp_22 WHERE sp_222 = sp_37_7) AS gst,
+          sp_37_8  AS rtorate,
+          sp_37_9  AS rtosurcharge,
+          sp_37_10 AS greentax,
+          sp_37_11 AS odrate,
+          sp_37_12 AS thirdparty,
+          sp_37_13 AS zd,
+          sp_37_14 AS ep,
+          sp_37_15 AS pb,
+          sp_37_16 AS kp,
+          sp_37_17 AS fasttag,
+          sp_37_18 AS handlingchrg,
+          sp_37_19 AS trc,
+          sp_37_20 AS numberplatecharge,
+          sp_37_21 AS regfee,
+          sp_37_22 AS paiddriver,
+          sp_37_23 AS pacover,
+          sp_37_24 AS smartcard,
+          sp_37_25 AS other,
+          sp_37_26 AS duplicate,
+          sp_37_27 AS hpn,
+          sp_37_36 AS exshowroom,
+          sp_37_48 AS cng,
+          sp_37_53 AS bhperc,
+          sp_37_54 AS bhyear
+        FROM rh_sp_37_c
+        WHERE sp_37_2 = @variantId
+          AND sp_37_46 = @stateId
+          AND dbo.getformatteddate(@challanDate) BETWEEN sp_37_34
+              AND (CASE WHEN sp_37_35 = '1900-01-01 00:00:00.000' THEN GETUTCDATE() ELSE sp_37_35 END)
+      `);
+    return res.json({ success: true, data: result.recordset[0] || null });
+  } catch (err) {
+    console.error("CHALLAN VARIANT DETAILS ERROR:", err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/new/rto-cities
+// Returns all RTO cities
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/new/rto-cities", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { currentDatabase } = decoded;
+    pool = await openPool(currentDatabase);
+    const result = await pool.request().query(`
+      SELECT
+        sp_332 AS data, sp_337 AS value,
+        sp_339 AS rrate, sp_340 AS rtax, sp_341 AS rgreen,
+        sp_342 AS rreg,  sp_343 AS rhpn,  sp_344 AS rduplicate,
+        sp_345 AS rsmartcard, sp_346 AS rother, sp_347 AS trc
+      FROM rh_sp_33
+      ORDER BY sp_337 ASC
+    `);
+    return res.json({ success: true, data: result.recordset });
+  } catch (err) {
+    console.error("CHALLAN RTO CITIES ERROR:", err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/new/hpn-list
+// Returns hypothecation (finance) company list
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/new/hpn-list", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { currentDatabase } = decoded;
+    pool = await openPool(currentDatabase);
+    const result = await pool.request().query(`
+      SELECT hp_2 AS data, hp_7 AS value
+      FROM rh_hp
+      ORDER BY hp_7 ASC
+    `);
+    return res.json({ success: true, data: result.recordset });
+  } catch (err) {
+    console.error("CHALLAN HPN LIST ERROR:", err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/new/states
+// Returns states list
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/new/states", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { currentDatabase } = decoded;
+    pool = await openPool(currentDatabase);
+    const result = await pool.request().query(`
+      SELECT sp_777 AS data, sp_777 AS value
+      FROM rh_sp_77
+      ORDER BY sp_777 ASC
+    `);
+    return res.json({ success: true, data: result.recordset });
+  } catch (err) {
+    console.error("CHALLAN STATES ERROR:", err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/new/branches
+// Returns branch list
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/new/branches", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { currentDatabase } = decoded;
+    pool = await openPool(currentDatabase);
+    const result = await pool.request().query(`
+      SELECT sp_602 AS data, sp_607 AS value
+      FROM rh_sp_60
+      ORDER BY sp_607 ASC
+    `);
+    return res.json({ success: true, data: result.recordset });
+  } catch (err) {
+    console.error("CHALLAN BRANCHES ERROR:", err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/new/insurance-companies
+// Returns insurance companies (m1 with m1_49 = 'INCU')
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/new/insurance-companies", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { currentDatabase } = decoded;
+    pool = await openPool(currentDatabase);
+    const result = await pool.request().query(`
+      SELECT m1_2 AS data, m1_7 AS value
+      FROM rh_m1
+      WHERE m1_49 = 'INCU'
+      ORDER BY m1_7 ASC
+    `);
+    return res.json({ success: true, data: result.recordset });
+  } catch (err) {
+    console.error("CHALLAN INS COMPANIES ERROR:", err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/new/next-challan-no
+// Returns the next auto-incremented challan number
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/new/next-challan-no", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { currentDatabase } = decoded;
+    pool = await openPool(currentDatabase);
+    const result = await pool.request().query(`
+      SELECT ISNULL(MAX(CAST(sp_468 AS NUMERIC(18,0))), 0) + 1 AS nextNo
+      FROM rh_sp_46
+      WHERE ISNUMERIC(sp_468) = 1
+    `);
+    return res.json({
+      success: true,
+      nextNo: result.recordset[0]?.nextNo ?? 1,
+    });
+  } catch (err) {
+    console.error("CHALLAN NEXT NO ERROR:", err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/challan/new/save
+// Saves a new challan by calling A_SP_FOR_Challan with @what = 'insert'
+// ─────────────────────────────────────────────────────────────────────────────
+router.post("/new/save", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { currentDatabase, userId } = decoded;
+    if (!currentDatabase)
+      return res
+        .status(400)
+        .json({ success: false, message: "Database not found" });
+
+    const data = { ...req.body };
+    // Inject server-side values
+    data.sp_463 = userId;
+    data.sp_464 = getClientIp(req);
+
+    // Required field check
+    if (!data.sp_469)
+      return res
+        .status(400)
+        .json({ success: false, message: "Customer (sp_469) is required" });
+    if (!data.sp_470)
+      return res
+        .status(400)
+        .json({ success: false, message: "Model (sp_470) is required" });
+    if (!data.sp_471)
+      return res
+        .status(400)
+        .json({ success: false, message: "Variant (sp_471) is required" });
+    if (!data.sp_472)
+      return res
+        .status(400)
+        .json({ success: false, message: "Color (sp_472) is required" });
+    if (!data.sp_473)
+      return res
+        .status(400)
+        .json({ success: false, message: "VIN (sp_473) is required" });
+
+    console.log(
+      "🚗 CHALLAN SAVE — DB:",
+      currentDatabase,
+      "Customer:",
+      data.sp_469,
+      "VIN:",
+      data.sp_473,
+    );
+
+    pool = await openPool(currentDatabase);
+
+    const request = pool.request();
+    // All sp_461 to sp_654 + child parameters
+    for (let i = 461; i <= 654; i++) {
+      const key = `sp_${i}`;
+      let value = data[key];
+      if (value === null || value === undefined) value = "";
+      if (Array.isArray(value)) value = value[0] ?? "";
+      if (typeof value === "object" && value !== null) value = "";
+      value = String(value).trim();
+
+      const maxCols = [
+        "sp_524",
+        "sp_577",
+        "sp_581",
+        "sp_585",
+        "sp_589",
+        "sp_590",
+        "sp_591",
+        "sp_592",
+        "sp_593",
+      ];
+      if (maxCols.includes(key)) {
+        request.input(key, sql.NVarChar(sql.MAX), value);
+      } else if (key === "sp_616") {
+        request.input(key, sql.NVarChar(500), value);
+      } else {
+        request.input(key, sql.NVarChar(50), value);
+      }
+    }
+
+    // Child table columns
+    request.input("sp_46_1", sql.VarChar(50), String(data.sp_469 || ""));
+    request.input("sp_46_2", sql.VarChar(50), "");
+    request.input("sp_46_3", sql.VarChar(50), "");
+    request.input("sp_46_4", sql.VarChar(50), "");
+    request.input("sp_46_5", sql.VarChar(50), "");
+    request.input("sp_46_6", sql.VarChar(50), "");
+    request.input("sp_46_7", sql.VarChar(50), "");
+    request.input("sp_46_8", sql.VarChar(50), "0");
+    request.input("sp_46_9", sql.VarChar(50), "0");
+    request.input("pageno", sql.NVarChar(50), String(data.pageno || ""));
+    request.input("rows_count", sql.NVarChar(50), "");
+    request.input("what", sql.NVarChar(50), "insert");
+    request.input("prefix", sql.NVarChar(50), String(data.prefix || "rh_"));
+
+    const result = await request.execute("A_SP_FOR_Challan");
+
+    const errVal = result.recordset?.[0]?.err ?? "";
+    console.log("CHALLAN SAVE RESULT:", errVal);
+
+    if (String(errVal).startsWith("E")) {
+      return res.status(400).json({ success: false, message: errVal });
+    }
+
+    // Extract the new challan UNQID from the result
+    const newId = String(errVal).replace("Save successfully|", "").trim();
+
+    // Add creator to chat members table so they can access the challan
+    try {
+      await pool
+        .request()
+        .input("challanId", sql.NVarChar(100), newId)
+        .input("userId", sql.NVarChar(100), userId)
+        .input("userName", sql.NVarChar(200), decoded.userName || userId)
+        .query(`
+          IF NOT EXISTS (SELECT 1 FROM MA_ChallanChatMembers WHERE ChallanId = @challanId AND UserId = @userId)
+          INSERT INTO MA_ChallanChatMembers (ChallanId, UserId, UserName, IsActive, JoinedAt)
+          VALUES (@challanId, @userId, @userName, 1, GETDATE())
+        `);
+    } catch (_) {
+      // Non-fatal – the challan is already saved
+    }
+
+    return res.json({
+      success: true,
+      message: "Challan saved successfully",
+      challanId: newId,
+    });
+  } catch (err) {
+    console.error("❌ CHALLAN SAVE ERROR:", err.message);
+    return res
+      .status(500)
+      .json({ success: false, message: "Server Error", error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/new/receipt-amounts?customerId=...
+// Returns total amounts received from receipts for a customer
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/new/receipt-amounts", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { currentDatabase } = decoded;
+    const customerId = (req.query.customerId || "").trim();
+    if (!customerId)
+      return res
+        .status(400)
+        .json({ success: false, message: "customerId required" });
+
+    pool = await openPool(currentDatabase);
+    const result = await pool
+      .request()
+      .input("customerId", sql.NVarChar(50), customerId).query(`
+        SELECT
+          ISNULL(SUM(rcl_58), 0) AS totalRcAmt,
+          ISNULL(SUM(CASE WHEN rcl_66 = 'Finance' THEN rcl_58 ELSE 0 END), 0) AS financeAmt,
+          ISNULL(SUM(CASE WHEN rcl_66 != 'Finance' AND rcl_66 NOT IN ('Insurance','Accessories') THEN rcl_58 ELSE 0 END), 0) AS customerAmt
+        FROM rh_rcl
+        WHERE rcl_11 = @customerId
+          AND rcl_85 = '1900-01-01 00:00:00.000'
+          AND rcl_66 NOT IN ('Accessories', 'Insurance')
+      `);
+    return res.json({
+      success: true,
+      data: result.recordset[0] || {
+        totalRcAmt: 0,
+        financeAmt: 0,
+        customerAmt: 0,
+      },
+    });
+  } catch (err) {
+    console.error("CHALLAN RC AMT ERROR:", err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 ((module.exports = router), openCommunicationPool);
