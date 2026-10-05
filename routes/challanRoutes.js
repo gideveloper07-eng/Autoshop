@@ -173,7 +173,7 @@ router.get("/retail-incentive", async (req, res) => {
 
     const result = await pool
       .request()
-      .input("prefix", sql.NVarChar(50), prefix)
+      .input("prefix1", sql.NVarChar(50), prefix)
       .input("what", sql.NVarChar(50), "Retail_Incentive")
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
@@ -3569,7 +3569,7 @@ router.get("/sales-comparison", async (req, res) => {
 
     const result = await pool
       .request()
-      .input("prefix", sql.NVarChar(50), "")
+      .input("prefix1", sql.NVarChar(50), "")
       .input("what", sql.NVarChar(50), "SalesComparisonShowdata")
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
