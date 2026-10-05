@@ -113,6 +113,10 @@ router.get("/retail-incentive", async (req, res) => {
   let pool;
 
   try {
+    // ========================================================
+    // 1. DECODE TOKEN
+    // ========================================================
+
     const decoded = decodeToken(req);
 
     if (!decoded) {
@@ -131,6 +135,10 @@ router.get("/retail-incentive", async (req, res) => {
     console.log("Admin    :", isAdmin);
     console.log("==========================================");
 
+    // ========================================================
+    // 2. VALIDATE DATABASE
+    // ========================================================
+
     if (!currentDatabase) {
       return res.status(400).json({
         success: false,
@@ -138,21 +146,30 @@ router.get("/retail-incentive", async (req, res) => {
       });
     }
 
+    // ========================================================
+    // 3. DATE TYPE
+    // ========================================================
+
     const dateType = req.query.dateType || "challan";
 
     const prefix = dateType === "challan" ? "1" : "";
 
+    console.log("Date Type:", dateType);
+    console.log("Prefix   :", prefix);
+
     // ========================================================
-    // 1. CURRENT DEALERSHIP DATABASE
+    // 4. CONNECT TO CURRENT DEALERSHIP DATABASE
     // ========================================================
 
     pool = await openPool(currentDatabase);
 
-    console.log("Connected dealership DB:", currentDatabase);
+    console.log("✅ Connected dealership DB:", currentDatabase);
 
     // ========================================================
-    // 2. GET CHALLANS FROM STORED PROCEDURE
+    // 5. GET CHALLANS FROM STORED PROCEDURE
     // ========================================================
+
+    console.log("Executing A_SP_FOR_ApplicationChallangrid...");
 
     const result = await pool
       .request()
@@ -166,22 +183,31 @@ router.get("/retail-incentive", async (req, res) => {
 
     console.log("TOTAL CHALLANS FROM SP:", challans.length);
 
+    // Optional debug
+    if (challans.length > 0) {
+      console.log("FIRST CHALLAN:", challans[0]);
+    }
+
     // ========================================================
-    // 3. ADMIN = ALL CHALLANS
+    // 6. ADMIN USER
+    // ADMIN GETS ALL CHALLANS
     // ========================================================
 
     if (!isAdmin) {
       console.log("Applying user challan access filter...");
 
       // ======================================================
-      // IMPORTANT:
-      // MA_ChallanChatMembers is in
-      // AUTOSHOP_COMMUNICATION
+      // 7. CONNECT TO COMMUNICATION DATABASE
       // ======================================================
 
       const communicationPool = await openCommunicationPool();
 
-      console.log("Communication DB connected");
+      console.log("✅ Communication DB connected");
+
+      // ======================================================
+      // 8. GET USER'S ALLOWED CHALLANS
+      // FROM AUTOSHOP_COMMUNICATION
+      // ======================================================
 
       const memberResult = await communicationPool
         .request()
@@ -205,7 +231,7 @@ router.get("/retail-incentive", async (req, res) => {
       console.log("MEMBER ROWS:", memberResult.recordset);
 
       // ======================================================
-      // Create allowed challan list
+      // 9. CREATE ALLOWED CHALLAN SET
       // ======================================================
 
       const allowedChallans = new Set(
@@ -216,36 +242,72 @@ router.get("/retail-incentive", async (req, res) => {
 
       console.log("ALLOWED CHALLANS:", [...allowedChallans]);
 
-      console.log("CHALLANS BEFORE FILTER:", challans.length);
+      // ======================================================
+      // 10. FILTER STORED PROCEDURE RESULT
+      // ======================================================
 
-      // ======================================================
-      // Filter SP result
-      // ======================================================
+      console.log("CHALLANS BEFORE FILTER:", challans.length);
 
       challans = challans.filter((c) =>
         allowedChallans.has(String(c.sp_462).trim().toUpperCase()),
       );
 
       console.log("CHALLANS AFTER FILTER:", challans.length);
+    } else {
+      console.log("Admin user detected - skipping challan access filter");
     }
 
     // ========================================================
-    // 4. RESPONSE
+    // 11. FINAL RESPONSE
     // ========================================================
+
+    console.log("FINAL CHALLAN COUNT:", challans.length);
 
     return res.json({
       success: true,
       data: challans,
     });
   } catch (err) {
-    console.error("❌ RETAIL INCENTIVE ERROR");
+    // ========================================================
+    // DETAILED ERROR LOGGING
+    // ========================================================
 
-    console.error(err);
+    console.error("");
+    console.error("======================================");
+    console.error("❌ RETAIL INCENTIVE ERROR");
+    console.error("======================================");
+
+    console.error("Message:", err?.message);
+
+    console.error("Code:", err?.code);
+
+    console.error("Number:", err?.number);
+
+    console.error("Name:", err?.name);
+
+    console.error("Original Message:", err?.originalError?.message);
+
+    console.error("Original Info:", err?.originalError?.info);
+
+    console.error("Preceding Errors:", err?.precedingErrors);
+
+    console.error("Errors:", err?.errors);
+
+    console.error("Stack:", err?.stack);
+
+    console.error("Full Error:", err);
+
+    console.error("======================================");
+    console.error("");
+
+    // ========================================================
+    // RETURN ERROR TO FLUTTER
+    // ========================================================
 
     return res.status(500).json({
       success: false,
       message: "Server Error",
-      error: err.message,
+      error: err?.originalError?.message || err?.message || "Unknown SQL error",
     });
   }
 });
