@@ -170,7 +170,7 @@ router.get("/retail-incentive", async (req, res) => {
         .request()
         .input("userId", sql.NVarChar(100), userId).query(`
           SELECT ChallanId
-          FROM MA_ChallanChatMembers
+          FROM autoshop_communication.dbo.MA_ChallanChatMembers
           WHERE UserId = @userId
             AND IsActive = 1
         `);
@@ -258,7 +258,7 @@ router.get("/today-approve", async (req, res) => {
       query += `
         AND EXISTS (
           SELECT 1
-          FROM MA_ChallanChatMembers AS C
+          FROM autoshop_communication.dbo.MA_ChallanChatMembers AS C
           WHERE C.ChallanId = S.sp_462
             AND C.UserId = @userId
             AND C.IsActive = 1
