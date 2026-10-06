@@ -3807,7 +3807,7 @@ router.get("/new/cities", async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/challan/new/add-city
 // Body: { cityName, stateName }
-// Calls A_SP_FOR_ACCOUNTMASTER @what='insert' to create a city master entry
+// Calls A_SP_FOR_CityMaster @what='insert' → inserts into sp_57 table
 // then returns the refreshed city list
 // ─────────────────────────────────────────────────────────────────────────────
 router.post("/new/add-city", async (req, res) => {
@@ -3828,71 +3828,23 @@ router.post("/new/add-city", async (req, res) => {
 
     pool = await openPool(currentDatabase);
 
-    // Insert into account master — m1_7 = account name (city name used as unique key),
-    // m1_13 = city, m1_14 = state, m1_9 = 'C' (credit), m1_52 = '0.00'
+    // Insert into sp_57 (city master) via A_SP_FOR_CityMaster @what='insert'
+    // @sp_577 = state, @sp_578 = city name
     const insertResult = await pool
       .request()
-      .input("prefix",    sql.NVarChar(50),  "rh_")
-      .input("what",      sql.NVarChar(20),  "insert")
-      .input("m1_1",      sql.NVarChar(50),  "")
-      .input("m1_2",      sql.NVarChar(50),  "")
-      .input("m1_3",      sql.NVarChar(50),  "")
-      .input("m1_4",      sql.NVarChar(50),  "")
-      .input("m1_5",      sql.NVarChar(50),  "")
-      .input("m1_6",      sql.NVarChar(50),  "")
-      .input("m1_7",      sql.NVarChar(500), cityName)   // account name = city name
-      .input("m1_8",      sql.NVarChar(500), cityName)   // name to be printed
-      .input("m1_9",      sql.NVarChar(50),  "C")        // credit
-      .input("m1_10",     sql.NVarChar(50),  "")
-      .input("m1_11",     sql.NVarChar(500), "")
-      .input("m1_12",     sql.NVarChar(500), "")
-      .input("m1_13",     sql.NVarChar(50),  cityName)   // city
-      .input("m1_14",     sql.NVarChar(50),  stateName)  // state
-      .input("m1_15",     sql.NVarChar(50),  "INDIA")
-      .input("m1_16",     sql.NVarChar(50),  "")
-      .input("m1_17",     sql.NVarChar(50),  "")
-      .input("m1_18",     sql.NVarChar(50),  "")
-      .input("m1_19",     sql.NVarChar(50),  "")
-      .input("m1_20",     sql.NVarChar(50),  "")
-      .input("m1_21",     sql.NVarChar(50),  "")
-      .input("m1_22",     sql.NVarChar(50),  "")
-      .input("m1_23",     sql.NVarChar(50),  "")
-      .input("m1_24",     sql.NVarChar(50),  "")
-      .input("m1_25",     sql.NVarChar(50),  "")
-      .input("m1_26",     sql.NVarChar(50),  "")
-      .input("m1_27",     sql.NVarChar(50),  "")
-      .input("m1_28",     sql.NVarChar(50),  "")
-      .input("m1_29",     sql.NVarChar(50),  "")
-      .input("m1_30",     sql.NVarChar(50),  "")
-      .input("m1_31",     sql.NVarChar(50),  "")
-      .input("m1_32",     sql.NVarChar(50),  "")
-      .input("m1_33",     sql.NVarChar(50),  "")
-      .input("m1_34",     sql.NVarChar(50),  "")
-      .input("m1_35",     sql.NVarChar(50),  "")
-      .input("m1_36",     sql.NVarChar(50),  "")
-      .input("m1_37",     sql.NVarChar(50),  "")
-      .input("m1_38",     sql.NVarChar(50),  "")
-      .input("m1_39",     sql.NVarChar(50),  "")
-      .input("m1_40",     sql.NVarChar(50),  "")
-      .input("m1_41",     sql.NVarChar(50),  "")
-      .input("m1_42",     sql.NVarChar(50),  "")
-      .input("m1_43",     sql.NVarChar(50),  "")
-      .input("m1_44",     sql.NVarChar(50),  "")
-      .input("m1_45",     sql.NVarChar(50),  "")
-      .input("m1_46",     sql.NVarChar(50),  "")
-      .input("m1_47",     sql.NVarChar(50),  "")
-      .input("m1_48",     sql.NVarChar(50),  "")
-      .input("m1_49",     sql.NVarChar(50),  "")
-      .input("m1_50",     sql.NVarChar(50),  "")
-      .input("m1_51",     sql.NVarChar(50),  "")
-      .input("m1_52",     sql.NVarChar(50),  "0.00")
-      .input("m1_53",     sql.NVarChar(50),  "rh_")
-      .input("m1_54",     sql.NVarChar(50),  "")
-      .input("m1_55",     sql.NVarChar(50),  "")
-      .input("likeclause",sql.NVarChar(50),  "")
-      .input("pageno",    sql.NVarChar(50),  "")
-      .input("Err",       sql.NVarChar(50),  "0")
-      .execute("A_SP_FOR_ACCOUNTMASTER");
+      .input("prefix",  sql.NVarChar(50), "rh_")
+      .input("what",    sql.NVarChar(15), "insert")
+      .input("sp_571",  sql.NVarChar(50), "")   // entry date (SP uses getutcdate())
+      .input("sp_572",  sql.NVarChar(50), "")   // unqid (SP uses NEWID())
+      .input("sp_573",  sql.NVarChar(50), "")   // userid
+      .input("sp_574",  sql.NVarChar(50), "")   // ipadd
+      .input("sp_575",  sql.NVarChar(50), "")   // modifydate
+      .input("sp_576",  sql.NVarChar(50), "")   // serverip
+      .input("sp_577",  sql.NVarChar(50), stateName)  // state
+      .input("sp_578",  sql.NVarChar(50), cityName)   // city name
+      .input("pageno",  sql.NVarChar(50), "")
+      .input("Err",     sql.NVarChar(50), "0")
+      .execute("A_SP_FOR_CityMaster");
 
     const errRow = insertResult.recordsets?.[0]?.[0];
     const errVal = (errRow?.err ?? errRow?.Err ?? "0").toString();
