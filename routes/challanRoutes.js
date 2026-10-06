@@ -4058,11 +4058,7 @@ router.get("/grid", async (req, res) => {
 
     request.input("pageno", sql.NVarChar(50), String(page));
 
-    request.input(
-      "sp_551",
-      sql.NVarChar(50),
-      "4848C835-2A09-4A80-A7E2-383C95926C54",
-    );
+    request.input("sp_551", sql.NVarChar(50), decoded.utg);
 
     request.input("sp_594", sql.NVarChar(50), branch);
 
@@ -4317,7 +4313,7 @@ router.get("/grid/total", async (req, res) => {
     if (search === "") {
       request.input("what", sql.NVarChar(50), "pageno");
 
-      request.input("sp_551", sql.NVarChar(50), tl);
+      request.input("sp_551", sql.NVarChar(50), decoded.utg);
 
       request.input("sp_594", sql.NVarChar(50), branch);
     } else {
