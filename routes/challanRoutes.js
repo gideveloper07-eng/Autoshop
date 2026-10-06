@@ -4002,7 +4002,423 @@ router.get("/new/areas", async (req, res) => {
     return res.status(500).json({ success: false, message: err.message });
   }
 });
+// ============================================================
+// CHALLAN GRID - ASP.NET FRM_CHALLAN_GRID equivalent
+// ============================================================
 
+// GET /api/challan/grid
+// ASP.NET: Getreceipt / grid1
+router.get("/grid", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const {
+      currentDatabase,
+      userId,
+      UTUNQ,
+      utunq,
+      branchid,
+      BRANCHUNQ,
+      prefix: tokenPrefix,
+    } = decoded;
+
+    if (!currentDatabase) {
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
+    }
+
+    const page = Math.max(parseInt(req.query.page || "1", 10) || 1, 1);
+
+    const prefix = tokenPrefix ?? decoded.prefix ?? "RH_";
+
+    const tl = UTUNQ ?? utunq ?? decoded.tl ?? "";
+
+    const branch = branchid ?? BRANCHUNQ ?? decoded.branch ?? "";
+
+    pool = await openPool(currentDatabase);
+
+    const request = pool.request();
+
+    request.input("prefix", sql.NVarChar(50), prefix);
+
+    request.input("what", sql.NVarChar(50), "grid1");
+
+    request.input("pageno", sql.NVarChar(50), String(page));
+
+    request.input("sp_551", sql.NVarChar(50), tl);
+
+    request.input("sp_594", sql.NVarChar(50), branch);
+
+    request.input("sp_463", sql.NVarChar(50), userId ?? "");
+
+    const result = await request.execute("A_SP_FOR_Challan");
+
+    return res.json({
+      success: true,
+      data: result.recordset || [],
+      page,
+    });
+  } catch (err) {
+    console.error("❌ CHALLAN GRID ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+});
+
+// ============================================================
+// CHALLAN GRID PAGE
+// ASP.NET: Getreceiptpage
+// ============================================================
+
+router.get("/grid/page", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const {
+      currentDatabase,
+      userId,
+      UTUNQ,
+      utunq,
+      branchid,
+      BRANCHUNQ,
+      prefix: tokenPrefix,
+    } = decoded;
+
+    if (!currentDatabase) {
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
+    }
+
+    const page = Math.max(parseInt(req.query.page || "1", 10) || 1, 1);
+
+    const search = String(req.query.search || "").trim();
+
+    const prefix = tokenPrefix ?? decoded.prefix ?? "RH_";
+
+    const tl = UTUNQ ?? utunq ?? decoded.tl ?? "";
+
+    const branch = branchid ?? BRANCHUNQ ?? decoded.branch ?? "";
+
+    pool = await openPool(currentDatabase);
+
+    const request = pool.request();
+
+    request.input("prefix", sql.NVarChar(50), prefix);
+
+    request.input("pageno", sql.NVarChar(50), String(page));
+
+    request.input("sp_551", sql.NVarChar(50), tl);
+
+    request.input("sp_594", sql.NVarChar(50), branch);
+
+    request.input("sp_463", sql.NVarChar(50), userId ?? "");
+
+    let result;
+
+    if (search === "") {
+      // ASP.NET:
+      // @what='grid1'
+      request.input("what", sql.NVarChar(50), "grid1");
+
+      result = await request.execute("A_SP_FOR_Challan");
+    } else {
+      // ASP.NET:
+      // @what='search'
+      // @sp_469=search
+      request.input("what", sql.NVarChar(50), "search");
+
+      request.input("sp_469", sql.NVarChar(50), search);
+
+      result = await request.execute("A_SP_FOR_Challan");
+    }
+
+    return res.json({
+      success: true,
+      data: result.recordset || [],
+      page,
+      search,
+    });
+  } catch (err) {
+    console.error("❌ CHALLAN GRID PAGE ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+});
+
+// ============================================================
+// CHALLAN GRID SEARCH
+// ASP.NET: getsearch
+// ============================================================
+
+router.get("/grid/search", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const {
+      currentDatabase,
+      userId,
+      UTUNQ,
+      utunq,
+      branchid,
+      BRANCHUNQ,
+      prefix: tokenPrefix,
+    } = decoded;
+
+    if (!currentDatabase) {
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
+    }
+
+    const search = String(req.query.search || "").trim();
+
+    if (!search) {
+      return res.json({
+        success: true,
+        data: [],
+      });
+    }
+
+    const page = Math.max(parseInt(req.query.page || "1", 10) || 1, 1);
+
+    const prefix = tokenPrefix ?? decoded.prefix ?? "RH_";
+
+    const tl = UTUNQ ?? utunq ?? decoded.tl ?? "";
+
+    const branch = branchid ?? BRANCHUNQ ?? decoded.branch ?? "";
+
+    pool = await openPool(currentDatabase);
+
+    const result = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), prefix)
+      .input("what", sql.NVarChar(50), "search")
+      .input("pageno", sql.NVarChar(50), String(page))
+      .input("sp_469", sql.NVarChar(50), search)
+      .input("sp_551", sql.NVarChar(50), tl)
+      .input("sp_594", sql.NVarChar(50), branch)
+      .input("sp_463", sql.NVarChar(50), userId ?? "")
+      .execute("A_SP_FOR_Challan");
+
+    return res.json({
+      success: true,
+      data: result.recordset || [],
+      page,
+      search,
+    });
+  } catch (err) {
+    console.error("❌ CHALLAN SEARCH ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+});
+
+// ============================================================
+// CHALLAN GRID TOTAL
+// ASP.NET: totalrow
+// Uses Cls_challan.proc_total_row equivalent:
+// empty search -> pageno
+// search -> cl_likepage
+// ============================================================
+
+router.get("/grid/total", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const {
+      currentDatabase,
+      UTUNQ,
+      utunq,
+      branchid,
+      BRANCHUNQ,
+      prefix: tokenPrefix,
+    } = decoded;
+
+    if (!currentDatabase) {
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
+    }
+
+    const search = String(req.query.search || "").trim();
+
+    const prefix = tokenPrefix ?? decoded.prefix ?? "RH_";
+
+    const tl = UTUNQ ?? utunq ?? decoded.tl ?? "";
+
+    const branch = branchid ?? BRANCHUNQ ?? decoded.branch ?? "";
+
+    pool = await openPool(currentDatabase);
+
+    const request = pool.request();
+
+    request.input("prefix", sql.NVarChar(50), prefix);
+
+    if (search === "") {
+      request.input("what", sql.NVarChar(50), "pageno");
+
+      request.input("sp_551", sql.NVarChar(50), tl);
+
+      request.input("sp_594", sql.NVarChar(50), branch);
+    } else {
+      request.input("what", sql.NVarChar(50), "cl_likepage");
+
+      request.input("sp_594", sql.NVarChar(50), branch);
+
+      request.input("sp_469", sql.NVarChar(50), search);
+    }
+
+    const result = await request.execute("A_SP_FOR_Challan");
+
+    let total = 0;
+
+    if (result.recordset?.length > 0) {
+      const first = result.recordset[0];
+
+      const firstValue = Object.values(first)[0];
+
+      total = parseInt(firstValue, 10) || 0;
+    }
+
+    return res.json({
+      success: true,
+      total,
+    });
+  } catch (err) {
+    console.error("❌ CHALLAN TOTAL ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+});
+
+// ============================================================
+// CHALLAN GRID DELETE
+// ASP.NET: DeletegRecptData
+// Calls:
+// A_SP_FOR_Challan
+// @what='delete_Raja'
+// @sp_462=unqid
+// @sp_463=group
+// ============================================================
+
+router.post("/grid/delete", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { currentDatabase, utg, group, prefix: tokenPrefix } = decoded;
+
+    if (!currentDatabase) {
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
+    }
+
+    const unqid = String(req.body.unqid ?? req.body.sp_462 ?? "").trim();
+
+    if (!unqid) {
+      return res.status(400).json({
+        success: false,
+        message: "unqid is required",
+      });
+    }
+
+    const prefix = tokenPrefix ?? decoded.prefix ?? "RH_";
+
+    const userGroup = group ?? utg ?? "";
+
+    pool = await openPool(currentDatabase);
+
+    const result = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), prefix)
+      .input("what", sql.NVarChar(50), "delete_Raja")
+      .input("sp_462", sql.NVarChar(100), unqid)
+      .input("sp_463", sql.NVarChar(100), userGroup)
+      .execute("A_SP_FOR_Challan");
+
+    return res.json({
+      success: true,
+      data: result.recordset || [],
+      message: result.recordset?.[0]?.err ?? "Record deleted successfully",
+    });
+  } catch (err) {
+    console.error("❌ CHALLAN DELETE ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+});
 // ═══════════════════════════════════════════════════════════════════════════
 // NEW CHALLAN — DROPDOWN / FORM SUPPORT ROUTES
 // ═══════════════════════════════════════════════════════════════════════════
