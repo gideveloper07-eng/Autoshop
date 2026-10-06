@@ -3806,7 +3806,6 @@ router.get("/new/cities", async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/challan/new/add-city
-// Body: { cityName, stateName }
 // Calls A_SP_FOR_CityMaster @what='insert' → inserts into sp_57 table
 // then returns the refreshed city list
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3818,13 +3817,17 @@ router.post("/new/add-city", async (req, res) => {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     const { currentDatabase } = decoded;
 
-    const cityName  = (req.body.cityName  || "").trim().toUpperCase();
+    const cityName = (req.body.cityName || "").trim().toUpperCase();
     const stateName = (req.body.stateName || "").trim().toUpperCase();
 
     if (!cityName)
-      return res.status(400).json({ success: false, message: "City name is required" });
+      return res
+        .status(400)
+        .json({ success: false, message: "City name is required" });
     if (!stateName)
-      return res.status(400).json({ success: false, message: "State name is required" });
+      return res
+        .status(400)
+        .json({ success: false, message: "State name is required" });
 
     pool = await openPool(currentDatabase);
 
@@ -3832,18 +3835,18 @@ router.post("/new/add-city", async (req, res) => {
     // @sp_577 = state, @sp_578 = city name
     const insertResult = await pool
       .request()
-      .input("prefix",  sql.NVarChar(50), "rh_")
-      .input("what",    sql.NVarChar(15), "insert")
-      .input("sp_571",  sql.NVarChar(50), "")   // entry date (SP uses getutcdate())
-      .input("sp_572",  sql.NVarChar(50), "")   // unqid (SP uses NEWID())
-      .input("sp_573",  sql.NVarChar(50), "")   // userid
-      .input("sp_574",  sql.NVarChar(50), "")   // ipadd
-      .input("sp_575",  sql.NVarChar(50), "")   // modifydate
-      .input("sp_576",  sql.NVarChar(50), "")   // serverip
-      .input("sp_577",  sql.NVarChar(50), stateName)  // state
-      .input("sp_578",  sql.NVarChar(50), cityName)   // city name
-      .input("pageno",  sql.NVarChar(50), "")
-      .input("Err",     sql.NVarChar(50), "0")
+      .input("prefix", sql.NVarChar(50), "rh_")
+      .input("what", sql.NVarChar(15), "insert")
+      .input("sp_571", sql.NVarChar(50), "") // entry date (SP uses getutcdate())
+      .input("sp_572", sql.NVarChar(50), "") // unqid (SP uses NEWID())
+      .input("sp_573", sql.NVarChar(50), "") // userid
+      .input("sp_574", sql.NVarChar(50), "") // ipadd
+      .input("sp_575", sql.NVarChar(50), "") // modifydate
+      .input("sp_576", sql.NVarChar(50), "") // serverip
+      .input("sp_577", sql.NVarChar(50), stateName) // state
+      .input("sp_578", sql.NVarChar(50), cityName) // city name
+      .input("pageno", sql.NVarChar(50), "")
+      .input("Err", sql.NVarChar(50), "0")
       .execute("A_SP_FOR_CityMaster");
 
     const errRow = insertResult.recordsets?.[0]?.[0];
@@ -3857,7 +3860,7 @@ router.post("/new/add-city", async (req, res) => {
     const cityList = await pool
       .request()
       .input("prefix", sql.NVarChar(50), "rh_")
-      .input("what",   sql.NVarChar(50), "city")
+      .input("what", sql.NVarChar(50), "city")
       .execute("A_SP_FOR_Challan");
 
     return res.json({ success: true, data: cityList.recordset || [] });
@@ -4055,7 +4058,9 @@ router.post("/new/add-area", async (req, res) => {
 
     const areaName = (req.body.areaName || "").trim().toUpperCase();
     if (!areaName)
-      return res.status(400).json({ success: false, message: "Area name is required" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Area name is required" });
 
     pool = await openPool(currentDatabase);
 
@@ -4063,22 +4068,22 @@ router.post("/new/add-area", async (req, res) => {
     // @sp_157 = area name (required), rest are optional/empty
     const insertResult = await pool
       .request()
-      .input("prefix",     sql.NVarChar(50), "rh_")
-      .input("what",       sql.NVarChar(20), "insert")
-      .input("sp_151",     sql.NVarChar(50), "")
-      .input("sp_152",     sql.NVarChar(50), "")
-      .input("sp_153",     sql.NVarChar(50), "")
-      .input("sp_154",     sql.NVarChar(50), "")
-      .input("sp_155",     sql.NVarChar(50), "")
-      .input("sp_156",     sql.NVarChar(50), "")
-      .input("sp_157",     sql.NVarChar(50), areaName)   // area name
-      .input("sp_158",     sql.NVarChar(50), "")
-      .input("SP_159",     sql.NVarChar(50), "")
-      .input("SP_160",     sql.NVarChar(50), "")
-      .input("sp_161",     sql.NVarChar(50), "")
+      .input("prefix", sql.NVarChar(50), "rh_")
+      .input("what", sql.NVarChar(20), "insert")
+      .input("sp_151", sql.NVarChar(50), "")
+      .input("sp_152", sql.NVarChar(50), "")
+      .input("sp_153", sql.NVarChar(50), "")
+      .input("sp_154", sql.NVarChar(50), "")
+      .input("sp_155", sql.NVarChar(50), "")
+      .input("sp_156", sql.NVarChar(50), "")
+      .input("sp_157", sql.NVarChar(50), areaName) // area name
+      .input("sp_158", sql.NVarChar(50), "")
+      .input("SP_159", sql.NVarChar(50), "")
+      .input("SP_160", sql.NVarChar(50), "")
+      .input("sp_161", sql.NVarChar(50), "")
       .input("likeclause", sql.NVarChar(50), "")
-      .input("pageno",     sql.NVarChar(50), "")
-      .input("Err",        sql.NVarChar(50), "0")
+      .input("pageno", sql.NVarChar(50), "")
+      .input("Err", sql.NVarChar(50), "0")
       .execute("A_SP_FOR_AreaMaster");
 
     const errRow = insertResult.recordsets?.[0]?.[0];
@@ -4092,7 +4097,7 @@ router.post("/new/add-area", async (req, res) => {
     const areaList = await pool
       .request()
       .input("prefix", sql.NVarChar(50), "rh_")
-      .input("what",   sql.NVarChar(50), "area")
+      .input("what", sql.NVarChar(50), "area")
       .execute("A_SP_FOR_Challan");
 
     return res.json({ success: true, data: areaList.recordset || [] });
