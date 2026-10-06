@@ -3805,6 +3805,117 @@ router.get("/new/cities", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// POST /api/challan/new/add-city
+// Body: { cityName, stateName }
+// Calls A_SP_FOR_ACCOUNTMASTER @what='insert' to create a city master entry
+// then returns the refreshed city list
+// ─────────────────────────────────────────────────────────────────────────────
+router.post("/new/add-city", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { currentDatabase } = decoded;
+
+    const cityName  = (req.body.cityName  || "").trim().toUpperCase();
+    const stateName = (req.body.stateName || "").trim().toUpperCase();
+
+    if (!cityName)
+      return res.status(400).json({ success: false, message: "City name is required" });
+    if (!stateName)
+      return res.status(400).json({ success: false, message: "State name is required" });
+
+    pool = await openPool(currentDatabase);
+
+    // Insert into account master — m1_7 = account name (city name used as unique key),
+    // m1_13 = city, m1_14 = state, m1_9 = 'C' (credit), m1_52 = '0.00'
+    const insertResult = await pool
+      .request()
+      .input("prefix",    sql.NVarChar(50),  "rh_")
+      .input("what",      sql.NVarChar(20),  "insert")
+      .input("m1_1",      sql.NVarChar(50),  "")
+      .input("m1_2",      sql.NVarChar(50),  "")
+      .input("m1_3",      sql.NVarChar(50),  "")
+      .input("m1_4",      sql.NVarChar(50),  "")
+      .input("m1_5",      sql.NVarChar(50),  "")
+      .input("m1_6",      sql.NVarChar(50),  "")
+      .input("m1_7",      sql.NVarChar(500), cityName)   // account name = city name
+      .input("m1_8",      sql.NVarChar(500), cityName)   // name to be printed
+      .input("m1_9",      sql.NVarChar(50),  "C")        // credit
+      .input("m1_10",     sql.NVarChar(50),  "")
+      .input("m1_11",     sql.NVarChar(500), "")
+      .input("m1_12",     sql.NVarChar(500), "")
+      .input("m1_13",     sql.NVarChar(50),  cityName)   // city
+      .input("m1_14",     sql.NVarChar(50),  stateName)  // state
+      .input("m1_15",     sql.NVarChar(50),  "INDIA")
+      .input("m1_16",     sql.NVarChar(50),  "")
+      .input("m1_17",     sql.NVarChar(50),  "")
+      .input("m1_18",     sql.NVarChar(50),  "")
+      .input("m1_19",     sql.NVarChar(50),  "")
+      .input("m1_20",     sql.NVarChar(50),  "")
+      .input("m1_21",     sql.NVarChar(50),  "")
+      .input("m1_22",     sql.NVarChar(50),  "")
+      .input("m1_23",     sql.NVarChar(50),  "")
+      .input("m1_24",     sql.NVarChar(50),  "")
+      .input("m1_25",     sql.NVarChar(50),  "")
+      .input("m1_26",     sql.NVarChar(50),  "")
+      .input("m1_27",     sql.NVarChar(50),  "")
+      .input("m1_28",     sql.NVarChar(50),  "")
+      .input("m1_29",     sql.NVarChar(50),  "")
+      .input("m1_30",     sql.NVarChar(50),  "")
+      .input("m1_31",     sql.NVarChar(50),  "")
+      .input("m1_32",     sql.NVarChar(50),  "")
+      .input("m1_33",     sql.NVarChar(50),  "")
+      .input("m1_34",     sql.NVarChar(50),  "")
+      .input("m1_35",     sql.NVarChar(50),  "")
+      .input("m1_36",     sql.NVarChar(50),  "")
+      .input("m1_37",     sql.NVarChar(50),  "")
+      .input("m1_38",     sql.NVarChar(50),  "")
+      .input("m1_39",     sql.NVarChar(50),  "")
+      .input("m1_40",     sql.NVarChar(50),  "")
+      .input("m1_41",     sql.NVarChar(50),  "")
+      .input("m1_42",     sql.NVarChar(50),  "")
+      .input("m1_43",     sql.NVarChar(50),  "")
+      .input("m1_44",     sql.NVarChar(50),  "")
+      .input("m1_45",     sql.NVarChar(50),  "")
+      .input("m1_46",     sql.NVarChar(50),  "")
+      .input("m1_47",     sql.NVarChar(50),  "")
+      .input("m1_48",     sql.NVarChar(50),  "")
+      .input("m1_49",     sql.NVarChar(50),  "")
+      .input("m1_50",     sql.NVarChar(50),  "")
+      .input("m1_51",     sql.NVarChar(50),  "")
+      .input("m1_52",     sql.NVarChar(50),  "0.00")
+      .input("m1_53",     sql.NVarChar(50),  "rh_")
+      .input("m1_54",     sql.NVarChar(50),  "")
+      .input("m1_55",     sql.NVarChar(50),  "")
+      .input("likeclause",sql.NVarChar(50),  "")
+      .input("pageno",    sql.NVarChar(50),  "")
+      .input("Err",       sql.NVarChar(50),  "0")
+      .execute("A_SP_FOR_ACCOUNTMASTER");
+
+    const errRow = insertResult.recordsets?.[0]?.[0];
+    const errVal = (errRow?.err ?? errRow?.Err ?? "0").toString();
+
+    if (errVal && errVal !== "0" && !errVal.toLowerCase().startsWith("save")) {
+      return res.status(400).json({ success: false, message: errVal });
+    }
+
+    // Return refreshed city list
+    const cityList = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "rh_")
+      .input("what",   sql.NVarChar(50), "city")
+      .execute("A_SP_FOR_Challan");
+
+    return res.json({ success: true, data: cityList.recordset || [] });
+  } catch (err) {
+    console.error("ADD-CITY ERROR:", err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GET /api/challan/new/tcs-data?date=DD/MM/YYYY
 // Calls A_SP_FOR_Challan @what='tcsdata' @sp_467=date
 // Returns TCS percentage for the given date
@@ -3972,6 +4083,69 @@ router.get("/new/retail-support", async (req, res) => {
     });
   } catch (err) {
     console.error("RETAIL-SUPPORT ERROR:", err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/challan/new/add-area
+// Body: { areaName }
+// Calls A_SP_FOR_AreaMaster @what='insert' to create a new area record
+// then returns the refreshed area list
+// ─────────────────────────────────────────────────────────────────────────────
+router.post("/new/add-area", async (req, res) => {
+  let pool;
+  try {
+    const decoded = decodeToken(req);
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { currentDatabase } = decoded;
+
+    const areaName = (req.body.areaName || "").trim().toUpperCase();
+    if (!areaName)
+      return res.status(400).json({ success: false, message: "Area name is required" });
+
+    pool = await openPool(currentDatabase);
+
+    // Insert via A_SP_FOR_AreaMaster @what='insert'
+    // @sp_157 = area name (required), rest are optional/empty
+    const insertResult = await pool
+      .request()
+      .input("prefix",     sql.NVarChar(50), "rh_")
+      .input("what",       sql.NVarChar(20), "insert")
+      .input("sp_151",     sql.NVarChar(50), "")
+      .input("sp_152",     sql.NVarChar(50), "")
+      .input("sp_153",     sql.NVarChar(50), "")
+      .input("sp_154",     sql.NVarChar(50), "")
+      .input("sp_155",     sql.NVarChar(50), "")
+      .input("sp_156",     sql.NVarChar(50), "")
+      .input("sp_157",     sql.NVarChar(50), areaName)   // area name
+      .input("sp_158",     sql.NVarChar(50), "")
+      .input("SP_159",     sql.NVarChar(50), "")
+      .input("SP_160",     sql.NVarChar(50), "")
+      .input("sp_161",     sql.NVarChar(50), "")
+      .input("likeclause", sql.NVarChar(50), "")
+      .input("pageno",     sql.NVarChar(50), "")
+      .input("Err",        sql.NVarChar(50), "0")
+      .execute("A_SP_FOR_AreaMaster");
+
+    const errRow = insertResult.recordsets?.[0]?.[0];
+    const errVal = (errRow?.err ?? errRow?.Err ?? "0").toString();
+
+    if (errVal && errVal !== "0" && !errVal.toLowerCase().startsWith("save")) {
+      return res.status(400).json({ success: false, message: errVal });
+    }
+
+    // Return refreshed area list
+    const areaList = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "rh_")
+      .input("what",   sql.NVarChar(50), "area")
+      .execute("A_SP_FOR_Challan");
+
+    return res.json({ success: true, data: areaList.recordset || [] });
+  } catch (err) {
+    console.error("ADD-AREA ERROR:", err.message);
     return res.status(500).json({ success: false, message: err.message });
   }
 });
