@@ -4047,7 +4047,7 @@ router.get("/grid", async (req, res) => {
     const branch = branchid ?? BRANCHUNQ ?? decoded.branch ?? "";
 
     pool = await openPool(currentDatabase);
-
+    console.log("tl:", tl);
     const request = pool.request();
 
     request.input("prefix", sql.NVarChar(50), prefix);
