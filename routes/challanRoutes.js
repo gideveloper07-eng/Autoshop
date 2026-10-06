@@ -4123,7 +4123,7 @@ router.get("/grid/page", async (req, res) => {
 
     const prefix = tokenPrefix ?? decoded.prefix ?? "RH_";
 
-    const tl = UTUNQ ?? utunq ?? decoded.tl ?? "";
+    const tl = UTUNQ ?? utunq ?? decoded.utg ?? "";
 
     const branch = branchid ?? BRANCHUNQ ?? decoded.branch ?? "";
 
@@ -4225,7 +4225,7 @@ router.get("/grid/search", async (req, res) => {
 
     const prefix = tokenPrefix ?? decoded.prefix ?? "RH_";
 
-    const tl = UTUNQ ?? utunq ?? decoded.tl ?? "";
+    const tl = UTUNQ ?? utunq ?? decoded.utg ?? "";
 
     const branch = branchid ?? BRANCHUNQ ?? decoded.branch ?? "";
 
@@ -4300,7 +4300,7 @@ router.get("/grid/total", async (req, res) => {
 
     const prefix = tokenPrefix ?? decoded.prefix ?? "RH_";
 
-    const tl = UTUNQ ?? utunq ?? decoded.tl ?? "";
+    const tl = UTUNQ ?? utunq ?? decoded.utg ?? "";
 
     const branch = branchid ?? BRANCHUNQ ?? decoded.branch ?? "";
 
