@@ -4038,6 +4038,8 @@ router.get("/grid", async (req, res) => {
       });
     }
 
+    console.log("decoded by us:", decoded);
+
     const page = Math.max(parseInt(req.query.page || "1", 10) || 1, 1);
 
     const prefix = tokenPrefix ?? decoded.prefix ?? "RH_";
