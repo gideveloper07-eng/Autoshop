@@ -1832,6 +1832,7 @@ router.get("/dashboard-stats", async (req, res) => {
       .input("period", sql.NVarChar(50), trendPeriod)
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
+      .input("uuid", sql.NVarChar(50), decoded.userId)
       .execute("A_SP_FOR_ApplicationChallangrid");
 
     console.log("Sale Trend Result:", saleTrendResult.recordset);
@@ -1922,6 +1923,7 @@ router.get("/dashboard-stats", async (req, res) => {
         .input("what", sql.NVarChar(50), "LiveBooking")
         .input("FromDate", sql.NVarChar(50), "")
         .input("ToDate", sql.NVarChar(50), "")
+        .input("uuid", sql.NVarChar(50), decoded.userId)
         .execute("A_SP_FOR_ApplicationChallangrid");
 
       console.log("🔥 Live Booking SP Result:", liveBookingResult.recordset);
@@ -1951,6 +1953,7 @@ router.get("/dashboard-stats", async (req, res) => {
         .input("what", sql.NVarChar(50), "MonthlyBooking")
         .input("FromDate", sql.NVarChar(50), "")
         .input("ToDate", sql.NVarChar(50), "")
+        .input("uuid", sql.NVarChar(50), decoded.userId)
         .execute("A_SP_FOR_ApplicationChallangrid");
 
       console.log(
@@ -1983,6 +1986,7 @@ router.get("/dashboard-stats", async (req, res) => {
         .input("what", sql.NVarChar(50), "MonthlySale")
         .input("FromDate", sql.NVarChar(50), "")
         .input("ToDate", sql.NVarChar(50), "")
+        .input("uuid", sql.NVarChar(50), decoded.userId)
         .execute("A_SP_FOR_ApplicationChallangrid");
 
       console.log("💰 Monthly Sale SP Result:", monthlySaleResult.recordset);
@@ -2010,6 +2014,7 @@ router.get("/dashboard-stats", async (req, res) => {
       .input("what", sql.NVarChar(50), "pendingdelcount")
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
+      .input("uuid", sql.NVarChar(50), decoded.userId)
       .execute("A_SP_FOR_ApplicationChallangrid");
 
     console.log(
