@@ -2275,6 +2275,7 @@ router.get("/dashboard-branchwise", async (req, res) => {
       .input("what", sql.NVarChar(50), what)
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
+      .input("uuid", sql.NVarChar(50), decoded.userId)
       .execute("A_SP_FOR_ApplicationChallangrid");
 
     // Also fetch branch id↔name map so we can pass branchId to the detail endpoint
@@ -2373,6 +2374,7 @@ router.get("/dashboard-pending-delivery-branch-details", async (req, res) => {
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
       .input("sp_602", sql.NVarChar(50), branchId)
+      .input("uuid", sql.NVarChar(50), decoded.userId)
       .execute("A_SP_FOR_ApplicationChallangrid");
 
     console.log(
@@ -2430,6 +2432,7 @@ router.get("/dashboard-pending-delivery-branchwise", async (req, res) => {
       .input("what", sql.NVarChar(50), "pendingdelcountBW")
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
+      .input("uuid", sql.NVarChar(50), decoded.userId)
       .execute("A_SP_FOR_ApplicationChallangrid");
 
     console.log(
@@ -2527,6 +2530,7 @@ router.get("/sales-performance", async (req, res) => {
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
       .input("period", sql.NVarChar(50), period)
+      .input("uuid", sql.NVarChar(50), decoded.userId)
       .execute("A_SP_FOR_ApplicationChallangrid");
 
     console.log("📈 Sales Performance Raw:", JSON.stringify(result.recordset));
@@ -2611,6 +2615,7 @@ router.get("/dashboard-modelwise", async (req, res) => {
       .input("what", sql.NVarChar(50), what)
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
+      .input("uuid", sql.NVarChar(50), decoded.userId)
       .execute("A_SP_FOR_ApplicationChallangrid");
 
     const models = (result.recordset || []).map((row) => ({
@@ -2681,6 +2686,7 @@ router.get("/dashboard-scwise", async (req, res) => {
       .input("what", sql.NVarChar(50), what)
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
+      .input("uuid", sql.NVarChar(50), decoded.userId)
       .execute("A_SP_FOR_ApplicationChallangrid");
 
     const scs = (result.recordset || []).map((row) => ({
@@ -2832,6 +2838,7 @@ router.get("/branch-booking-details", async (req, res) => {
     request.input("what", sql.NVarChar(100), "BookingRegisterReport");
     request.input("FromDate", sql.NVarChar(20), dateStr);
     request.input("ToDate", sql.NVarChar(20), dateStr);
+    request.input("uuid", sql.NVarChar(50), decoded.userId);
     request.input("sp_602", sql.NVarChar(100), branchId);
 
     console.log("Executing Stored Procedure...");
@@ -2910,6 +2917,7 @@ router.get("/branch-sale-details", async (req, res) => {
     request.input("FromDate", sql.NVarChar(20), dateStr);
     request.input("ToDate", sql.NVarChar(20), dateStr);
     request.input("BranchName", sql.NVarChar(100), branchId);
+    request.input("uuid", sql.NVarChar(50), decoded.userId);
 
     console.log("Executing SaleRegisterReport...");
     console.log("===== PARAMETERS =====");
@@ -3027,6 +3035,7 @@ router.get("/sc-sale-details", async (req, res) => {
     request.input("FromDate", sql.NVarChar(20), dateStr);
     request.input("ToDate", sql.NVarChar(20), dateStr);
     request.input("sp_550", sql.NVarChar(50), resolvedScId); // SC identifier
+    request.input("uuid", sql.NVarChar(50), decoded.userId);
 
     console.log("Executing SaleRegisterReportSCWise...");
 
