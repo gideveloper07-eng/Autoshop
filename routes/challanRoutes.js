@@ -3410,7 +3410,7 @@ router.post("/receipt/update", async (req, res) => {
       });
     }
 
-    if (req_type !== "update" && req_type !== "cancel") {
+    if (req_type !== "Update" && req_type !== "Cancel") {
       if (val_to === undefined || val_to === null) {
         return res.status(400).json({
           success: false,
@@ -3451,7 +3451,13 @@ router.post("/receipt/update", async (req, res) => {
       .input("req_type", sql.NVarChar(50), String(req_type).trim())
 
       // @to
-      .input("to", sql.NVarChar(sql.MAX), String(val_to))
+      .input(
+        "to",
+        sql.NVarChar(sql.MAX),
+        val_to === undefined || val_to === null || String(val_to).trim() === ""
+          ? null
+          : String(val_to).trim(),
+      )
 
       .execute("A_SP_FOR_UpdateReceiptRequest");
 
