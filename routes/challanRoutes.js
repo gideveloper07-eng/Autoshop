@@ -3369,6 +3369,14 @@ router.post("/receipt/update", async (req, res) => {
     const { request_unqid, recpt_unqid, req_type, val_to } = req.body;
 
     // ==================================================
+    // NORMALIZE REQUEST TYPE
+    // ==================================================
+
+    const normalizedReqType = String(req_type || "")
+      .trim()
+      .toLowerCase();
+
+    // ==================================================
     // DEBUG
     // ==================================================
 
@@ -3380,6 +3388,7 @@ router.post("/receipt/update", async (req, res) => {
     console.log("request_unqid :", request_unqid);
     console.log("recpt_unqid   :", recpt_unqid);
     console.log("req_type      :", req_type);
+    console.log("normalized    :", normalizedReqType);
     console.log("val_to        :", val_to);
     console.log("==============================================");
 
@@ -3403,6 +3412,7 @@ router.post("/receipt/update", async (req, res) => {
       });
     }
 
+    // Request type
     if (!req_type) {
       return res.status(400).json({
         success: false,
@@ -3410,8 +3420,19 @@ router.post("/receipt/update", async (req, res) => {
       });
     }
 
-    if (req_type !== "Update" && req_type !== "Cancel") {
-      if (val_to === undefined || val_to === null) {
+    // ==================================================
+    // VALUE TO VALIDATION
+    // ==================================================
+    // Cancel does NOT require val_to.
+    // Other request types require val_to.
+    // ==================================================
+
+    if (normalizedReqType !== "cancel" && normalizedReqType !== "update") {
+      if (
+        val_to === undefined ||
+        val_to === null ||
+        String(val_to).trim() === ""
+      ) {
         return res.status(400).json({
           success: false,
           message: "val_to is required",
@@ -3430,6 +3451,35 @@ router.post("/receipt/update", async (req, res) => {
     }
 
     // ==================================================
+    // DETERMINE STORED PROCEDURE MODE
+    // ==================================================
+
+    let spWhat = "Update";
+
+    if (normalizedReqType === "cancel") {
+      spWhat = "cancelsave";
+    }
+
+    console.log("==============================================");
+    console.log("STORED PROCEDURE MODE");
+    console.log("WHAT :", spWhat);
+    console.log("==============================================");
+
+    // ==================================================
+    // VALUE TO
+    // ==================================================
+
+    let finalValueTo = null;
+
+    if (
+      val_to !== undefined &&
+      val_to !== null &&
+      String(val_to).trim() !== ""
+    ) {
+      finalValueTo = String(val_to).trim();
+    }
+
+    // ==================================================
     // CALL STORED PROCEDURE
     // ==================================================
 
@@ -3437,27 +3487,21 @@ router.post("/receipt/update", async (req, res) => {
       .request()
 
       // @what
-      .input("what", sql.NVarChar(50), "Update")
+      .input("what", sql.NVarChar(50), spWhat)
 
       // @unqid
-      // This is rh_rcl.rcl_2
+      // rh_rcl.rcl_2
       .input("unqid", sql.NVarChar(50), String(recpt_unqid).trim())
 
       // @request_unqid
-      // This is app_receipt_request.unqid
+      // app_receipt_request.unqid
       .input("request_unqid", sql.NVarChar(50), String(request_unqid).trim())
 
       // @req_type
       .input("req_type", sql.NVarChar(50), String(req_type).trim())
 
       // @to
-      .input(
-        "to",
-        sql.NVarChar(sql.MAX),
-        val_to === undefined || val_to === null || String(val_to).trim() === ""
-          ? null
-          : String(val_to).trim(),
-      )
+      .input("to", sql.NVarChar(sql.MAX), finalValueTo)
 
       .execute("A_SP_FOR_UpdateReceiptRequest");
 
@@ -3469,63 +3513,84 @@ router.post("/receipt/update", async (req, res) => {
     console.log("==============================================");
     console.log("       UPDATE SP RESULT");
     console.log("==============================================");
-    console.log(result.recordset);
+    console.log(JSON.stringify(result.recordset, null, 2));
     console.log("==============================================");
 
     // ==================================================
     // CHECK SP RESULT
     // ==================================================
 
-    const spStatus = result.recordset?.[0]?.Status;
+    const spRow = result.recordset?.[0];
 
-    console.log("SP STATUS:", spStatus);
+    const spStatus = spRow?.Status;
+
+    console.log("SP STATUS :", spStatus);
+    console.log("SP MESSAGE:", spRow?.Message);
+
+    // ==================================================
+    // SP FAILED
+    // ==================================================
 
     if (spStatus !== "Success") {
       return res.status(400).json({
         success: false,
-        message: result.recordset?.[0]?.Message || "Receipt update failed",
+        message: spRow?.Message || spRow?.err || "Receipt update failed",
         data: result.recordset || [],
       });
     }
 
     // ==================================================
-    // UPDATE STATUS + APPROVED DATE
+    // NORMAL UPDATE
     // ==================================================
-    // IMPORTANT:
-    // This executes ONLY after the stored procedure succeeds.
     //
-    // approvedate = exact date/time when receipt was completed.
+    // For Cancel:
+    // A_SP_FOR_UpdateReceiptRequest with cancelsave
+    // already updates app_receipt_request.
+    //
+    // Therefore DO NOT update it again here.
     // ==================================================
 
-    const completionResult = await pool
-      .request()
-      .input("request_unqid", sql.NVarChar(100), String(request_unqid).trim())
-      .query(`
-        UPDATE app_receipt_request
-        SET
-            status = 'complete',
-            approvedate = GETDATE()
-        WHERE unqid = @request_unqid;
-      `);
+    if (normalizedReqType !== "cancel") {
+      const completionResult = await pool
+        .request()
+        .input("request_unqid", sql.NVarChar(100), String(request_unqid).trim())
+        .query(`
+          UPDATE app_receipt_request
+          SET
+              status = 'complete',
+              approvedate = GETDATE()
+          WHERE unqid = @request_unqid;
+        `);
 
-    console.log("==============================================");
-    console.log("RECEIPT COMPLETION UPDATED");
-    console.log("REQUEST UNQID :", request_unqid);
-    console.log("STATUS        : complete");
-    console.log("APPROVEDATE   : GETDATE()");
-    console.log("ROWS UPDATED  :", completionResult.rowsAffected?.[0] ?? 0);
-    console.log("==============================================");
+      console.log("==============================================");
+      console.log("RECEIPT COMPLETION UPDATED");
+      console.log("REQUEST UNQID :", request_unqid);
+      console.log("STATUS        : complete");
+      console.log("APPROVEDATE   : GETDATE()");
+      console.log("ROWS UPDATED  :", completionResult.rowsAffected?.[0] ?? 0);
+      console.log("==============================================");
+    }
+
+    // ==================================================
+    // SUCCESS MESSAGE
+    // ==================================================
+
+    const successMessage =
+      normalizedReqType === "cancel"
+        ? "Receipt cancelled successfully"
+        : "Receipt updated successfully";
 
     // ==================================================
     // SUCCESS RESPONSE
     // ==================================================
 
-    return res.json({
+    return res.status(200).json({
       success: true,
-      message: "Receipt updated successfully",
+      message: successMessage,
       data: result.recordset || [],
       request_unqid: request_unqid,
       recpt_unqid: recpt_unqid,
+      request_type: req_type,
       request_status: "complete",
     });
   } catch (err) {
@@ -3533,12 +3598,18 @@ router.post("/receipt/update", async (req, res) => {
     // ERROR
     // ==================================================
 
-    console.error("❌ UPDATE RECEIPT ERROR:", err);
+    console.error("");
+    console.error("==============================================");
+    console.error("❌ UPDATE RECEIPT ERROR");
+    console.error("==============================================");
+    console.error("MESSAGE :", err?.message);
+    console.error("STACK   :", err?.stack);
+    console.error("==============================================");
 
     return res.status(500).json({
       success: false,
       message: "Receipt update failed",
-      error: err.message,
+      error: err?.message || "Unknown error",
     });
   } finally {
     // ==================================================
