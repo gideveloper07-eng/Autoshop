@@ -3410,11 +3410,13 @@ router.post("/receipt/update", async (req, res) => {
       });
     }
 
-    if (val_to === undefined || val_to === null) {
-      return res.status(400).json({
-        success: false,
-        message: "val_to is required",
-      });
+    if (req_type !== "update" && req_type !== "cancel") {
+      if (val_to === undefined || val_to === null) {
+        return res.status(400).json({
+          success: false,
+          message: "val_to is required",
+        });
+      }
     }
 
     // ==================================================
