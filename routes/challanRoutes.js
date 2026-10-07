@@ -1749,6 +1749,7 @@ router.get("/dashboard-stats", async (req, res) => {
       .input("what", sql.NVarChar(50), "TodayBooking")
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
+      .input("uuid", sql.NVarChar(50), decoded.userId)
       .execute("A_SP_FOR_ApplicationChallangrid");
 
     console.log("Booking Today Result:", bookingToday.recordset);
@@ -1763,6 +1764,7 @@ router.get("/dashboard-stats", async (req, res) => {
       .input("what", sql.NVarChar(50), "YesterdayBooking")
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
+      .input("uuid", sql.NVarChar(50), decoded.userId)
       .execute("A_SP_FOR_ApplicationChallangrid");
 
     console.log("Booking Yesterday Result:", bookingYesterday.recordset);
@@ -1777,6 +1779,7 @@ router.get("/dashboard-stats", async (req, res) => {
       .input("what", sql.NVarChar(50), "TodaySale")
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
+      .input("uuid", sql.NVarChar(50), decoded.userId)
       .execute("A_SP_FOR_ApplicationChallangrid");
 
     console.log("Sale Today Result:", saleToday.recordset);
@@ -1791,6 +1794,7 @@ router.get("/dashboard-stats", async (req, res) => {
       .input("what", sql.NVarChar(50), "YesterdaySale")
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
+      .input("uuid", sql.NVarChar(50), decoded.userId)
       .execute("A_SP_FOR_ApplicationChallangrid");
 
     console.log("Sale Yesterday Result:", saleYesterday.recordset);
@@ -1812,6 +1816,7 @@ router.get("/dashboard-stats", async (req, res) => {
       .input("period", sql.NVarChar(50), trendPeriod)
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
+      .input("uuid", sql.NVarChar(50), decoded.userId)
       .execute("A_SP_FOR_ApplicationChallangrid");
 
     console.log("Booking Trend Result:", bookingTrendResult.recordset);
