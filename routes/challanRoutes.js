@@ -3842,14 +3842,13 @@ router.get("/new/customers-by-type", async (req, res) => {
       usedcar: "usedcar",
     };
     const what = whatMap[type] || "custname";
-
     pool = await openPool(currentDatabase);
     const result = await pool
       .request()
       .input("prefix", sql.NVarChar(50), "rh_")
       .input("what", sql.NVarChar(50), what)
       .execute("A_SP_FOR_Challan");
-
+    console.log(`CUSTOMERS-BY-TYPE (${type}) ROWS:`, result.recordset);
     return res.json({ success: true, data: result.recordset || [] });
   } catch (err) {
     console.error("CUSTOMERS-BY-TYPE ERROR:", err.message);
