@@ -5014,6 +5014,8 @@ router.get("/new/variant-details", async (req, res) => {
           sp_37_26 AS duplicate,
           sp_37_27 AS hpn,
           sp_37_36 AS exshowroom,
+          sp_37_40 as cm,
+          sp_37_41 as rti
           sp_37_48 AS cng,
           sp_37_53 AS bhperc,
           sp_37_54 AS bhyear
