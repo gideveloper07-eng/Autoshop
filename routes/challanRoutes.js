@@ -5016,7 +5016,9 @@ router.get("/new/variant-details", async (req, res) => {
           sp_37_36 AS exshowroom,
           sp_37_48 AS cng,
           sp_37_53 AS bhperc,
-          sp_37_54 AS bhyear
+          sp_37_54 AS bhyear,
+          sp_37_40 as cm,
+          sp_37_41 as rti
         FROM rh_sp_37_c
         WHERE sp_37_2 = @variantId
           AND sp_37_46 = @stateId
