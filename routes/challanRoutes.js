@@ -3730,7 +3730,130 @@ router.get("/new/receipt-grid", async (req, res) => {
     return res.status(500).json({ success: false, message: err.message });
   }
 });
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/new/insurance-calculation
+//
+// Returns insurance-company master values from rh_sp_81 + rh_sp_81_c
+// Same logic as old ASP.NET:
+// A_SP_FOR_Challan_new_mode
+// what = 'inscmpycalculation'
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/new/insurance-calculation", async (req, res) => {
+  let pool;
 
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { currentDatabase } = decoded;
+
+    const insuranceCompanyId = (req.query.insuranceCompanyId || "").trim();
+
+    const challanDate = (req.query.challanDate || "").trim();
+
+    const modelId = (req.query.modelId || "").trim();
+
+    if (!insuranceCompanyId) {
+      return res.status(400).json({
+        success: false,
+        message: "insuranceCompanyId is required",
+      });
+    }
+
+    pool = await openPool(currentDatabase);
+
+    const result = await pool
+      .request()
+      .input("insuranceCompanyId", sql.NVarChar(100), insuranceCompanyId)
+      .input("challanDate", sql.NVarChar(50), challanDate)
+      .input("modelId", sql.NVarChar(100), modelId).query(`
+        SELECT TOP 1
+
+          -- GST
+          (
+            SELECT TOP 1 sp_228
+            FROM rh_sp_22
+            WHERE sp_222 = c.sp_81_27
+          ) AS gst,
+
+          -- Insurance master parent
+          a.sp_812 AS insuranceId,
+          a.sp_817 AS insuranceCompanyId,
+          a.sp_821 AS validFrom,
+          a.sp_822 AS validTo,
+
+          -- Insurance master child
+          c.sp_81_3  AS insuranceDiscount,
+          c.sp_81_4  AS zd,
+          c.sp_81_5  AS zdAmount,
+          c.sp_81_6  AS ep,
+          c.sp_81_7  AS epAmount,
+          c.sp_81_8  AS cm,
+          c.sp_81_9  AS cmAmount,
+          c.sp_81_10 AS rti,
+          c.sp_81_11 AS rtiAmount,
+          c.sp_81_12 AS kp,
+          c.sp_81_13 AS kpAmount,
+          c.sp_81_15 AS pb,
+
+          c.sp_81_19 AS cng,
+          c.sp_81_20 AS thirdparty,
+          c.sp_81_23 AS pacover,
+          c.sp_81_25 AS paiddriver,
+
+          c.sp_81_36 AS ncb,
+          c.sp_81_37 AS insurancePercentage,
+          c.sp_81_38 AS idv
+
+        FROM rh_sp_81 a
+
+        INNER JOIN rh_sp_81_c c
+          ON c.sp_81_1 = a.sp_812
+
+        WHERE a.sp_817 = @insuranceCompanyId
+
+          AND dbo.getformatteddate(@challanDate)
+              BETWEEN a.sp_821 AND
+              (
+                CASE
+                  WHEN a.sp_822 = '1900-01-01 00:00:00.000'
+                    THEN GETUTCDATE()
+                  ELSE a.sp_822
+                END
+              )
+
+        ORDER BY a.sp_821 DESC
+      `);
+
+    const data = result.recordset[0] || null;
+
+    console.log("INSURANCE CALCULATION:");
+    console.log({
+      insuranceCompanyId,
+      challanDate,
+      modelId,
+      data,
+    });
+
+    return res.json({
+      success: true,
+      data,
+    });
+  } catch (err) {
+    console.error("CHALLAN INSURANCE CALCULATION ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+});
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/challan/new/load/:sp462
 // Calls A_SP_FOR_Challan @what='Edit' — full row for editing
