@@ -4913,7 +4913,6 @@ router.get("/new/colors", async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/challan/new/vins?variantId=...&colorId=...&challanType=...
-// Returns available VINs for the selected variant + color
 // ─────────────────────────────────────────────────────────────────────────────
 router.get("/new/vins", async (req, res) => {
   let pool;
