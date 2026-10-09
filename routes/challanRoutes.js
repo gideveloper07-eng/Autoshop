@@ -5186,83 +5186,101 @@ router.get("/new/next-challan-no", async (req, res) => {
     return res.status(500).json({ success: false, message: err.message });
   }
 });
-
-// ─────────────────────────────────────────────────────────────────────────────
-// POST /api/challan/new/save
-// Saves a new challan by calling A_SP_FOR_Challan with @what = 'insert'
-// ─────────────────────────────────────────────────────────────────────────────
+//challan save route
 router.post("/new/save", async (req, res) => {
   let pool;
-  try {
-    const decoded = decodeToken(req);
-    if (!decoded)
-      return res.status(401).json({ success: false, message: "Unauthorized" });
-    const { currentDatabase, userId } = decoded;
-    if (!currentDatabase)
-      return res
-        .status(400)
-        .json({ success: false, message: "Database not found" });
 
+  try {
+    // 1. Authenticate user
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { currentDatabase, userId } = decoded;
+
+    if (!currentDatabase || !userId) {
+      return res.status(400).json({
+        success: false,
+        message: "Database or user information not found",
+      });
+    }
+
+    // 2. Prepare request data
     const data = { ...req.body };
-    // Inject server-side values
+
+    // Always use trusted server-side values
     data.sp_463 = userId;
     data.sp_464 = getClientIp(req);
 
-    // Required field check
-    if (!data.sp_469)
-      return res
-        .status(400)
-        .json({ success: false, message: "Customer (sp_469) is required" });
-    if (!data.sp_470)
-      return res
-        .status(400)
-        .json({ success: false, message: "Model (sp_470) is required" });
-    if (!data.sp_471)
-      return res
-        .status(400)
-        .json({ success: false, message: "Variant (sp_471) is required" });
-    if (!data.sp_472)
-      return res
-        .status(400)
-        .json({ success: false, message: "Color (sp_472) is required" });
-    if (!data.sp_473)
-      return res
-        .status(400)
-        .json({ success: false, message: "VIN (sp_473) is required" });
+    // 3. Validate required fields
+    const requiredFields = [
+      ["sp_469", "Customer"],
+      ["sp_470", "Model"],
+      ["sp_471", "Variant"],
+      ["sp_472", "Color"],
+      ["sp_473", "VIN"],
+    ];
 
-    console.log(
-      "🚗 CHALLAN SAVE — DB:",
-      currentDatabase,
-      "Customer:",
-      data.sp_469,
-      "VIN:",
-      data.sp_473,
-    );
+    for (const [key, label] of requiredFields) {
+      if (
+        data[key] === null ||
+        data[key] === undefined ||
+        String(data[key]).trim() === ""
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: `${label} (${key}) is required`,
+        });
+      }
+    }
 
+    console.log("🚗 CHALLAN SAVE REQUEST", {
+      database: currentDatabase,
+      userId,
+      customer: data.sp_469,
+      model: data.sp_470,
+      variant: data.sp_471,
+      vin: data.sp_473,
+    });
+
+    // 4. Connect to the selected database
     pool = await openPool(currentDatabase);
 
     const request = pool.request();
-    // All sp_461 to sp_654 + child parameters
+
+    // 5. Bind challan fields: sp_461 through sp_654
+    const maxCols = new Set([
+      "sp_524",
+      "sp_577",
+      "sp_581",
+      "sp_585",
+      "sp_589",
+      "sp_590",
+      "sp_591",
+      "sp_592",
+      "sp_593",
+    ]);
+
     for (let i = 461; i <= 654; i++) {
       const key = `sp_${i}`;
       let value = data[key];
-      if (value === null || value === undefined) value = "";
-      if (Array.isArray(value)) value = value[0] ?? "";
-      if (typeof value === "object" && value !== null) value = "";
+
+      if (value === null || value === undefined) {
+        value = "";
+      } else if (Array.isArray(value)) {
+        value = value[0] ?? "";
+      } else if (typeof value === "object") {
+        value = "";
+      }
+
       value = String(value).trim();
 
-      const maxCols = [
-        "sp_524",
-        "sp_577",
-        "sp_581",
-        "sp_585",
-        "sp_589",
-        "sp_590",
-        "sp_591",
-        "sp_592",
-        "sp_593",
-      ];
-      if (maxCols.includes(key)) {
+      if (maxCols.has(key)) {
         request.input(key, sql.NVarChar(sql.MAX), value);
       } else if (key === "sp_616") {
         request.input(key, sql.NVarChar(500), value);
@@ -5271,7 +5289,7 @@ router.post("/new/save", async (req, res) => {
       }
     }
 
-    // Child table columns
+    // 6. Bind child-table parameters
     request.input("sp_46_1", sql.VarChar(50), String(data.sp_469 || ""));
     request.input("sp_46_2", sql.VarChar(50), "");
     request.input("sp_46_3", sql.VarChar(50), "");
@@ -5281,49 +5299,110 @@ router.post("/new/save", async (req, res) => {
     request.input("sp_46_7", sql.VarChar(50), "");
     request.input("sp_46_8", sql.VarChar(50), "0");
     request.input("sp_46_9", sql.VarChar(50), "0");
-    request.input("pageno", sql.NVarChar(50), String(data.pageno || ""));
+
+    // 7. Bind stored-procedure control parameters
+    request.input("pageno", sql.NVarChar(50), String(data.pageno ?? ""));
+
     request.input("rows_count", sql.NVarChar(50), "");
     request.input("what", sql.NVarChar(50), "insert");
     request.input("prefix", sql.NVarChar(50), String(data.prefix || "rh_"));
 
+    // 8. Execute insert stored procedure
     const result = await request.execute("A_SP_FOR_Challan");
 
-    const errVal = result.recordset?.[0]?.err ?? "";
-    console.log("CHALLAN SAVE RESULT:", errVal);
+    const errVal = result.recordset?.[0]?.err;
 
-    if (String(errVal).startsWith("E")) {
-      return res.status(400).json({ success: false, message: errVal });
+    console.log("🚗 CHALLAN SAVE STORED PROCEDURE RESULT:", errVal);
+
+    if (
+      errVal === null ||
+      errVal === undefined ||
+      String(errVal).trim() === ""
+    ) {
+      return res.status(500).json({
+        success: false,
+        message: "Stored procedure returned no save result",
+      });
     }
 
-    // Extract the new challan UNQID from the result
-    const newId = String(errVal).replace("Save successfully|", "").trim();
+    const resultMessage = String(errVal).trim();
 
-    // Add creator to chat members table so they can access the challan
+    // Preserve stored-procedure validation/error messages
+    if (resultMessage.startsWith("E")) {
+      return res.status(400).json({
+        success: false,
+        message: resultMessage,
+      });
+    }
+
+    // 9. Extract the new challan ID only from a success response
+    const successPrefix = "Save successfully|";
+
+    if (!resultMessage.startsWith(successPrefix)) {
+      console.error("Unexpected challan save response:", resultMessage);
+
+      return res.status(500).json({
+        success: false,
+        message: "Unexpected response from challan stored procedure",
+        details: resultMessage,
+      });
+    }
+
+    const newId = resultMessage.substring(successPrefix.length).trim();
+
+    if (!newId) {
+      return res.status(500).json({
+        success: false,
+        message: "Challan saved, but the new challan ID was not returned",
+      });
+    }
+
+    // 10. Add creator to chat members (non-fatal)
     try {
       await pool
         .request()
         .input("challanId", sql.NVarChar(100), newId)
-        .input("userId", sql.NVarChar(100), userId)
-        .input("userName", sql.NVarChar(200), decoded.userName || userId)
-        .query(`
-          IF NOT EXISTS (SELECT 1 FROM MA_ChallanChatMembers WHERE ChallanId = @challanId AND UserId = @userId)
-          INSERT INTO MA_ChallanChatMembers (ChallanId, UserId, UserName, IsActive, JoinedAt)
-          VALUES (@challanId, @userId, @userName, 1, GETDATE())
+        .input("userId", sql.NVarChar(100), String(userId))
+        .input(
+          "userName",
+          sql.NVarChar(200),
+          String(decoded.userName || userId),
+        ).query(`
+          IF NOT EXISTS (
+            SELECT 1
+            FROM MA_ChallanChatMembers
+            WHERE ChallanId = @challanId
+              AND UserId = @userId
+          )
+          BEGIN
+            INSERT INTO MA_ChallanChatMembers
+              (ChallanId, UserId, UserName, IsActive, JoinedAt)
+            VALUES
+              (@challanId, @userId, @userName, 1, GETDATE())
+          END
         `);
-    } catch (_) {
-      // Non-fatal – the challan is already saved
+    } catch (chatErr) {
+      // Do not report a failed challan save if this secondary operation fails.
+      console.warn(
+        "Challan saved, but chat-member registration failed:",
+        chatErr.message,
+      );
     }
 
-    return res.json({
+    // 11. Return success
+    return res.status(200).json({
       success: true,
       message: "Challan saved successfully",
       challanId: newId,
     });
   } catch (err) {
-    console.error("❌ CHALLAN SAVE ERROR:", err.message);
-    return res
-      .status(500)
-      .json({ success: false, message: "Server Error", error: err.message });
+    console.error("❌ CHALLAN SAVE ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error while saving challan",
+      error: err.message,
+    });
   }
 });
 
