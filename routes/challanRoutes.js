@@ -5217,7 +5217,7 @@ router.post("/new/save", async (req, res) => {
     // 2. REQUEST DATA
     // =========================================
     const data = { ...req.body };
-    console.log("Received data for new challan save:", data);
+    console.log("Received data for new challan save:", data.sp_483);
     // Server-controlled values
     data.sp_463 = userId;
     data.sp_464 = getClientIp(req);
