@@ -5188,13 +5188,190 @@ router.get("/new/next-challan-no", async (req, res) => {
 });
 //challan save route
 
+// router.post("/new/save", async (req, res) => {
+//   let pool;
+
+//   try {
+//     // =========================================
+//     // 1. AUTHENTICATION
+//     // =========================================
+//     const decoded = decodeToken(req);
+
+//     if (!decoded) {
+//       return res.status(401).json({
+//         success: false,
+//         message: "Unauthorized",
+//       });
+//     }
+
+//     const { currentDatabase, userId } = decoded;
+
+//     if (!currentDatabase) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Database not found in token",
+//       });
+//     }
+
+//     // =========================================
+//     // 2. REQUEST DATA
+//     // =========================================
+//     const data = { ...req.body };
+//     console.log("Received data for new challan save:", data.sp_483);
+//     // Server-controlled values
+//     data.sp_463 = userId;
+//     data.sp_464 = getClientIp(req);
+
+//     // =========================================
+//     // 3. VALIDATION
+//     // =========================================
+//     if (!data.sp_469) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Customer (sp_469) is required",
+//       });
+//     }
+
+//     if (!data.sp_470) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Model (sp_470) is required",
+//       });
+//     }
+
+//     if (!data.sp_471) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Variant (sp_471) is required",
+//       });
+//     }
+
+//     if (!data.sp_472) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Branch (sp_472) is required",
+//       });
+//     }
+
+//     if (!data.sp_473) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Finance type (sp_473) is required",
+//       });
+//     }
+
+//     // =========================================
+//     // 4. CONNECT TO DEALERSHIP DATABASE
+//     // =========================================
+//     pool = await openPool(currentDatabase);
+
+//     if (!pool) {
+//       throw new Error("Unable to connect to dealership database");
+//     }
+
+//     // =========================================
+//     // 5. PREPARE STORED PROCEDURE REQUEST
+//     // =========================================
+//     const request = pool.request();
+
+//     for (let i = 461; i <= 654; i++) {
+//       // These parameters do not exist in A_SP_FOR_Challan.
+//       if (i >= 642 && i <= 652) {
+//         continue;
+//       }
+
+//       const key = `sp_${i}`;
+
+//       if (!Object.prototype.hasOwnProperty.call(data, key)) {
+//         continue;
+//       }
+
+//       const value = data[key] ?? "";
+
+//       // Preserve the existing parameter type handling.
+//       if ([462, 463, 464].includes(i)) {
+//         request.input(key, sql.NVarChar(sql.MAX), String(value));
+//       } else {
+//         request.input(key, sql.NVarChar(sql.MAX), String(value));
+//       }
+//     }
+
+//     // =========================================
+//     // 6. CHILD TABLE / CONTROL PARAMETERS
+//     // =========================================
+//     for (let i = 1; i <= 9; i++) {
+//       const key = `sp_46_${i}`;
+
+//       request.input(
+//         key,
+//         sql.NVarChar(sql.MAX),
+//         data[key] == null ? "" : String(data[key]),
+//       );
+//     }
+
+//     request
+//       .input("pageno", sql.NVarChar(50), String(data.pageno ?? ""))
+//       .input("rows_count", sql.NVarChar(50), String(data.rows_count ?? ""))
+//       .input("what", sql.NVarChar(50), "insert")
+//       .input("prefix", sql.NVarChar(50), String(data.prefix ?? "rh_"));
+
+//     // =========================================
+//     // 7. EXECUTE STORED PROCEDURE
+//     // =========================================
+//     console.log("======================================");
+//     console.log("NEW CHALLAN SAVE");
+//     console.log("Database:", currentDatabase);
+//     console.log("User:", userId);
+//     console.log("Operation: insert");
+//     console.log("======================================");
+//     console.log("Bound sp_483:", request.parameters.sp_483?.value);
+//     console.log("Bound sp_509:", request.parameters.sp_509?.value);
+//     console.log("Bound sp_510:", request.parameters.sp_510?.value);
+//     const result = await request.execute("A_SP_FOR_Challan");
+
+//     // =========================================
+//     // 8. CHECK STORED PROCEDURE RESPONSE
+//     // =========================================
+//     const resultRow =
+//       result.recordset?.[0] ?? result.recordsets?.[0]?.[0] ?? null;
+
+//     const message = String(resultRow?.err ?? resultRow?.Err ?? "").trim();
+
+//     console.log("NEW CHALLAN SAVE RESULT:", resultRow);
+
+//     if (message && !message.toLowerCase().startsWith("save successfully")) {
+//       return res.status(400).json({
+//         success: false,
+//         message,
+//       });
+//     }
+
+//     // =========================================
+//     // 9. SUCCESS RESPONSE
+//     // =========================================
+//     return res.status(200).json({
+//       success: true,
+//       message: message || "Save successfully",
+//       data: resultRow,
+//     });
+//   } catch (err) {
+//     console.error("NEW CHALLAN SAVE ERROR:", err);
+
+//     return res.status(500).json({
+//       success: false,
+//       message: "Failed to save new challan",
+//       error: err.message,
+//     });
+//   }
+
+//   // Do not close pool here if dynamicPoolManager
+//   // manages the database connection lifecycle.
+// });
 router.post("/new/save", async (req, res) => {
   let pool;
 
   try {
-    // =========================================
     // 1. AUTHENTICATION
-    // =========================================
     const decoded = decodeToken(req);
 
     if (!decoded) {
@@ -5213,65 +5390,78 @@ router.post("/new/save", async (req, res) => {
       });
     }
 
-    // =========================================
     // 2. REQUEST DATA
-    // =========================================
     const data = { ...req.body };
-    console.log("Received data for new challan save:", data.sp_483);
+
+    // Normalize Yes/No values.
+    // Accept Yes/No, in/out and In House/Out House.
+    function normalizeYesNo(value) {
+      const normalized = String(value ?? "")
+        .trim()
+        .toLowerCase();
+
+      if (["yes", "in", "in house"].includes(normalized)) {
+        return "Yes";
+      }
+
+      if (["no", "out", "out house"].includes(normalized)) {
+        return "No";
+      }
+
+      return "No";
+    }
+
+    // Corporate discount
+    data.sp_483 = normalizeYesNo(data.sp_483);
+
+    // Exchange discount
+    data.sp_486 = normalizeYesNo(data.sp_486);
+
+    // Loyalty discount
+    data.sp_489 = normalizeYesNo(data.sp_489);
+
     // Server-controlled values
     data.sp_463 = userId;
     data.sp_464 = getClientIp(req);
 
-    // =========================================
+    console.log("NEW CHALLAN SAVE:", {
+      database: currentDatabase,
+      userId,
+      corporate: data.sp_483,
+      exchange: data.sp_486,
+      loyalty: data.sp_489,
+    });
+
     // 3. VALIDATION
-    // =========================================
-    if (!data.sp_469) {
-      return res.status(400).json({
-        success: false,
-        message: "Customer (sp_469) is required",
-      });
+    const requiredFields = [
+      ["sp_469", "Customer"],
+      ["sp_470", "Model"],
+      ["sp_471", "Variant"],
+      ["sp_472", "Branch"],
+      ["sp_473", "Finance type"],
+    ];
+
+    for (const [field, label] of requiredFields) {
+      if (
+        data[field] === undefined ||
+        data[field] === null ||
+        String(data[field]).trim() === ""
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: `${label} (${field}) is required`,
+        });
+      }
     }
 
-    if (!data.sp_470) {
-      return res.status(400).json({
-        success: false,
-        message: "Model (sp_470) is required",
-      });
-    }
-
-    if (!data.sp_471) {
-      return res.status(400).json({
-        success: false,
-        message: "Variant (sp_471) is required",
-      });
-    }
-
-    if (!data.sp_472) {
-      return res.status(400).json({
-        success: false,
-        message: "Branch (sp_472) is required",
-      });
-    }
-
-    if (!data.sp_473) {
-      return res.status(400).json({
-        success: false,
-        message: "Finance type (sp_473) is required",
-      });
-    }
-
-    // =========================================
-    // 4. CONNECT TO DEALERSHIP DATABASE
-    // =========================================
+    // 4. CONNECT TO DATABASE
     pool = await openPool(currentDatabase);
 
     if (!pool) {
       throw new Error("Unable to connect to dealership database");
     }
 
-    // =========================================
     // 5. PREPARE STORED PROCEDURE REQUEST
-    // =========================================
     const request = pool.request();
 
     for (let i = 461; i <= 654; i++) {
@@ -5282,30 +5472,38 @@ router.post("/new/save", async (req, res) => {
 
       const key = `sp_${i}`;
 
+      // Bind only fields supplied by the form.
       if (!Object.prototype.hasOwnProperty.call(data, key)) {
         continue;
       }
 
-      const value = data[key] ?? "";
+      let value = data[key];
 
-      // Preserve the existing parameter type handling.
-      if ([462, 463, 464].includes(i)) {
-        request.input(key, sql.NVarChar(sql.MAX), String(value));
-      } else {
-        request.input(key, sql.NVarChar(sql.MAX), String(value));
+      if (value === null || value === undefined) {
+        value = "";
       }
+
+      if (Array.isArray(value)) {
+        value = value[0] ?? "";
+      }
+
+      if (typeof value === "object" && value !== null) {
+        value = "";
+      }
+
+      request.input(key, sql.NVarChar(sql.MAX), String(value));
     }
 
-    // =========================================
     // 6. CHILD TABLE / CONTROL PARAMETERS
-    // =========================================
     for (let i = 1; i <= 9; i++) {
       const key = `sp_46_${i}`;
+
+      const value = data[key];
 
       request.input(
         key,
         sql.NVarChar(sql.MAX),
-        data[key] == null ? "" : String(data[key]),
+        value === null || value === undefined ? "" : String(value),
       );
     }
 
@@ -5315,23 +5513,15 @@ router.post("/new/save", async (req, res) => {
       .input("what", sql.NVarChar(50), "insert")
       .input("prefix", sql.NVarChar(50), String(data.prefix ?? "rh_"));
 
-    // =========================================
     // 7. EXECUTE STORED PROCEDURE
-    // =========================================
-    console.log("======================================");
-    console.log("NEW CHALLAN SAVE");
-    console.log("Database:", currentDatabase);
-    console.log("User:", userId);
-    console.log("Operation: insert");
-    console.log("======================================");
-    console.log("Bound sp_483:", request.parameters.sp_483?.value);
-    console.log("Bound sp_509:", request.parameters.sp_509?.value);
-    console.log("Bound sp_510:", request.parameters.sp_510?.value);
+    console.log("Executing A_SP_FOR_Challan...");
+    console.log("Corporate (sp_483):", data.sp_483);
+    console.log("Exchange (sp_486):", data.sp_486);
+    console.log("Loyalty (sp_489):", data.sp_489);
+
     const result = await request.execute("A_SP_FOR_Challan");
 
-    // =========================================
     // 8. CHECK STORED PROCEDURE RESPONSE
-    // =========================================
     const resultRow =
       result.recordset?.[0] ?? result.recordsets?.[0]?.[0] ?? null;
 
@@ -5346,9 +5536,7 @@ router.post("/new/save", async (req, res) => {
       });
     }
 
-    // =========================================
     // 9. SUCCESS RESPONSE
-    // =========================================
     return res.status(200).json({
       success: true,
       message: message || "Save successfully",
@@ -5364,10 +5552,8 @@ router.post("/new/save", async (req, res) => {
     });
   }
 
-  // Do not close pool here if dynamicPoolManager
-  // manages the database connection lifecycle.
+  // Keep the pool lifecycle consistent with dynamicPoolManager.
 });
-
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/challan/new/receipt-amounts?customerId=...
 // Returns total amounts received from receipts for a customer
