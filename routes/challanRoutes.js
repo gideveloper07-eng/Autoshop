@@ -5324,7 +5324,9 @@ router.post("/new/save", async (req, res) => {
     console.log("User:", userId);
     console.log("Operation: insert");
     console.log("======================================");
-
+    console.log("Bound sp_483:", request.parameters.sp_483?.value);
+    console.log("Bound sp_509:", request.parameters.sp_509?.value);
+    console.log("Bound sp_510:", request.parameters.sp_510?.value);
     const result = await request.execute("A_SP_FOR_Challan");
 
     // =========================================
