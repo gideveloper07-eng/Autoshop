@@ -5367,6 +5367,157 @@ router.get("/new/next-challan-no", async (req, res) => {
 //   // Do not close pool here if dynamicPoolManager
 //   // manages the database connection lifecycle.
 // });
+
+/**
+ * POST /api/challan/new/add-rto-city
+ * Saves a new RTO city using A_SP_FOR_RTO_City @what = 'insert'
+ */
+router.post("/new/add-rto-city", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { currentDatabase, userId } = decoded;
+
+    if (!currentDatabase) {
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
+    }
+
+    const rtoCity = String(req.body.rtoCity || "")
+      .trim()
+      .toUpperCase();
+    const mainCity = String(req.body.mainCity || "")
+      .trim()
+      .toUpperCase();
+
+    if (!rtoCity || !mainCity) {
+      return res.status(400).json({
+        success: false,
+        message: "RTO City and Main City are required",
+      });
+    }
+
+    // The Flutter popup sends true/false for each charge.
+    // Store these as "1"/"0"; change this mapping if your
+    // existing database uses a different convention.
+    const charge = (key) => (req.body.charges?.[key] ? "1" : "0");
+
+    pool = await openPool(currentDatabase);
+
+    const result = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "rh_")
+      .input("what", sql.NVarChar(50), "insert")
+      .input("sp_331", sql.NVarChar(50), new Date().toISOString().slice(0, 10))
+      .input("sp_332", sql.NVarChar(50), "")
+      .input("sp_333", sql.NVarChar(50), String(userId || ""))
+      .input("sp_334", sql.NVarChar(50), getClientIp(req))
+      .input("sp_335", sql.NVarChar(50), "")
+      .input("sp_336", sql.NVarChar(50), "")
+      .input("sp_337", sql.NVarChar(50), rtoCity)
+      .input("sp_338", sql.NVarChar(50), mainCity)
+      .input("sp_339", sql.NVarChar(50), charge("Rto Rate"))
+      .input("sp_340", sql.NVarChar(50), charge("Rto Tax Surcharge"))
+      .input("sp_341", sql.NVarChar(50), charge("Green Tax"))
+      .input("sp_342", sql.NVarChar(50), charge("Reg Fee"))
+      .input("sp_343", sql.NVarChar(50), charge("HPN"))
+      .input("sp_344", sql.NVarChar(50), charge("Duplicate"))
+      .input("sp_345", sql.NVarChar(50), charge("Smart Card"))
+      .input("sp_346", sql.NVarChar(50), charge("Other"))
+      .input("sp_347", sql.NVarChar(50), charge("TRC"))
+      .input("pageno", sql.NVarChar(50), "")
+      .output("Err", sql.NVarChar(50), "0")
+      .execute("A_SP_FOR_RTO_City");
+
+    console.log(
+      "A_SP_FOR_RTO_City insert result:",
+      JSON.stringify(result.recordsets),
+    );
+
+    // The SP checks for duplicate RTO city names and returns E01.
+    const rows = (result.recordsets || []).flat();
+    const errorRow = rows.find(
+      (row) => row.err !== undefined || row.Err !== undefined,
+    );
+
+    const spError = String(
+      errorRow?.err ?? errorRow?.Err ?? result.output?.Err ?? "0",
+    );
+
+    if (spError.startsWith("E01")) {
+      return res.status(409).json({
+        success: false,
+        message: spError,
+      });
+    }
+
+    // The supplied SP returns "Save successfully" after insertion.
+    const saved = rows.some((row) =>
+      Object.values(row).some(
+        (value) => String(value).trim().toLowerCase() === "save successfully",
+      ),
+    );
+
+    if (!saved && spError !== "0") {
+      return res.status(400).json({
+        success: false,
+        message: spError,
+      });
+    }
+
+    if (!saved) {
+      return res.status(500).json({
+        success: false,
+        message:
+          "The stored procedure did not confirm the insert. Check the SQL result.",
+      });
+    }
+
+    // Return the refreshed RTO city list.
+    const cityResult = await pool.request().query(`
+      SELECT
+        sp_332 AS data,
+        sp_337 AS value,
+        sp_338 AS maincity,
+        sp_339 AS rrate,
+        sp_340 AS rtax,
+        sp_341 AS rgreen,
+        sp_342 AS rreg,
+        sp_343 AS rhpn,
+        sp_344 AS rduplicate,
+        sp_345 AS rsmartcard,
+        sp_346 AS rother,
+        sp_347 AS rtrc
+      FROM rh_sp_33
+      ORDER BY sp_337 ASC
+    `);
+
+    return res.json({
+      success: true,
+      message: "RTO city saved successfully",
+      data: cityResult.recordset || [],
+    });
+  } catch (err) {
+    console.error("ADD RTO CITY ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Failed to save RTO city",
+    });
+  }
+});
+
 router.post("/new/save", async (req, res) => {
   let pool;
 
