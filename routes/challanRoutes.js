@@ -2369,7 +2369,10 @@ router.get("/new/accessories-amount", async (req, res) => {
     // Table1 = own accessories.
     const companyRow = result.recordsets?.[0]?.[0] || {};
     const ownRow = result.recordsets?.[1]?.[0] || {};
-
+    console.log("ACCESSORIES AMOUNT RAW:", {
+      companyRow,
+      ownRow,
+    });
     return res.json({
       success: true,
       data: {
