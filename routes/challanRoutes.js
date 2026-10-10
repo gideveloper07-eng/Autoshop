@@ -2390,6 +2390,64 @@ router.get("/new/accessories-amount", async (req, res) => {
   }
 });
 
+router.get("/new/accessories-grid", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { currentDatabase } = decoded;
+    const customerId = String(req.query.customerId || "").trim();
+
+    if (!currentDatabase) {
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
+    }
+
+    if (!customerId) {
+      return res.status(400).json({
+        success: false,
+        message: "Customer ID is required",
+      });
+    }
+
+    pool = await openPool(currentDatabase);
+
+    const result = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "rh_")
+      .input("what", sql.NVarChar(50), "gridaccdata")
+      .input("sp_469", sql.NVarChar(50), customerId)
+      .execute("A_SP_FOR_Challan");
+
+    const rows = result.recordset || [];
+
+    console.log("ACCESSORIES GRID CUSTOMER:", customerId);
+    console.log("ACCESSORIES GRID ROW COUNT:", rows.length);
+
+    return res.json({
+      success: true,
+      data: rows,
+    });
+  } catch (err) {
+    console.error("ACCESSORIES GRID ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Failed to load accessories grid",
+    });
+  }
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/challan/dashboard-pending-delivery-branch-details
 // Returns individual pending delivery records for a branch.
