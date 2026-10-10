@@ -2334,6 +2334,59 @@ router.get("/dashboard-branchwise", async (req, res) => {
     // }
   }
 });
+
+router.get("/new/accessories-amount", async (req, res) => {
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { currentDatabase } = decoded;
+    const customerId = (req.query.customerId || "").trim();
+
+    if (!customerId) {
+      return res.status(400).json({
+        success: false,
+        message: "Customer ID is required",
+      });
+    }
+
+    const pool = await openPool(currentDatabase);
+
+    const result = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "rh_")
+      .input("what", sql.NVarChar(50), "amtdetails")
+      .input("sp_469", sql.NVarChar(50), customerId)
+      .execute("A_SP_FOR_Challan");
+
+    // Original DataSet: Table = company accessories,
+    // Table1 = own accessories.
+    const companyRow = result.recordsets?.[0]?.[0] || {};
+    const ownRow = result.recordsets?.[1]?.[0] || {};
+
+    return res.json({
+      success: true,
+      data: {
+        companyAccessories: companyRow.htotal ?? 0,
+        ownAccessories: ownRow.ototal ?? 0,
+      },
+    });
+  } catch (err) {
+    console.error("ACCESSORIES AMOUNT ERROR:", err.message);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/challan/dashboard-pending-delivery-branch-details
 // Returns individual pending delivery records for a branch.
