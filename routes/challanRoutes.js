@@ -4233,7 +4233,51 @@ router.get("/new/tcs-data", async (req, res) => {
     return res.status(500).json({ success: false, message: err.message });
   }
 });
+// GET /api/challan/new/others
+// Calls A_SP_FOR_Challan with @what = 'other'
+router.get("/new/others", async (req, res) => {
+  let pool;
 
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { currentDatabase } = decoded;
+
+    if (!currentDatabase) {
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
+    }
+
+    pool = await openPool(currentDatabase);
+
+    const result = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "rh_")
+      .input("what", sql.NVarChar(50), "other")
+      .execute("A_SP_FOR_Challan");
+
+    return res.json({
+      success: true,
+      data: result.recordset || [],
+    });
+  } catch (err) {
+    console.error("CHALLAN OTHERS DROPDOWN ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+});
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/challan/new/own-rto?branchId=X
 // Calls A_SP_FOR_Challan @what='ownrto' @sp_594=branchId
