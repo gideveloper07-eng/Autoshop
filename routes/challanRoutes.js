@@ -5726,8 +5726,6 @@ router.get("/new/rto-trc", async (req, res) => {
       .request()
       .input("prefix", sql.NVarChar(50), "rh_")
       .input("what", sql.NVarChar(50), "rtotrc")
-      .input("FromDate", sql.NVarChar(50), "")
-      .input("ToDate", sql.NVarChar(50), "")
       .input("sp_594", sql.NVarChar(50), String(rtoCityId).trim())
       .input("sp_471", sql.NVarChar(50), String(variantId).trim())
       .execute("A_SP_FOR_Challan");
