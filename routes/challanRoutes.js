@@ -5675,7 +5675,60 @@ router.post("/new/add-rto-city", async (req, res) => {
     });
   }
 });
+router.get("/new/rto-trc", async (req, res) => {
+  let pool;
 
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { currentDatabase } = decoded;
+    const { rtoCityId, variantId } = req.query;
+
+    if (!currentDatabase || !rtoCityId || !variantId) {
+      return res.status(400).json({
+        success: false,
+        message: "RTO city ID and variant ID are required",
+      });
+    }
+
+    pool = await openPool(currentDatabase);
+
+    const result = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "rh_")
+      .input("what", sql.NVarChar(50), "rtotrc")
+      .input("FromDate", sql.NVarChar(50), "")
+      .input("ToDate", sql.NVarChar(50), "")
+      .input("sp_594", sql.NVarChar(50), String(rtoCityId))
+      .input("sp_471", sql.NVarChar(50), String(variantId))
+      .execute("A_SP_FOR_ApplicationChallangrid");
+
+    const row = result.recordset?.[0];
+
+    return res.json({
+      success: true,
+      data: {
+        trc: row?.trc ?? 0,
+        trcstatus: row?.trcstatus ?? 0,
+      },
+    });
+  } catch (err) {
+    console.error("RTO TRC ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch RTO TRC",
+      error: err.message,
+    });
+  }
+});
 router.post("/new/save", async (req, res) => {
   let pool;
 
