@@ -5675,11 +5675,11 @@ router.post("/new/add-rto-city", async (req, res) => {
     });
   }
 });
-
 router.get("/new/rto-trc", async (req, res) => {
   let pool;
 
   try {
+    // 1. Authentication
     const decoded = decodeToken(req);
 
     if (!decoded) {
@@ -5692,32 +5692,69 @@ router.get("/new/rto-trc", async (req, res) => {
     const { currentDatabase } = decoded;
     const { rtoCityId, variantId } = req.query;
 
-    if (!currentDatabase || !rtoCityId || !variantId) {
+    // 2. Log incoming parameters
+    console.log("========== RTO TRC REQUEST ==========");
+    console.log("Database:", currentDatabase);
+    console.log("RTO City ID:", rtoCityId);
+    console.log("Variant ID:", variantId);
+
+    // 3. Validate parameters
+    if (!currentDatabase) {
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
+    }
+
+    if (
+      !rtoCityId ||
+      !variantId ||
+      !String(rtoCityId).trim() ||
+      !String(variantId).trim()
+    ) {
       return res.status(400).json({
         success: false,
         message: "RTO city ID and variant ID are required",
       });
     }
 
+    // 4. Connect to database
     pool = await openPool(currentDatabase);
 
+    // 5. Execute stored procedure
     const result = await pool
       .request()
       .input("prefix", sql.NVarChar(50), "rh_")
       .input("what", sql.NVarChar(50), "rtotrc")
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
-      .input("sp_594", sql.NVarChar(50), String(rtoCityId))
-      .input("sp_471", sql.NVarChar(50), String(variantId))
+      .input("sp_594", sql.NVarChar(50), String(rtoCityId).trim())
+      .input("sp_471", sql.NVarChar(50), String(variantId).trim())
       .execute("A_SP_FOR_Challan");
+
+    // 6. Log SQL response
+    console.log("RTO TRC RECORDSET:", result.recordset);
 
     const row = result.recordset?.[0];
 
+    if (!row) {
+      console.warn("RTO TRC: Stored procedure returned no rows");
+
+      return res.json({
+        success: true,
+        data: {
+          trc: 0,
+          trcstatus: 0,
+        },
+      });
+    }
+
+    // 7. Return TRC amount and status
     return res.json({
       success: true,
       data: {
-        trc: row?.trc ?? 0,
-        trcstatus: row?.trcstatus ?? 0,
+        trc: row.trc ?? 0,
+        trcstatus: row.trcstatus ?? 0,
       },
     });
   } catch (err) {
