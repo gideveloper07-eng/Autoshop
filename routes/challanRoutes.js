@@ -5675,6 +5675,7 @@ router.post("/new/add-rto-city", async (req, res) => {
     });
   }
 });
+
 router.get("/new/rto-trc", async (req, res) => {
   let pool;
 
@@ -5708,7 +5709,7 @@ router.get("/new/rto-trc", async (req, res) => {
       .input("ToDate", sql.NVarChar(50), "")
       .input("sp_594", sql.NVarChar(50), String(rtoCityId))
       .input("sp_471", sql.NVarChar(50), String(variantId))
-      .execute("A_SP_FOR_ApplicationChallangrid");
+      .execute("A_SP_FOR_Challan");
 
     const row = result.recordset?.[0];
 
@@ -5729,6 +5730,7 @@ router.get("/new/rto-trc", async (req, res) => {
     });
   }
 });
+
 router.post("/new/save", async (req, res) => {
   let pool;
 
