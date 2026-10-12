@@ -5751,8 +5751,8 @@ router.get("/new/rto-trc", async (req, res) => {
     return res.json({
       success: true,
       data: {
-        trc: row.trc ?? 500,
-        trcstatus: row.trcstatus ?? 1,
+        trc: row.trc ?? 0,
+        trcstatus: row.trcstatus ?? 0,
       },
     });
   } catch (err) {
