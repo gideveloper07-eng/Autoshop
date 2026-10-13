@@ -5566,7 +5566,6 @@ router.post("/new/add-rto-city", async (req, res) => {
       });
     }
 
-    // The Flutter popup sends true/false for each charge.
     // Store these as "1"/"0"; change this mapping if your
     // existing database uses a different convention.
     const charge = (key) => (req.body.charges?.[key] ? "1" : "0");
