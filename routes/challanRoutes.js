@@ -4567,7 +4567,7 @@ router.get("/grid", async (req, res) => {
 
     request.input("pageno", sql.NVarChar(50), String(page));
 
-    request.input("sp_551", sql.NVarChar(50), decoded.utg);
+    request.input("sp_551", sql.NVarChar(50), decoded.tl);
 
     request.input("sp_594", sql.NVarChar(50), branch);
 
