@@ -4553,11 +4553,8 @@ router.get("/grid", async (req, res) => {
 
     const prefix = tokenPrefix ?? decoded.prefix ?? "RH_";
 
-    const tl = decoded.utunq;
+    const tl = UTUNQ ?? utunq ?? decoded.tl ?? "";
 
-    if (decoded.utg.toUpperCase == "4848C835-2A09-4A80-A7E2-383C95926C54") {
-      tl = decoded.utg;
-    }
     const branch = branchid ?? BRANCHUNQ ?? decoded.branch ?? "";
 
     pool = await openPool(currentDatabase);
@@ -4570,7 +4567,7 @@ router.get("/grid", async (req, res) => {
 
     request.input("pageno", sql.NVarChar(50), String(page));
 
-    request.input("sp_551", sql.NVarChar(50), decoded.utunq);
+    request.input("sp_551", sql.NVarChar(50), decoded.utg);
 
     request.input("sp_594", sql.NVarChar(50), branch);
 
@@ -4635,7 +4632,7 @@ router.get("/grid/page", async (req, res) => {
 
     const prefix = tokenPrefix ?? decoded.prefix ?? "RH_";
 
-    const tl = UTUNQ ?? utunq ?? "";
+    const tl = UTUNQ ?? utunq ?? decoded.utg ?? "";
 
     const branch = branchid ?? BRANCHUNQ ?? decoded.branch ?? "";
 
@@ -4647,7 +4644,7 @@ router.get("/grid/page", async (req, res) => {
 
     request.input("pageno", sql.NVarChar(50), String(page));
 
-    request.input("sp_551", sql.NVarChar(50), decoded.utunq);
+    request.input("sp_551", sql.NVarChar(50), tl);
 
     request.input("sp_594", sql.NVarChar(50), branch);
 
@@ -4737,7 +4734,7 @@ router.get("/grid/search", async (req, res) => {
 
     const prefix = tokenPrefix ?? decoded.prefix ?? "RH_";
 
-    const tl = decoded.utunq ?? "";
+    const tl = UTUNQ ?? utunq ?? decoded.utg ?? "";
 
     const branch = branchid ?? BRANCHUNQ ?? decoded.branch ?? "";
 
@@ -4794,8 +4791,8 @@ router.get("/grid/total", async (req, res) => {
 
     const {
       currentDatabase,
+      UTUNQ,
       utunq,
-      userGuid,
       branchid,
       BRANCHUNQ,
       prefix: tokenPrefix,
@@ -4808,35 +4805,31 @@ router.get("/grid/total", async (req, res) => {
       });
     }
 
-    if (!userGuid) {
-      return res.status(400).json({
-        success: false,
-        message: "userGuid missing from token",
-      });
-    }
-
     const search = String(req.query.search || "").trim();
 
     const prefix = tokenPrefix ?? decoded.prefix ?? "RH_";
+
+    const tl = UTUNQ ?? utunq ?? decoded.utg ?? "";
 
     const branch = branchid ?? BRANCHUNQ ?? decoded.branch ?? "";
 
     pool = await openPool(currentDatabase);
 
-    // Initialize request before using request.input()
     const request = pool.request();
 
     request.input("prefix", sql.NVarChar(50), prefix);
 
-    // Pass userGuid from decoded token
-    request.input("sp_551", sql.NVarChar(50), decoded.utunq);
-
-    request.input("sp_594", sql.NVarChar(50), branch);
-
     if (search === "") {
       request.input("what", sql.NVarChar(50), "pageno");
+
+      request.input("sp_551", sql.NVarChar(50), decoded.utg);
+
+      request.input("sp_594", sql.NVarChar(50), branch);
     } else {
       request.input("what", sql.NVarChar(50), "cl_likepage");
+
+      request.input("sp_594", sql.NVarChar(50), branch);
+
       request.input("sp_469", sql.NVarChar(50), search);
     }
 
@@ -4846,7 +4839,9 @@ router.get("/grid/total", async (req, res) => {
 
     if (result.recordset?.length > 0) {
       const first = result.recordset[0];
+
       const firstValue = Object.values(first)[0];
+
       total = parseInt(firstValue, 10) || 0;
     }
 
@@ -4864,6 +4859,7 @@ router.get("/grid/total", async (req, res) => {
     });
   }
 });
+
 // ============================================================
 // CHALLAN GRID DELETE
 // ASP.NET: DeletegRecptData
