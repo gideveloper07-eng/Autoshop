@@ -4569,11 +4569,8 @@ router.get("/grid", async (req, res) => {
     request.input("what", sql.NVarChar(50), "grid1");
 
     request.input("pageno", sql.NVarChar(50), String(page));
-    if (decoded.utg.toUpperCase == "4848C835-2A09-4A80-A7E2-383C95926C54") {
-      request.input("sp_551", sql.NVarChar(50), decoded.utg);
-    } else {
-      request.input("sp_551", sql.NVarChar(50), decoded.utunq);
-    }
+
+    request.input("sp_551", sql.NVarChar(50), decoded.utunq);
 
     request.input("sp_594", sql.NVarChar(50), branch);
 
