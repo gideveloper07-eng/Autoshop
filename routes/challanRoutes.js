@@ -4553,8 +4553,11 @@ router.get("/grid", async (req, res) => {
 
     const prefix = tokenPrefix ?? decoded.prefix ?? "RH_";
 
-    const tl = UTUNQ ?? utunq ?? "";
+    const tl = decoded.utunq;
 
+    if (decoded.utg.toUpperCase == "4848C835-2A09-4A80-A7E2-383C95926C54") {
+      tl = decoded.utg;
+    }
     const branch = branchid ?? BRANCHUNQ ?? decoded.branch ?? "";
 
     pool = await openPool(currentDatabase);
