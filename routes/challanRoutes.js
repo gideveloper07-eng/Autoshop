@@ -4632,7 +4632,7 @@ router.get("/grid/page", async (req, res) => {
 
     const prefix = tokenPrefix ?? decoded.prefix ?? "RH_";
 
-    const tl = UTUNQ ?? utunq ?? decoded.tl ?? "";
+    const tl = UTUNQ ?? utunq ?? decoded.tl ?? decoded.utg ?? "";
 
     const branch = branchid ?? BRANCHUNQ ?? decoded.branch ?? "";
 
