@@ -4535,7 +4535,7 @@ router.get("/grid", async (req, res) => {
       userId,
       UTUNQ,
       utunq,
-      branchid,
+      //branchid,
       BRANCHUNQ,
       prefix: tokenPrefix,
     } = decoded;
@@ -4555,7 +4555,7 @@ router.get("/grid", async (req, res) => {
 
     const tl = UTUNQ ?? utunq ?? decoded.tl ?? "";
 
-    const branch = branchid ?? BRANCHUNQ ?? decoded.branch ?? "";
+    // const branch = branchid ?? BRANCHUNQ ?? decoded.branch ?? "";
 
     pool = await openPool(currentDatabase);
     console.log("tl:", tl);
@@ -4569,7 +4569,7 @@ router.get("/grid", async (req, res) => {
 
     request.input("sp_551", sql.NVarChar(50), decoded.utg);
 
-    request.input("sp_594", sql.NVarChar(50), branch);
+    //request.input("sp_594", sql.NVarChar(50), branch);
 
     request.input("sp_463", sql.NVarChar(50), userId ?? "");
 
