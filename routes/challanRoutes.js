@@ -4517,9 +4517,80 @@ router.get("/new/areas", async (req, res) => {
 
 // GET /api/challan/grid
 // ASP.NET: Getreceipt / grid1
-router.get("/grid", async (req, res) => {
-  let pool;
+// router.get("/grid", async (req, res) => {
+//   let pool;
 
+//   try {
+//     const decoded = decodeToken(req);
+
+//     if (!decoded) {
+//       return res.status(401).json({
+//         success: false,
+//         message: "Unauthorized",
+//       });
+//     }
+
+//     const {
+//       currentDatabase,
+//       userId,
+//       UTUNQ,
+//       utunq,
+//       branchid,
+//       BRANCHUNQ,
+//       prefix: tokenPrefix,
+//     } = decoded;
+
+//     if (!currentDatabase) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Database not found in token",
+//       });
+//     }
+
+//     console.log("decoded by us:", decoded);
+
+//     const page = Math.max(parseInt(req.query.page || "1", 10) || 1, 1);
+
+//     const prefix = tokenPrefix ?? decoded.prefix ?? "RH_";
+
+//     const tl = UTUNQ ?? utunq ?? decoded.tl ?? "";
+
+//     const branch = branchid ?? BRANCHUNQ ?? decoded.branch ?? "";
+
+//     pool = await openPool(currentDatabase);
+//     console.log("tl:", tl);
+//     const request = pool.request();
+
+//     request.input("prefix", sql.NVarChar(50), prefix);
+
+//     request.input("what", sql.NVarChar(50), "grid1");
+
+//     request.input("pageno", sql.NVarChar(50), String(page));
+
+//     request.input("sp_551", sql.NVarChar(50), decoded.utg);
+
+//     request.input("sp_594", sql.NVarChar(50), branch);
+
+//     request.input("sp_463", sql.NVarChar(50), userId ?? "");
+
+//     const result = await request.execute("A_SP_FOR_Challan");
+
+//     return res.json({
+//       success: true,
+//       data: result.recordset || [],
+//       page,
+//     });
+//   } catch (err) {
+//     console.error("❌ CHALLAN GRID ERROR:", err);
+
+//     return res.status(500).json({
+//       success: false,
+//       message: "Server Error",
+//       error: err.message,
+//     });
+//   }
+// });
+router.get("/grid", async (req, res) => {
   try {
     const decoded = decodeToken(req);
 
@@ -4530,15 +4601,7 @@ router.get("/grid", async (req, res) => {
       });
     }
 
-    const {
-      currentDatabase,
-      userId,
-      UTUNQ,
-      utunq,
-      branchid,
-      BRANCHUNQ,
-      prefix: tokenPrefix,
-    } = decoded;
+    const currentDatabase = decoded.currentDatabase;
 
     if (!currentDatabase) {
       return res.status(400).json({
@@ -4547,33 +4610,42 @@ router.get("/grid", async (req, res) => {
       });
     }
 
-    console.log("decoded by us:", decoded);
-
     const page = Math.max(parseInt(req.query.page || "1", 10) || 1, 1);
 
-    const prefix = tokenPrefix ?? decoded.prefix ?? "RH_";
+    const prefix = decoded.prefix ?? "RH_";
 
-    const tl = UTUNQ ?? utunq ?? decoded.tl ?? "";
+    // IMPORTANT: sp_551 must receive the user's GROUP ID (UTG).
+    const userGroup = decoded.utg ?? decoded.UTG ?? "";
 
-    const branch = branchid ?? BRANCHUNQ ?? decoded.branch ?? "";
+    // Branch is a separate field.
+    const branch =
+      decoded.branchid ?? decoded.BRANCHUNQ ?? decoded.branch ?? "";
 
-    pool = await openPool(currentDatabase);
-    console.log("tl:", tl);
+    const userId = decoded.userId ?? decoded.UTI ?? "";
+
+    console.log("========== CHALLAN GRID ==========");
+    console.log("Database:", currentDatabase);
+    console.log("User:", userId);
+    console.log("Group (sp_551):", userGroup);
+    console.log("Branch (sp_594):", branch);
+    console.log("Prefix:", prefix);
+    console.log("Page:", page);
+
+    const pool = await openPool(currentDatabase);
+
     const request = pool.request();
 
     request.input("prefix", sql.NVarChar(50), prefix);
-
     request.input("what", sql.NVarChar(50), "grid1");
-
     request.input("pageno", sql.NVarChar(50), String(page));
-
-    request.input("sp_551", sql.NVarChar(50), decoded.utg);
-
+    request.input("sp_551", sql.NVarChar(50), userGroup);
     request.input("sp_594", sql.NVarChar(50), branch);
-
-    request.input("sp_463", sql.NVarChar(50), userId ?? "");
+    request.input("sp_463", sql.NVarChar(50), userId);
 
     const result = await request.execute("A_SP_FOR_Challan");
+
+    console.log("GRID ROW COUNT:", result.recordset?.length ?? 0);
+    console.log("GRID FIRST ROW:", result.recordset?.[0] ?? null);
 
     return res.json({
       success: true,
@@ -4581,7 +4653,7 @@ router.get("/grid", async (req, res) => {
       page,
     });
   } catch (err) {
-    console.error("❌ CHALLAN GRID ERROR:", err);
+    console.error("CHALLAN GRID ERROR:", err);
 
     return res.status(500).json({
       success: false,
@@ -4590,7 +4662,6 @@ router.get("/grid", async (req, res) => {
     });
   }
 });
-
 // ============================================================
 // CHALLAN GRID PAGE
 // ASP.NET: Getreceiptpage
