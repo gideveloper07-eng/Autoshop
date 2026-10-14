@@ -4832,7 +4832,7 @@ router.get("/grid/total", async (req, res) => {
 
       request.input("sp_594", sql.NVarChar(50), branch);
 
-      request.input("sp_551", sql.NVarChar(50), tl);
+      // request.input("sp_551", sql.NVarChar(50), tl);
 
       request.input("sp_469", sql.NVarChar(50), search);
     }
