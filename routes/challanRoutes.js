@@ -4515,54 +4515,8 @@ router.get("/new/areas", async (req, res) => {
 // CHALLAN GRID - ASP.NET FRM_CHALLAN_GRID equivalent
 // ============================================================
 
-const ADMIN_CHALLAN_GROUPS = new Set([
-  "4848C835-2A09-4A80-A7E2-383C95926C54",
-  "12BB7261-3398-4881-A5BA-EC729496B329",
-  "6A8409B9-215C-4CFA-B0BD-DECBE040CB27",
-  "75BF3577-6F64-4D22-B479-42C598E0D8D2",
-  "02499879-17CF-4C07-84D1-797605B342AC",
-  "29487E07-FE7C-496F-AD7F-5E63807C3E96",
-  "5BC81928-CEF0-4155-AE00-9DB6D65E2D13",
-  "149E6589-F495-4BB2-A954-8827FB0F342C",
-  "05D8DAAF-1E4E-49E8-A312-6CB932701E35",
-  "D18A9916-B7BF-40AA-AF65-CB15502C99F1",
-  "9838E4BE-8437-4E75-91D2-1EE73DC8F80A",
-]);
-
-function getChallanSp551(decoded) {
-  const utg = String(decoded.utg ?? "")
-    .trim()
-    .toUpperCase();
-
-  // Admin groups: pass the group ID.
-  if (ADMIN_CHALLAN_GROUPS.has(utg)) {
-    return utg;
-  }
-
-  // Non-admin: use the user's UTUNQ.
-  const utunq = String(decoded.UTUNQ ?? decoded.utunq ?? "").trim();
-
-  if (!utunq) {
-    throw new Error("UTUNQ is missing from the login token for this user.");
-  }
-
-  return utunq;
-}
-
-function getChallanBranch(decoded) {
-  return String(
-    decoded.branchid ?? decoded.BRANCHUNQ ?? decoded.branch ?? "",
-  ).trim();
-}
-
 // GET /api/challan/grid
 // ASP.NET: Getreceipt / grid1
-
-const CHALLAN_PREFIX_FALLBACK = "RH_";
-
-// ============================================================
-// GET /api/challan/grid
-// ============================================================
 router.get("/grid", async (req, res) => {
   let pool;
 
@@ -4576,7 +4530,15 @@ router.get("/grid", async (req, res) => {
       });
     }
 
-    const { currentDatabase, userId, prefix: tokenPrefix } = decoded;
+    const {
+      currentDatabase,
+      userId,
+      UTUNQ,
+      utunq,
+      branchid,
+      BRANCHUNQ,
+      prefix: tokenPrefix,
+    } = decoded;
 
     if (!currentDatabase) {
       return res.status(400).json({
@@ -4585,31 +4547,33 @@ router.get("/grid", async (req, res) => {
       });
     }
 
+    console.log("decoded by us:", decoded);
+
     const page = Math.max(parseInt(req.query.page || "1", 10) || 1, 1);
 
-    const prefix = tokenPrefix ?? decoded.prefix ?? CHALLAN_PREFIX_FALLBACK;
+    const prefix = tokenPrefix ?? decoded.prefix ?? "RH_";
 
-    const sp551 = getChallanSp551(decoded);
-    const branch = getChallanBranch(decoded);
+    const tl = UTUNQ ?? utunq ?? decoded.tl ?? "";
 
-    console.log("CHALLAN GRID:", {
-      page,
-      utg: decoded.utg,
-      sp551,
-      branch,
-    });
+    const branch = branchid ?? BRANCHUNQ ?? decoded.branch ?? "";
 
     pool = await openPool(currentDatabase);
+    console.log("tl:", tl);
+    const request = pool.request();
 
-    const result = await pool
-      .request()
-      .input("prefix", sql.NVarChar(50), prefix)
-      .input("what", sql.NVarChar(50), "grid1")
-      .input("pageno", sql.NVarChar(50), String(page))
-      .input("sp_551", sql.NVarChar(50), sp551)
-      .input("sp_594", sql.NVarChar(50), branch)
-      .input("sp_463", sql.NVarChar(50), userId ?? "")
-      .execute("A_SP_FOR_Challan");
+    request.input("prefix", sql.NVarChar(50), prefix);
+
+    request.input("what", sql.NVarChar(50), "grid1");
+
+    request.input("pageno", sql.NVarChar(50), String(page));
+
+    request.input("sp_551", sql.NVarChar(50), decoded.utg);
+
+    request.input("sp_594", sql.NVarChar(50), branch);
+
+    request.input("sp_463", sql.NVarChar(50), userId ?? "");
+
+    const result = await request.execute("A_SP_FOR_Challan");
 
     return res.json({
       success: true,
@@ -4617,19 +4581,21 @@ router.get("/grid", async (req, res) => {
       page,
     });
   } catch (err) {
-    console.error("CHALLAN GRID ERROR:", err);
+    console.error("❌ CHALLAN GRID ERROR:", err);
 
     return res.status(500).json({
       success: false,
-      message: "Failed to load challan grid",
+      message: "Server Error",
       error: err.message,
     });
   }
 });
 
 // ============================================================
-// GET /api/challan/grid/page
+// CHALLAN GRID PAGE
+// ASP.NET: Getreceiptpage
 // ============================================================
+
 router.get("/grid/page", async (req, res) => {
   let pool;
 
@@ -4643,7 +4609,15 @@ router.get("/grid/page", async (req, res) => {
       });
     }
 
-    const { currentDatabase, userId, prefix: tokenPrefix } = decoded;
+    const {
+      currentDatabase,
+      userId,
+      UTUNQ,
+      utunq,
+      branchid,
+      BRANCHUNQ,
+      prefix: tokenPrefix,
+    } = decoded;
 
     if (!currentDatabase) {
       return res.status(400).json({
@@ -4656,30 +4630,44 @@ router.get("/grid/page", async (req, res) => {
 
     const search = String(req.query.search || "").trim();
 
-    const prefix = tokenPrefix ?? decoded.prefix ?? CHALLAN_PREFIX_FALLBACK;
+    const prefix = tokenPrefix ?? decoded.prefix ?? "RH_";
 
-    const sp551 = getChallanSp551(decoded);
-    const branch = getChallanBranch(decoded);
+    const tl = UTUNQ ?? utunq ?? decoded.utg ?? "";
+
+    const branch = branchid ?? BRANCHUNQ ?? decoded.branch ?? "";
 
     pool = await openPool(currentDatabase);
 
-    const request = pool
-      .request()
-      .input("prefix", sql.NVarChar(50), prefix)
-      .input("pageno", sql.NVarChar(50), String(page))
-      .input("sp_551", sql.NVarChar(50), sp551)
-      .input("sp_594", sql.NVarChar(50), branch)
-      .input("sp_463", sql.NVarChar(50), userId ?? "");
+    const request = pool.request();
 
-    if (search.isEmpty) {
-      // No search: load normal grid.
+    request.input("prefix", sql.NVarChar(50), prefix);
+
+    request.input("pageno", sql.NVarChar(50), String(page));
+
+    request.input("sp_551", sql.NVarChar(50), tl);
+
+    request.input("sp_594", sql.NVarChar(50), branch);
+
+    request.input("sp_463", sql.NVarChar(50), userId ?? "");
+
+    let result;
+
+    if (search === "") {
+      // ASP.NET:
+      // @what='grid1'
       request.input("what", sql.NVarChar(50), "grid1");
-    } else {
-      request.input("what", sql.NVarChar(50), "search");
-      request.input("sp_469", sql.NVarChar(50), search);
-    }
 
-    const result = await request.execute("A_SP_FOR_Challan");
+      result = await request.execute("A_SP_FOR_Challan");
+    } else {
+      // ASP.NET:
+      // @what='search'
+      // @sp_469=search
+      request.input("what", sql.NVarChar(50), "search");
+
+      request.input("sp_469", sql.NVarChar(50), search);
+
+      result = await request.execute("A_SP_FOR_Challan");
+    }
 
     return res.json({
       success: true,
@@ -4688,19 +4676,21 @@ router.get("/grid/page", async (req, res) => {
       search,
     });
   } catch (err) {
-    console.error("CHALLAN GRID PAGE ERROR:", err);
+    console.error("❌ CHALLAN GRID PAGE ERROR:", err);
 
     return res.status(500).json({
       success: false,
-      message: "Failed to load challan page",
+      message: "Server Error",
       error: err.message,
     });
   }
 });
 
 // ============================================================
-// GET /api/challan/grid/search
+// CHALLAN GRID SEARCH
+// ASP.NET: getsearch
 // ============================================================
+
 router.get("/grid/search", async (req, res) => {
   let pool;
 
@@ -4714,7 +4704,15 @@ router.get("/grid/search", async (req, res) => {
       });
     }
 
-    const { currentDatabase, userId, prefix: tokenPrefix } = decoded;
+    const {
+      currentDatabase,
+      userId,
+      UTUNQ,
+      utunq,
+      branchid,
+      BRANCHUNQ,
+      prefix: tokenPrefix,
+    } = decoded;
 
     if (!currentDatabase) {
       return res.status(400).json({
@@ -4734,10 +4732,11 @@ router.get("/grid/search", async (req, res) => {
 
     const page = Math.max(parseInt(req.query.page || "1", 10) || 1, 1);
 
-    const prefix = tokenPrefix ?? decoded.prefix ?? CHALLAN_PREFIX_FALLBACK;
+    const prefix = tokenPrefix ?? decoded.prefix ?? "RH_";
 
-    const sp551 = getChallanSp551(decoded);
-    const branch = getChallanBranch(decoded);
+    const tl = UTUNQ ?? utunq ?? decoded.utg ?? "";
+
+    const branch = branchid ?? BRANCHUNQ ?? decoded.branch ?? "";
 
     pool = await openPool(currentDatabase);
 
@@ -4747,7 +4746,7 @@ router.get("/grid/search", async (req, res) => {
       .input("what", sql.NVarChar(50), "search")
       .input("pageno", sql.NVarChar(50), String(page))
       .input("sp_469", sql.NVarChar(50), search)
-      .input("sp_551", sql.NVarChar(50), sp551)
+      .input("sp_551", sql.NVarChar(50), tl)
       .input("sp_594", sql.NVarChar(50), branch)
       .input("sp_463", sql.NVarChar(50), userId ?? "")
       .execute("A_SP_FOR_Challan");
@@ -4759,19 +4758,24 @@ router.get("/grid/search", async (req, res) => {
       search,
     });
   } catch (err) {
-    console.error("CHALLAN SEARCH ERROR:", err);
+    console.error("❌ CHALLAN SEARCH ERROR:", err);
 
     return res.status(500).json({
       success: false,
-      message: "Failed to search challans",
+      message: "Server Error",
       error: err.message,
     });
   }
 });
 
 // ============================================================
-// GET /api/challan/grid/total
+// CHALLAN GRID TOTAL
+// ASP.NET: totalrow
+// Uses Cls_challan.proc_total_row equivalent:
+// empty search -> pageno
+// search -> cl_likepage
 // ============================================================
+
 router.get("/grid/total", async (req, res) => {
   let pool;
 
@@ -4785,7 +4789,14 @@ router.get("/grid/total", async (req, res) => {
       });
     }
 
-    const { currentDatabase, prefix: tokenPrefix } = decoded;
+    const {
+      currentDatabase,
+      UTUNQ,
+      utunq,
+      branchid,
+      BRANCHUNQ,
+      prefix: tokenPrefix,
+    } = decoded;
 
     if (!currentDatabase) {
       return res.status(400).json({
@@ -4796,23 +4807,29 @@ router.get("/grid/total", async (req, res) => {
 
     const search = String(req.query.search || "").trim();
 
-    const prefix = tokenPrefix ?? decoded.prefix ?? CHALLAN_PREFIX_FALLBACK;
+    const prefix = tokenPrefix ?? decoded.prefix ?? "RH_";
 
-    const sp551 = getChallanSp551(decoded);
-    const branch = getChallanBranch(decoded);
+    const tl = UTUNQ ?? utunq ?? decoded.utg ?? "";
+
+    const branch = branchid ?? BRANCHUNQ ?? decoded.branch ?? "";
 
     pool = await openPool(currentDatabase);
 
-    const request = pool
-      .request()
-      .input("prefix", sql.NVarChar(50), prefix)
-      .input("sp_551", sql.NVarChar(50), sp551)
-      .input("sp_594", sql.NVarChar(50), branch);
+    const request = pool.request();
 
-    if (!search) {
+    request.input("prefix", sql.NVarChar(50), prefix);
+
+    if (search === "") {
       request.input("what", sql.NVarChar(50), "pageno");
+
+      request.input("sp_551", sql.NVarChar(50), decoded.utg);
+
+      request.input("sp_594", sql.NVarChar(50), branch);
     } else {
       request.input("what", sql.NVarChar(50), "cl_likepage");
+
+      request.input("sp_594", sql.NVarChar(50), branch);
+
       request.input("sp_469", sql.NVarChar(50), search);
     }
 
@@ -4820,9 +4837,12 @@ router.get("/grid/total", async (req, res) => {
 
     let total = 0;
 
-    if (result.recordset?.length) {
+    if (result.recordset?.length > 0) {
       const first = result.recordset[0];
-      total = parseInt(Object.values(first)[0], 10) || 0;
+
+      const firstValue = Object.values(first)[0];
+
+      total = parseInt(firstValue, 10) || 0;
     }
 
     return res.json({
@@ -4830,11 +4850,11 @@ router.get("/grid/total", async (req, res) => {
       total,
     });
   } catch (err) {
-    console.error("CHALLAN TOTAL ERROR:", err);
+    console.error("❌ CHALLAN TOTAL ERROR:", err);
 
     return res.status(500).json({
       success: false,
-      message: "Failed to count challans",
+      message: "Server Error",
       error: err.message,
     });
   }
