@@ -4793,6 +4793,7 @@ router.get("/grid/total", async (req, res) => {
       currentDatabase,
       UTUNQ,
       utunq,
+      userGuid,
       branchid,
       BRANCHUNQ,
       prefix: tokenPrefix,
@@ -4809,6 +4810,7 @@ router.get("/grid/total", async (req, res) => {
 
     const prefix = tokenPrefix ?? decoded.prefix ?? "RH_";
 
+    const tl = UTUNQ ?? utunq ?? decoded.utg ?? "";
     request.input("sp_551", sql.NVarChar(50), tl);
 
     const branch = branchid ?? BRANCHUNQ ?? decoded.branch ?? "";
@@ -4822,7 +4824,7 @@ router.get("/grid/total", async (req, res) => {
     if (search === "") {
       request.input("what", sql.NVarChar(50), "pageno");
 
-      request.input("sp_551", sql.NVarChar(50), decoded.UTUNQ);
+      request.input("sp_551", sql.NVarChar(50), tl);
 
       request.input("sp_594", sql.NVarChar(50), branch);
     } else {
@@ -4830,7 +4832,7 @@ router.get("/grid/total", async (req, res) => {
 
       request.input("sp_594", sql.NVarChar(50), branch);
 
-      request.input("sp_551", sql.NVarChar(50), decoded.UTUNQ);
+      request.input("sp_551", sql.NVarChar(50), tl);
 
       request.input("sp_469", sql.NVarChar(50), search);
     }
