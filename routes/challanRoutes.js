@@ -4791,6 +4791,7 @@ router.get("/grid/total", async (req, res) => {
 
     const {
       currentDatabase,
+      utunq,
       userGuid,
       branchid,
       BRANCHUNQ,
@@ -4825,11 +4826,7 @@ router.get("/grid/total", async (req, res) => {
     request.input("prefix", sql.NVarChar(50), prefix);
 
     // Pass userGuid from decoded token
-    request.input(
-      "sp_551",
-      sql.NVarChar(50),
-      "47243150-0CA8-40E7-A124-60CE6689DDF0",
-    );
+    request.input("sp_551", sql.NVarChar(50), decoded.utunq);
 
     request.input("sp_594", sql.NVarChar(50), branch);
 
