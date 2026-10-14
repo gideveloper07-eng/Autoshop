@@ -4809,7 +4809,7 @@ router.get("/grid/total", async (req, res) => {
 
     const prefix = tokenPrefix ?? decoded.prefix ?? "RH_";
 
-    const tl = UTUNQ ?? utunq ?? decoded.tl ?? decoded.utg ?? "";
+    const tl = UTUNQ ?? utunq ?? decoded.utg ?? "";
 
     const branch = branchid ?? BRANCHUNQ ?? decoded.branch ?? "";
 
