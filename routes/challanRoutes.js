@@ -4793,6 +4793,7 @@ router.get("/grid/total", async (req, res) => {
       currentDatabase,
       UTUNQ,
       utunq,
+      userGuid,
       branchid,
       BRANCHUNQ,
       prefix: tokenPrefix,
@@ -4822,13 +4823,15 @@ router.get("/grid/total", async (req, res) => {
     if (search === "") {
       request.input("what", sql.NVarChar(50), "pageno");
 
-      request.input("sp_551", sql.NVarChar(50), tl);
+      request.input("sp_551", sql.NVarChar(50), decoded.userGuid);
 
       request.input("sp_594", sql.NVarChar(50), branch);
     } else {
       request.input("what", sql.NVarChar(50), "cl_likepage");
 
       request.input("sp_594", sql.NVarChar(50), branch);
+
+      request.input("sp_551", sql.NVarChar(50), decoded.userGuid);
 
       request.input("sp_469", sql.NVarChar(50), search);
     }
