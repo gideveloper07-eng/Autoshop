@@ -4553,7 +4553,7 @@ router.get("/grid", async (req, res) => {
 
     const prefix = tokenPrefix ?? decoded.prefix ?? "RH_";
 
-    const tl = UTUNQ ?? utunq ?? decoded.tl ?? "";
+    const tl = UTUNQ ?? utunq ?? "";
 
     const branch = branchid ?? BRANCHUNQ ?? decoded.branch ?? "";
 
@@ -4567,7 +4567,7 @@ router.get("/grid", async (req, res) => {
 
     request.input("pageno", sql.NVarChar(50), String(page));
 
-    request.input("sp_551", sql.NVarChar(50), decoded.utg);
+    request.input("sp_551", sql.NVarChar(50), tl);
 
     request.input("sp_594", sql.NVarChar(50), branch);
 
@@ -4632,7 +4632,7 @@ router.get("/grid/page", async (req, res) => {
 
     const prefix = tokenPrefix ?? decoded.prefix ?? "RH_";
 
-    const tl = UTUNQ ?? utunq ?? decoded.utg ?? "";
+    const tl = UTUNQ ?? utunq ?? "";
 
     const branch = branchid ?? BRANCHUNQ ?? decoded.branch ?? "";
 
