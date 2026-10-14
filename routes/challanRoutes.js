@@ -4647,7 +4647,7 @@ router.get("/grid/page", async (req, res) => {
 
     request.input("pageno", sql.NVarChar(50), String(page));
 
-    request.input("sp_551", sql.NVarChar(50), tl);
+    request.input("sp_551", sql.NVarChar(50), decoded.utunq);
 
     request.input("sp_594", sql.NVarChar(50), branch);
 
@@ -4737,7 +4737,7 @@ router.get("/grid/search", async (req, res) => {
 
     const prefix = tokenPrefix ?? decoded.prefix ?? "RH_";
 
-    const tl = UTUNQ ?? utunq ?? decoded.utg ?? "";
+    const tl = decoded.utunq ?? "";
 
     const branch = branchid ?? BRANCHUNQ ?? decoded.branch ?? "";
 
