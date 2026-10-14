@@ -4791,8 +4791,6 @@ router.get("/grid/total", async (req, res) => {
 
     const {
       currentDatabase,
-      UTUNQ,
-      utunq,
       userGuid,
       branchid,
       BRANCHUNQ,
@@ -4806,34 +4804,35 @@ router.get("/grid/total", async (req, res) => {
       });
     }
 
+    if (!userGuid) {
+      return res.status(400).json({
+        success: false,
+        message: "userGuid missing from token",
+      });
+    }
+
     const search = String(req.query.search || "").trim();
 
     const prefix = tokenPrefix ?? decoded.prefix ?? "RH_";
-
-    const tl = UTUNQ ?? utunq ?? decoded.utg ?? "";
-    request.input("sp_551", sql.NVarChar(50), tl);
 
     const branch = branchid ?? BRANCHUNQ ?? decoded.branch ?? "";
 
     pool = await openPool(currentDatabase);
 
+    // Initialize request before using request.input()
     const request = pool.request();
 
     request.input("prefix", sql.NVarChar(50), prefix);
 
+    // Pass userGuid from decoded token
+    request.input("sp_551", sql.NVarChar(50), userGuid);
+
+    request.input("sp_594", sql.NVarChar(50), branch);
+
     if (search === "") {
       request.input("what", sql.NVarChar(50), "pageno");
-
-      request.input("sp_551", sql.NVarChar(50), tl);
-
-      request.input("sp_594", sql.NVarChar(50), branch);
     } else {
       request.input("what", sql.NVarChar(50), "cl_likepage");
-
-      request.input("sp_594", sql.NVarChar(50), branch);
-
-      // request.input("sp_551", sql.NVarChar(50), tl);
-
       request.input("sp_469", sql.NVarChar(50), search);
     }
 
@@ -4843,9 +4842,7 @@ router.get("/grid/total", async (req, res) => {
 
     if (result.recordset?.length > 0) {
       const first = result.recordset[0];
-
       const firstValue = Object.values(first)[0];
-
       total = parseInt(firstValue, 10) || 0;
     }
 
@@ -4863,7 +4860,6 @@ router.get("/grid/total", async (req, res) => {
     });
   }
 });
-
 // ============================================================
 // CHALLAN GRID DELETE
 // ASP.NET: DeletegRecptData
