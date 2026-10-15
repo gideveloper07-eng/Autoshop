@@ -4553,7 +4553,7 @@ router.get("/grid", async (req, res) => {
 
     const prefix = tokenPrefix ?? decoded.prefix ?? "RH_";
 
-    const tl = UTUNQ ?? utunq ?? decoded.tl ?? "";
+    const tl = UTUNQ ?? utunq ?? decoded.utg ?? "";
 
     const branch = branchid ?? BRANCHUNQ ?? decoded.branch ?? "";
 
@@ -4648,7 +4648,7 @@ router.get("/grid/page", async (req, res) => {
 
     request.input("sp_594", sql.NVarChar(50), branch);
 
-    request.input("sp_463", sql.NVarChar(50), userId ?? "");
+    request.input("sp_463", sql.NVarChar(50), decoded.userId ?? "");
 
     let result;
 
@@ -4748,7 +4748,7 @@ router.get("/grid/search", async (req, res) => {
       .input("sp_469", sql.NVarChar(50), search)
       .input("sp_551", sql.NVarChar(50), tl)
       .input("sp_594", sql.NVarChar(50), branch)
-      .input("sp_463", sql.NVarChar(50), userId ?? "")
+      .input("sp_463", sql.NVarChar(50), decoded.userId ?? "")
       .execute("A_SP_FOR_Challan_app");
 
     return res.json({
@@ -4818,6 +4818,8 @@ router.get("/grid/total", async (req, res) => {
     const request = pool.request();
 
     request.input("prefix", sql.NVarChar(50), prefix);
+
+    request.input("sp_463", sql.NVarChar(50), decoded.userId ?? "");
 
     if (search === "") {
       request.input("what", sql.NVarChar(50), "pageno");
