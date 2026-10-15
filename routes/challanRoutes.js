@@ -4593,7 +4593,6 @@ router.get("/grid", async (req, res) => {
 
 // ============================================================
 // CHALLAN GRID PAGE
-// ASP.NET: Getreceiptpage
 // ============================================================
 
 router.get("/grid/page", async (req, res) => {
