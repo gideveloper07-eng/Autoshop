@@ -4573,7 +4573,7 @@ router.get("/grid", async (req, res) => {
 
     request.input("sp_463", sql.NVarChar(50), userId ?? "");
 
-    const result = await request.execute("A_SP_FOR_Challan");
+    const result = await request.execute("A_SP_FOR_Challan_app");
 
     return res.json({
       success: true,
@@ -4657,7 +4657,7 @@ router.get("/grid/page", async (req, res) => {
       // @what='grid1'
       request.input("what", sql.NVarChar(50), "grid1");
 
-      result = await request.execute("A_SP_FOR_Challan");
+      result = await request.execute("A_SP_FOR_Challan_app");
     } else {
       // ASP.NET:
       // @what='search'
@@ -4749,7 +4749,7 @@ router.get("/grid/search", async (req, res) => {
       .input("sp_551", sql.NVarChar(50), tl)
       .input("sp_594", sql.NVarChar(50), branch)
       .input("sp_463", sql.NVarChar(50), userId ?? "")
-      .execute("A_SP_FOR_Challan");
+      .execute("A_SP_FOR_Challan_app");
 
     return res.json({
       success: true,
@@ -4833,7 +4833,7 @@ router.get("/grid/total", async (req, res) => {
       request.input("sp_469", sql.NVarChar(50), search);
     }
 
-    const result = await request.execute("A_SP_FOR_Challan");
+    const result = await request.execute("A_SP_FOR_Challan_app");
 
     let total = 0;
 
