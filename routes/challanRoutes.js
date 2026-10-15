@@ -2095,6 +2095,66 @@ router.get("/dashboard-stats", async (req, res) => {
     );
 
     // ======================================================
+    // PBNA (Pending Booking No Allocation)
+    // ======================================================
+
+    let pbnaCount = 0;
+
+    try {
+      const pbnaResult = await pool
+        .request()
+        .input("prefix", sql.NVarChar(50), "")
+        .input("what", sql.NVarChar(50), "Pbna")
+        .input("FromDate", sql.NVarChar(50), "")
+        .input("ToDate", sql.NVarChar(50), "")
+        .input("uuid", sql.NVarChar(50), decoded.userId)
+        .execute("A_SP_FOR_ApplicationChallangrid");
+
+      console.log("📋 PBNA SP Result:", pbnaResult.recordset);
+
+      pbnaCount = Number(
+        pbnaResult.recordset?.[0]?.pbnaCount ??
+          pbnaResult.recordset?.[0]?.PbnaCount ??
+          Object.values(pbnaResult.recordset?.[0] ?? {})[0] ??
+          0,
+      );
+
+      console.log("📋 PBNA COUNT:", pbnaCount);
+    } catch (e) {
+      console.warn("⚠️ PBNA SP failed:", e.message);
+    }
+
+    // ======================================================
+    // VNA (Vehicle Not Available)
+    // ======================================================
+
+    let vnaCount = 0;
+
+    try {
+      const vnaResult = await pool
+        .request()
+        .input("prefix", sql.NVarChar(50), "")
+        .input("what", sql.NVarChar(50), "Vna")
+        .input("FromDate", sql.NVarChar(50), "")
+        .input("ToDate", sql.NVarChar(50), "")
+        .input("uuid", sql.NVarChar(50), decoded.userId)
+        .execute("A_SP_FOR_ApplicationChallangrid");
+
+      console.log("🚗 VNA SP Result:", vnaResult.recordset);
+
+      vnaCount = Number(
+        vnaResult.recordset?.[0]?.vnaCount ??
+          vnaResult.recordset?.[0]?.VnaCount ??
+          Object.values(vnaResult.recordset?.[0] ?? {})[0] ??
+          0,
+      );
+
+      console.log("🚗 VNA COUNT:", vnaCount);
+    } catch (e) {
+      console.warn("⚠️ VNA SP failed:", e.message);
+    }
+
+    // ======================================================
     // LIVE BOOKING FALLBACK
     // ======================================================
 
@@ -2149,6 +2209,10 @@ router.get("/dashboard-stats", async (req, res) => {
       mtdBooking,
 
       mtdSale,
+
+      pbnaCount,
+
+      vnaCount,
     });
 
     // ======================================================
@@ -2186,6 +2250,11 @@ router.get("/dashboard-stats", async (req, res) => {
         mtdBooking,
 
         mtdSale,
+
+        // PBNA & VNA
+        pbnaCount,
+
+        vnaCount,
 
         // Trend
         trendPeriod,
