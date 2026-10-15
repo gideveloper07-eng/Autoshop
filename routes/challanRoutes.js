@@ -4885,7 +4885,7 @@ router.post("/grid/delete", async (req, res) => {
       });
     }
 
-    const { currentDatabase, utg, group, prefix: tokenPrefix } = decoded;
+    const { currentDatabase, userId, prefix: tokenPrefix } = decoded;
 
     if (!currentDatabase) {
       return res.status(400).json({
@@ -4894,44 +4894,76 @@ router.post("/grid/delete", async (req, res) => {
       });
     }
 
+    // Values from the selected grid row
     const unqid = String(req.body.unqid ?? req.body.sp_462 ?? "").trim();
+
+    const vinNo = String(req.body.sp_473 ?? req.body.vinNo ?? "").trim();
 
     if (!unqid) {
       return res.status(400).json({
         success: false,
-        message: "unqid is required",
+        message: "Challan unique ID (sp_462) is required",
       });
     }
 
-    const prefix = tokenPrefix ?? decoded.prefix ?? "RH_";
+    if (!vinNo) {
+      return res.status(400).json({
+        success: false,
+        message: "VIN number (sp_473) is required",
+      });
+    }
 
-    const userGroup = group ?? utg ?? "";
+    const prefix = tokenPrefix ?? decoded.prefix ?? "rh_";
+    const ipAddress = getClientIp(req);
 
     pool = await openPool(currentDatabase);
 
+    // Call A_SP_FOR_Challan with @what = 'gp_cancel'
     const result = await pool
       .request()
       .input("prefix", sql.NVarChar(50), prefix)
-      .input("what", sql.NVarChar(50), "delete_Raja")
-      .input("sp_462", sql.NVarChar(100), unqid)
-      .input("sp_463", sql.NVarChar(100), userGroup)
+      .input("what", sql.NVarChar(50), "gp_cancel")
+      .input("sp_462", sql.NVarChar(50), unqid)
+      .input("sp_463", sql.NVarChar(50), String(userId ?? ""))
+      .input("sp_464", sql.NVarChar(50), ipAddress)
+      .input("sp_473", sql.NVarChar(50), vinNo)
       .execute("A_SP_FOR_Challan");
+
+    const message = String(result.recordset?.[0]?.err ?? "").trim();
+
+    console.log("CHALLAN GP_CANCEL RESULT:", {
+      unqid,
+      vinNo,
+      message,
+    });
+
+    if (!message || !message.toLowerCase().includes("canceled successfully")) {
+      return res.status(400).json({
+        success: false,
+        message: message || "Gate pass cancellation failed",
+      });
+    }
 
     return res.json({
       success: true,
+      message,
       data: result.recordset || [],
-      message: result.recordset?.[0]?.err ?? "Record deleted successfully",
     });
   } catch (err) {
-    console.error("❌ CHALLAN DELETE ERROR:", err);
+    console.error("CHALLAN GP_CANCEL ERROR:", err);
 
     return res.status(500).json({
       success: false,
-      message: "Server Error",
+      message: "Gate pass cancellation failed",
       error: err.message,
     });
+  } finally {
+    if (pool) {
+      await pool.close();
+    }
   }
 });
+
 // ═══════════════════════════════════════════════════════════════════════════
 // NEW CHALLAN — DROPDOWN / FORM SUPPORT ROUTES
 // ═══════════════════════════════════════════════════════════════════════════
