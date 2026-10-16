@@ -2005,6 +2005,64 @@ router.get("/dashboard-stats", async (req, res) => {
     }
 
     // ======================================================
+    // PBNA (Pending Booking No Allocation)
+    // ======================================================
+
+    let pbnaCount = 0;
+
+    try {
+      const pbnaResult = await pool
+        .request()
+        .input("prefix", sql.NVarChar(50), "")
+        .input("what", sql.NVarChar(50), "Pbna")
+        .input("FromDate", sql.NVarChar(50), "")
+        .input("ToDate", sql.NVarChar(50), "")
+        .input("uuid", sql.NVarChar(50), decoded.userId)
+        .execute("A_SP_FOR_ApplicationChallangrid");
+
+      console.log("📋 PBNA SP Result:", pbnaResult.recordset);
+
+      pbnaCount = Number(
+        pbnaResult.recordset?.[0]?.pbnaCount ??
+          pbnaResult.recordset?.[0]?.PbnaCount ??
+          firstNum(pbnaResult.recordset?.[0]),
+      );
+
+      console.log("📋 PBNA COUNT:", pbnaCount);
+    } catch (e) {
+      console.warn("⚠️ Pbna SP failed:", e.message);
+    }
+
+    // ======================================================
+    // VNA (Vehicles Not Allocated — demand > stock)
+    // ======================================================
+
+    let vnaCount = 0;
+
+    try {
+      const vnaResult = await pool
+        .request()
+        .input("prefix", sql.NVarChar(50), "")
+        .input("what", sql.NVarChar(50), "Vna")
+        .input("FromDate", sql.NVarChar(50), "")
+        .input("ToDate", sql.NVarChar(50), "")
+        .input("uuid", sql.NVarChar(50), decoded.userId)
+        .execute("A_SP_FOR_ApplicationChallangrid");
+
+      console.log("🚗 VNA SP Result:", vnaResult.recordset);
+
+      vnaCount = Number(
+        vnaResult.recordset?.[0]?.vnaCount ??
+          vnaResult.recordset?.[0]?.VnaCount ??
+          firstNum(vnaResult.recordset?.[0]),
+      );
+
+      console.log("🚗 VNA COUNT:", vnaCount);
+    } catch (e) {
+      console.warn("⚠️ Vna SP failed:", e.message);
+    }
+
+    // ======================================================
     // PENDING DELIVERY
     // ======================================================
 
@@ -2093,66 +2151,6 @@ router.get("/dashboard-stats", async (req, res) => {
       "| yesterdaySale:",
       yesterdaySale,
     );
-
-    // ======================================================
-    // PBNA (Pending Booking No Allocation)
-    // ======================================================
-
-    let pbnaCount = 0;
-
-    try {
-      const pbnaResult = await pool
-        .request()
-        .input("prefix", sql.NVarChar(50), "")
-        .input("what", sql.NVarChar(50), "Pbna")
-        .input("FromDate", sql.NVarChar(50), "")
-        .input("ToDate", sql.NVarChar(50), "")
-        .input("uuid", sql.NVarChar(50), decoded.userId)
-        .execute("A_SP_FOR_ApplicationChallangrid");
-
-      console.log("📋 PBNA SP Result:", pbnaResult.recordset);
-
-      pbnaCount = Number(
-        pbnaResult.recordset?.[0]?.pbnaCount ??
-          pbnaResult.recordset?.[0]?.PbnaCount ??
-          Object.values(pbnaResult.recordset?.[0] ?? {})[0] ??
-          0,
-      );
-
-      console.log("📋 PBNA COUNT:", pbnaCount);
-    } catch (e) {
-      console.warn("⚠️ PBNA SP failed:", e.message);
-    }
-
-    // ======================================================
-    // VNA (Vehicle Not Available)
-    // ======================================================
-
-    let vnaCount = 0;
-
-    try {
-      const vnaResult = await pool
-        .request()
-        .input("prefix", sql.NVarChar(50), "")
-        .input("what", sql.NVarChar(50), "Vna")
-        .input("FromDate", sql.NVarChar(50), "")
-        .input("ToDate", sql.NVarChar(50), "")
-        .input("uuid", sql.NVarChar(50), decoded.userId)
-        .execute("A_SP_FOR_ApplicationChallangrid");
-
-      console.log("🚗 VNA SP Result:", vnaResult.recordset);
-
-      vnaCount = Number(
-        vnaResult.recordset?.[0]?.vnaCount ??
-          vnaResult.recordset?.[0]?.VnaCount ??
-          Object.values(vnaResult.recordset?.[0] ?? {})[0] ??
-          0,
-      );
-
-      console.log("🚗 VNA COUNT:", vnaCount);
-    } catch (e) {
-      console.warn("⚠️ VNA SP failed:", e.message);
-    }
 
     // ======================================================
     // LIVE BOOKING FALLBACK
@@ -2251,7 +2249,7 @@ router.get("/dashboard-stats", async (req, res) => {
 
         mtdSale,
 
-        // PBNA & VNA
+        // PBNA / VNA
         pbnaCount,
 
         vnaCount,
@@ -4043,48 +4041,18 @@ router.get("/new/insurance-calculation", async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.get("/new/load/:sp462", async (req, res) => {
   let pool;
-
   try {
-    // 1. Validate authentication token.
     const decoded = decodeToken(req);
-
-    if (!decoded) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized. Invalid or missing token.",
-      });
-    }
-
-    // 2. Get database from the authenticated user's token.
+    if (!decoded)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
     const { currentDatabase } = decoded;
+    const { sp462 } = req.params;
+    if (!sp462)
+      return res
+        .status(400)
+        .json({ success: false, message: "sp462 required" });
 
-    if (!currentDatabase) {
-      return res.status(400).json({
-        success: false,
-        message: "Database information is missing from the login token.",
-      });
-    }
-
-    // 3. Validate challan unique ID.
-    const sp462 = String(req.params.sp462 || "").trim();
-
-    if (!sp462 || sp462 === "0") {
-      return res.status(400).json({
-        success: false,
-        message: "A valid challan sp462 is required.",
-      });
-    }
-
-    console.log("CHALLAN EDIT LOAD:", {
-      database: currentDatabase,
-      sp462,
-      what: "Edit",
-    });
-
-    // 4. Connect to the user's database.
     pool = await openPool(currentDatabase);
-
-    // 5. Execute the stored procedure with parameterized inputs.
     const result = await pool
       .request()
       .input("prefix", sql.NVarChar(50), "rh_")
@@ -4092,41 +4060,15 @@ router.get("/new/load/:sp462", async (req, res) => {
       .input("sp_462", sql.NVarChar(50), sp462)
       .execute("A_SP_FOR_Challan");
 
-    // 6. Check whether the stored procedure returned a record.
-    const rows = result.recordset || [];
+    if (!result.recordset || result.recordset.length === 0)
+      return res
+        .status(404)
+        .json({ success: false, message: "Challan not found" });
 
-    if (rows.length === 0) {
-      console.warn("CHALLAN NOT FOUND:", sp462);
-
-      return res.status(404).json({
-        success: false,
-        message: "No challan record found for the supplied ID.",
-      });
-    }
-
-    // 7. Return the complete record to Flutter.
-    console.log("CHALLAN EDIT LOAD SUCCESS:", {
-      sp462,
-      columns: Object.keys(rows[0]),
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: "Challan loaded successfully.",
-      data: rows[0],
-    });
+    return res.json({ success: true, data: result.recordset[0] });
   } catch (err) {
-    console.error("CHALLAN LOAD ERROR:", {
-      message: err.message,
-      code: err.code,
-      number: err.number,
-    });
-
-    return res.status(500).json({
-      success: false,
-      message: "Failed to load challan data.",
-      error: err.message,
-    });
+    console.error("CHALLAN LOAD ERROR:", err.message);
+    return res.status(500).json({ success: false, message: err.message });
   }
 });
 
