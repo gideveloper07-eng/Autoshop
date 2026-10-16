@@ -2829,6 +2829,64 @@ router.get("/dashboard-modelwise", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/pbna-modelwise
+// Returns PBNA (Pending Booking No Allocation) model-wise counts.
+// SP mode: Pbna_Modelwise
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/pbna-modelwise", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const { currentDatabase: databaseName } = decoded;
+
+    if (!databaseName) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Database not found in token" });
+    }
+
+    console.log(`📋 PBNA Modelwise | DB: ${databaseName}`);
+
+    pool = await openPool(databaseName);
+
+    const result = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "")
+      .input("what", sql.NVarChar(50), "Pbna_Modelwise")
+      .input("FromDate", sql.NVarChar(50), "")
+      .input("ToDate", sql.NVarChar(50), "")
+      .input("uuid", sql.NVarChar(50), decoded.userId)
+      .execute("A_SP_FOR_ApplicationChallangrid");
+
+    const models = (result.recordset || []).map((row) => ({
+      modelName: (row.Model ?? row.model ?? "Unknown Model").toString().trim(),
+      count: Number(row.TotalCount ?? row.totalCount ?? row.totalcount ?? 0),
+    }));
+
+    const total = models.reduce((sum, item) => sum + item.count, 0);
+
+    return res.json({
+      success: true,
+      data: { total, models },
+    });
+  } catch (err) {
+    console.error("❌ PBNA Modelwise Error:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GET /api/challan/dashboard-scwise
 // Returns SC (Sales Consultant) wise sale counts for today or yesterday.
 // Query params: type = sale, period = today | yesterday
