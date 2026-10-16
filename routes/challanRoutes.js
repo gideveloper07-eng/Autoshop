@@ -4043,18 +4043,48 @@ router.get("/new/insurance-calculation", async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.get("/new/load/:sp462", async (req, res) => {
   let pool;
-  try {
-    const decoded = decodeToken(req);
-    if (!decoded)
-      return res.status(401).json({ success: false, message: "Unauthorized" });
-    const { currentDatabase } = decoded;
-    const { sp462 } = req.params;
-    if (!sp462)
-      return res
-        .status(400)
-        .json({ success: false, message: "sp462 required" });
 
+  try {
+    // 1. Validate authentication token.
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized. Invalid or missing token.",
+      });
+    }
+
+    // 2. Get database from the authenticated user's token.
+    const { currentDatabase } = decoded;
+
+    if (!currentDatabase) {
+      return res.status(400).json({
+        success: false,
+        message: "Database information is missing from the login token.",
+      });
+    }
+
+    // 3. Validate challan unique ID.
+    const sp462 = String(req.params.sp462 || "").trim();
+
+    if (!sp462 || sp462 === "0") {
+      return res.status(400).json({
+        success: false,
+        message: "A valid challan sp462 is required.",
+      });
+    }
+
+    console.log("CHALLAN EDIT LOAD:", {
+      database: currentDatabase,
+      sp462,
+      what: "Edit",
+    });
+
+    // 4. Connect to the user's database.
     pool = await openPool(currentDatabase);
+
+    // 5. Execute the stored procedure with parameterized inputs.
     const result = await pool
       .request()
       .input("prefix", sql.NVarChar(50), "rh_")
@@ -4062,15 +4092,41 @@ router.get("/new/load/:sp462", async (req, res) => {
       .input("sp_462", sql.NVarChar(50), sp462)
       .execute("A_SP_FOR_Challan");
 
-    if (!result.recordset || result.recordset.length === 0)
-      return res
-        .status(404)
-        .json({ success: false, message: "Challan not found" });
+    // 6. Check whether the stored procedure returned a record.
+    const rows = result.recordset || [];
 
-    return res.json({ success: true, data: result.recordset[0] });
+    if (rows.length === 0) {
+      console.warn("CHALLAN NOT FOUND:", sp462);
+
+      return res.status(404).json({
+        success: false,
+        message: "No challan record found for the supplied ID.",
+      });
+    }
+
+    // 7. Return the complete record to Flutter.
+    console.log("CHALLAN EDIT LOAD SUCCESS:", {
+      sp462,
+      columns: Object.keys(rows[0]),
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Challan loaded successfully.",
+      data: rows[0],
+    });
   } catch (err) {
-    console.error("CHALLAN LOAD ERROR:", err.message);
-    return res.status(500).json({ success: false, message: err.message });
+    console.error("CHALLAN LOAD ERROR:", {
+      message: err.message,
+      code: err.code,
+      number: err.number,
+    });
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load challan data.",
+      error: err.message,
+    });
   }
 });
 
