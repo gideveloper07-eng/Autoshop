@@ -3018,6 +3018,81 @@ router.get("/vna-modelwise", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/vna-details
+// Returns booking details for a specific model+variant+color under VNA.
+// Query params: modelName, variantName, colorName
+// SP mode: Vna_details
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/vna-details", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const { currentDatabase: databaseName } = decoded;
+
+    if (!databaseName) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Database not found in token" });
+    }
+
+    const modelName   = (req.query.modelName   || "").toString().trim();
+    const variantName = (req.query.variantName || "").toString().trim();
+    const colorName   = (req.query.colorName   || "").toString().trim();
+
+    if (!modelName) {
+      return res
+        .status(400)
+        .json({ success: false, message: "modelName query param is required" });
+    }
+
+    console.log(
+      `🚗 VNA Details | Model: ${modelName} | Variant: ${variantName} | Color: ${colorName} | DB: ${databaseName}`,
+    );
+
+    pool = await openPool(databaseName);
+
+    const result = await pool
+      .request()
+      .input("prefix",     sql.NVarChar(50),  "")
+      .input("what",       sql.NVarChar(50),  "Vna_details")
+      .input("FromDate",   sql.NVarChar(50),  "")
+      .input("ToDate",     sql.NVarChar(50),  "")
+      .input("uuid",       sql.NVarChar(50),  decoded.userId)
+      .input("ModelUnq",   sql.NVarChar(50),  modelName)
+      .input("VariantUnq", sql.NVarChar(50),  variantName)
+      .input("ColourUnq",  sql.NVarChar(50),  colorName)
+      .execute("A_SP_FOR_ApplicationChallangrid");
+
+    const rows = (result.recordset || []).map((row) => ({
+      bookingDate : row.BookingDate  ?? row.bookingdate  ?? null,
+      customer    : (row.Customer   ?? row.customer      ?? "").toString().trim(),
+      model       : (row.Model      ?? row.model         ?? "").toString().trim(),
+      variant     : (row.Variant    ?? row.variant       ?? "").toString().trim(),
+      color       : (row.Color      ?? row.color         ?? "").toString().trim(),
+    }));
+
+    return res.json({
+      success: true,
+      data: { modelName, variantName, colorName, total: rows.length, rows },
+    });
+  } catch (err) {
+    console.error("❌ VNA Details Error:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GET /api/challan/dashboard-scwise
 // Returns SC (Sales Consultant) wise sale counts for today or yesterday.
 // Query params: type = sale, period = today | yesterday
