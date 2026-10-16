@@ -2958,6 +2958,66 @@ router.get("/pbna-modelwise-details", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GET /api/challan/vna-modelwise
+// Returns VNA (Vehicles Not Allocated) model+variant+color wise demand gap.
+// SP mode: Vna_modelwise
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/vna-modelwise", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const { currentDatabase: databaseName } = decoded;
+
+    if (!databaseName) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Database not found in token" });
+    }
+
+    console.log(`🚗 VNA Modelwise | DB: ${databaseName}`);
+
+    pool = await openPool(databaseName);
+
+    const result = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "")
+      .input("what", sql.NVarChar(50), "Vna_modelwise")
+      .input("FromDate", sql.NVarChar(50), "")
+      .input("ToDate", sql.NVarChar(50), "")
+      .input("uuid", sql.NVarChar(50), decoded.userId)
+      .execute("A_SP_FOR_ApplicationChallangrid");
+
+    const rows = (result.recordset || []).map((row) => ({
+      model: (row.Model ?? row.model ?? "Unknown Model").toString().trim(),
+      variant: (row.Variant ?? row.variant ?? "").toString().trim(),
+      color: (row.color ?? row.Color ?? "").toString().trim(),
+      qty: Number(row.qty ?? row.QTY ?? row.Qty ?? 0),
+    }));
+
+    const total = rows.reduce((sum, r) => sum + r.qty, 0);
+
+    return res.json({
+      success: true,
+      data: { total, rows },
+    });
+  } catch (err) {
+    console.error("❌ VNA Modelwise Error:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GET /api/challan/dashboard-scwise
 // Returns SC (Sales Consultant) wise sale counts for today or yesterday.
 // Query params: type = sale, period = today | yesterday
