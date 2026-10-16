@@ -4302,20 +4302,43 @@ router.get("/new/insurance-calculation", async (req, res) => {
 // GET /api/challan/new/load/:sp462
 // Calls A_SP_FOR_Challan @what='Edit' — full row for editing
 // ─────────────────────────────────────────────────────────────────────────────
+
 router.get("/new/load/:sp462", async (req, res) => {
   let pool;
+
   try {
+    // 1. Validate login token
     const decoded = decodeToken(req);
-    if (!decoded)
-      return res.status(401).json({ success: false, message: "Unauthorized" });
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    // 2. Get database and challan ID
     const { currentDatabase } = decoded;
     const { sp462 } = req.params;
-    if (!sp462)
-      return res
-        .status(400)
-        .json({ success: false, message: "sp462 required" });
 
+    if (!currentDatabase) {
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
+    }
+
+    if (!sp462) {
+      return res.status(400).json({
+        success: false,
+        message: "sp462 required",
+      });
+    }
+
+    // 3. Connect to the dealership database
     pool = await openPool(currentDatabase);
+
+    // 4. Load challan using the existing stored procedure
     const result = await pool
       .request()
       .input("prefix", sql.NVarChar(50), "rh_")
@@ -4323,15 +4346,46 @@ router.get("/new/load/:sp462", async (req, res) => {
       .input("sp_462", sql.NVarChar(50), sp462)
       .execute("A_SP_FOR_Challan");
 
-    if (!result.recordset || result.recordset.length === 0)
-      return res
-        .status(404)
-        .json({ success: false, message: "Challan not found" });
+    if (!result.recordset || result.recordset.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Challan not found",
+      });
+    }
 
-    return res.json({ success: true, data: result.recordset[0] });
+    // 5. Fetch KP Amount separately.
+    // This avoids relying on the duplicate "Amount" column alias
+    // returned by the stored procedure.
+    const kpResult = await pool
+      .request()
+      .input("sp462", sql.NVarChar(50), sp462).query(`
+        SELECT sp_517 AS KPAmount
+        FROM rh_sp_46
+        WHERE sp_462 = @sp462
+      `);
+
+    // 6. Prepare response without changing the stored procedure
+    const challan = {
+      ...result.recordset[0],
+      KPAmount: kpResult.recordset[0]?.KPAmount ?? 0,
+    };
+
+    console.log("CHALLAN LOAD SUCCESS:", sp462);
+    console.log("KP AMOUNT:", challan.KPAmount);
+
+    // 7. Return challan data to Flutter
+    return res.json({
+      success: true,
+      data: challan,
+    });
   } catch (err) {
-    console.error("CHALLAN LOAD ERROR:", err.message);
-    return res.status(500).json({ success: false, message: err.message });
+    console.error("CHALLAN LOAD ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load challan",
+      error: err.message,
+    });
   }
 });
 
