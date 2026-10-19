@@ -497,32 +497,47 @@ router.get("/today-reject", async (req, res) => {
 // Calls A_SP_FOR_ApplicationChallangrid with @what = 'Edit' and @sp_462
 // Returns: Complete challan details for the specified sp_462
 // ─────────────────────────────────────────────────────────────────────────────
+
 router.get("/edit/:sp_462", async (req, res) => {
   let pool;
+
   try {
+    // 1. Validate authentication
     const decoded = decodeToken(req);
+
     if (!decoded) {
-      return res.status(401).json({ success: false, message: "Unauthorized" });
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
     }
 
+    // 2. Validate database
     const { currentDatabase: databaseName } = decoded;
+
     if (!databaseName) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Database not found in token" });
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
     }
 
+    // 3. Validate challan ID
     const { sp_462 } = req.params;
+
     if (!sp_462) {
-      return res
-        .status(400)
-        .json({ success: false, message: "sp_462 parameter is required" });
+      return res.status(400).json({
+        success: false,
+        message: "sp_462 parameter is required",
+      });
     }
 
-    console.log("📝 CHALLAN — Edit — DB:", databaseName, "sp_462:", sp_462);
+    console.log("CHALLAN EDIT REQUEST:", { databaseName, sp_462 });
 
+    // 4. Connect to the user's database
     pool = await openPool(databaseName);
 
+    // 5. Fetch existing challan details
     const result = await pool
       .request()
       .input("prefix", sql.NVarChar(50), "")
@@ -532,28 +547,57 @@ router.get("/edit/:sp_462", async (req, res) => {
       .input("sp_462", sql.NVarChar(50), sp_462)
       .execute("A_SP_FOR_ApplicationChallangrid");
 
-    if (result.recordset.length === 0) {
+    if (!result.recordset || result.recordset.length === 0) {
       return res.status(404).json({
         success: false,
         message: "Challan not found",
       });
     }
 
-    console.log(`✅ Challan edit data retrieved for sp_462: ${sp_462}`);
+    // 6. Fetch RSA directly from rh_sp_46.sp_475
+    const rsaResult = await pool
+      .request()
+      .input("sp_462", sql.NVarChar(50), sp_462).query(`
+        SELECT sp_475
+        FROM rh_sp_46
+        WHERE sp_462 = @sp_462
+      `);
 
+    const rsaValue =
+      rsaResult.recordset && rsaResult.recordset.length > 0
+        ? rsaResult.recordset[0].sp_475
+        : 0;
+
+    // 7. Merge RSA into the stored procedure response
+    const editData = {
+      ...result.recordset[0],
+      RSA: rsaValue ?? 0,
+      rsa: rsaValue ?? 0,
+      sp_475: rsaValue ?? 0,
+    };
+
+    // 8. Debug log
+    console.log("CHALLAN EDIT RSA:", {
+      sp_462,
+      rsaValue,
+      returnedKeys: Object.keys(editData).filter((key) =>
+        ["RSA", "rsa", "sp_475"].includes(key),
+      ),
+    });
+
+    // 9. Return complete challan details
     return res.json({
       success: true,
-      data: result.recordset[0],
+      data: editData,
     });
   } catch (err) {
-    console.error("❌ CHALLAN EDIT ERROR:", err.message);
+    console.error("CHALLAN EDIT ERROR:", err);
+
     return res.status(500).json({
       success: false,
       message: "Server Error",
       error: err.message,
     });
-  } finally {
-    // if (pool) await pool.close();
   }
 });
 
