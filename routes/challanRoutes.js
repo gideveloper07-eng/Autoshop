@@ -4398,12 +4398,15 @@ router.get("/new/load/:sp462", async (req, res) => {
     }
 
     // 5. Fetch KP Amount and RSA separately
+
+    // 5. Fetch KP Amount, RSA, and handling charges separately
     const extraResult = await pool
       .request()
       .input("sp462", sql.NVarChar(50), sp462).query(`
         SELECT
           ISNULL(sp_517, 0) AS KPAmount,
-          ISNULL(sp_475, 0) AS RSA
+          ISNULL(sp_625, 0) AS RSA,
+          ISNULL(sp_475, 0) AS handlingchrg
         FROM rh_sp_46
         WHERE sp_462 = @sp462
       `);
@@ -4411,17 +4414,16 @@ router.get("/new/load/:sp462", async (req, res) => {
     const extraData = extraResult.recordset?.[0] ?? {
       KPAmount: 0,
       RSA: 0,
+      handlingchrg: 0,
     };
 
-    // 6. Prepare the response
     const challan = {
       ...result.recordset[0],
-
-      // Explicit values override duplicate or incorrect aliases
       KPAmount: extraData.KPAmount,
       RSA: extraData.RSA,
       rsa: extraData.RSA,
-      sp_475: extraData.RSA,
+      handlingchrg: extraData.handlingchrg,
+      sp_475: extraData.handlingchrg,
     };
 
     // 7. Debug logs
