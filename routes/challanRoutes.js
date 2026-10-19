@@ -4405,8 +4405,7 @@ router.get("/new/load/:sp462", async (req, res) => {
       .input("sp462", sql.NVarChar(50), sp462).query(`
         SELECT
           ISNULL(sp_517, 0) AS KPAmount,
-          ISNULL(sp_625, 0) AS RSA,
-          ISNULL(sp_475, 0) AS handlingchrg
+          ISNULL(sp_475, 0) AS RSA
         FROM rh_sp_46
         WHERE sp_462 = @sp462
       `);
@@ -4423,7 +4422,7 @@ router.get("/new/load/:sp462", async (req, res) => {
       RSA: extraData.RSA,
       rsa: extraData.RSA,
       handlingchrg: extraData.handlingchrg,
-      sp_475: extraData.handlingchrg,
+      sp_475: extraData.RSA,
     };
 
     // 7. Debug logs
