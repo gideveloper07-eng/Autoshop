@@ -4361,7 +4361,7 @@ router.get("/new/load/:sp462", async (req, res) => {
       });
     }
 
-    // 2. Get database and challan ID
+    // 2. Extract database and challan ID
     const { currentDatabase } = decoded;
     const { sp462 } = req.params;
 
@@ -4372,10 +4372,10 @@ router.get("/new/load/:sp462", async (req, res) => {
       });
     }
 
-    if (!sp462) {
+    if (!sp462 || !sp462.trim()) {
       return res.status(400).json({
         success: false,
-        message: "sp462 required",
+        message: "Challan ID (sp462) is required",
       });
     }
 
@@ -4397,28 +4397,40 @@ router.get("/new/load/:sp462", async (req, res) => {
       });
     }
 
-    // 5. Fetch KP Amount separately.
-    // This avoids relying on the duplicate "Amount" column alias
-    // returned by the stored procedure.
-    const kpResult = await pool
+    // 5. Fetch KP Amount and RSA separately
+    const extraResult = await pool
       .request()
       .input("sp462", sql.NVarChar(50), sp462).query(`
-        SELECT sp_517 AS KPAmount
+        SELECT
+          ISNULL(sp_517, 0) AS KPAmount,
+          ISNULL(sp_475, 0) AS RSA
         FROM rh_sp_46
         WHERE sp_462 = @sp462
       `);
 
-    // 6. Prepare response without changing the stored procedure
-    const challan = {
-      ...result.recordset[0],
-      KPAmount: kpResult.recordset[0]?.KPAmount ?? 0,
+    const extraData = extraResult.recordset?.[0] ?? {
+      KPAmount: 0,
+      RSA: 0,
     };
 
+    // 6. Prepare the response
+    const challan = {
+      ...result.recordset[0],
+
+      // Explicit values override duplicate or incorrect aliases
+      KPAmount: extraData.KPAmount,
+      RSA: extraData.RSA,
+      rsa: extraData.RSA,
+      sp_475: extraData.RSA,
+    };
+
+    // 7. Debug logs
     console.log("CHALLAN LOAD SUCCESS:", sp462);
     console.log("KP AMOUNT:", challan.KPAmount);
+    console.log("RSA AMOUNT:", challan.RSA);
 
-    // 7. Return challan data to Flutter
-    return res.json({
+    // 8. Return data to Flutter
+    return res.status(200).json({
       success: true,
       data: challan,
     });
