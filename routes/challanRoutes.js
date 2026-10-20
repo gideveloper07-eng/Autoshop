@@ -3132,10 +3132,12 @@ router.get("/vahan-details", async (req, res) => {
       success: true,
       data: {
         period,
+
         rows: (result.recordset || []).map((row) => ({
           variant: row.Variant ?? row.variant ?? "",
           date: row.vahandate ?? row.VahanDate ?? null,
           customerName: row.customername ?? row.CustomerName ?? "",
+          branch: row.branch ?? row.Branch ?? "",
         })),
       },
     });
