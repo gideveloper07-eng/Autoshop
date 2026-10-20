@@ -2134,6 +2134,52 @@ router.get("/dashboard-stats", async (req, res) => {
       console.warn("⚠️ Vahan SP failed:", e.message);
     }
 
+    // TODAY VAHAN
+    let vahanTodayCount = 0;
+
+    try {
+      const vahanTodayResult = await pool
+        .request()
+        .input("prefix", sql.NVarChar(50), "")
+        .input("what", sql.NVarChar(50), "VahanToday")
+        .input("FromDate", sql.NVarChar(50), "")
+        .input("ToDate", sql.NVarChar(50), "")
+        .input("uuid", sql.NVarChar(50), decoded.userId)
+        .execute("A_SP_FOR_ApplicationChallangrid");
+
+      vahanTodayCount = Number(
+        vahanTodayResult.recordset?.[0]?.TotalCount ??
+          vahanTodayResult.recordset?.[0]?.totalCount ??
+          firstNum(vahanTodayResult.recordset?.[0]) ??
+          0,
+      );
+    } catch (e) {
+      console.warn("VahanToday SP failed:", e.message);
+    }
+
+    // VAHAN MONTH-TO-DATE
+    let vahanMonthCount = 0;
+
+    try {
+      const vahanMonthResult = await pool
+        .request()
+        .input("prefix", sql.NVarChar(50), "")
+        .input("what", sql.NVarChar(50), "VahanMonth")
+        .input("FromDate", sql.NVarChar(50), "")
+        .input("ToDate", sql.NVarChar(50), "")
+        .input("uuid", sql.NVarChar(50), decoded.userId)
+        .execute("A_SP_FOR_ApplicationChallangrid");
+
+      vahanMonthCount = Number(
+        vahanMonthResult.recordset?.[0]?.TotalCount ??
+          vahanMonthResult.recordset?.[0]?.totalCount ??
+          firstNum(vahanMonthResult.recordset?.[0]) ??
+          0,
+      );
+    } catch (e) {
+      console.warn("VahanMonth SP failed:", e.message);
+    }
+
     // ======================================================
     // PENDING DELIVERY
     // ======================================================
@@ -2320,6 +2366,9 @@ router.get("/dashboard-stats", async (req, res) => {
         liveBooking: effectiveLiveBooking,
 
         mtdBooking,
+        vahanCount,
+        vahanTodayCount,
+        vahanMonthCount,
 
         mtdSale,
 
