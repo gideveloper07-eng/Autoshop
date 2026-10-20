@@ -2106,6 +2106,35 @@ router.get("/dashboard-stats", async (req, res) => {
     }
 
     // ======================================================
+    // VAHAN (Total Challan deliveries)
+    // ======================================================
+
+    let vahanCount = 0;
+
+    try {
+      const vahanResult = await pool
+        .request()
+        .input("prefix", sql.NVarChar(50), "")
+        .input("what", sql.NVarChar(50), "Vahan")
+        .input("FromDate", sql.NVarChar(50), "")
+        .input("ToDate", sql.NVarChar(50), "")
+        .input("uuid", sql.NVarChar(50), decoded.userId)
+        .execute("A_SP_FOR_ApplicationChallangrid");
+
+      console.log("🚘 VAHAN SP Result:", vahanResult.recordset);
+
+      vahanCount = Number(
+        vahanResult.recordset?.[0]?.TotalCount ??
+          vahanResult.recordset?.[0]?.totalCount ??
+          firstNum(vahanResult.recordset?.[0]),
+      );
+
+      console.log("🚘 VAHAN COUNT:", vahanCount);
+    } catch (e) {
+      console.warn("⚠️ Vahan SP failed:", e.message);
+    }
+
+    // ======================================================
     // PENDING DELIVERY
     // ======================================================
 
@@ -2254,6 +2283,8 @@ router.get("/dashboard-stats", async (req, res) => {
       pbnaCount,
 
       vnaCount,
+
+      vahanCount,
     });
 
     // ======================================================
@@ -2292,10 +2323,12 @@ router.get("/dashboard-stats", async (req, res) => {
 
         mtdSale,
 
-        // PBNA / VNA
+        // PBNA / VNA / Vahan
         pbnaCount,
 
         vnaCount,
+
+        vahanCount,
 
         // Trend
         trendPeriod,
