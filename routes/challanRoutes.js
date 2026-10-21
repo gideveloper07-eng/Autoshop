@@ -3154,6 +3154,81 @@ router.get("/vahan-details", async (req, res) => {
   }
 });
 
+router.get("/b2r-details", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { currentDatabase: databaseName } = decoded;
+
+    if (!databaseName) {
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
+    }
+
+    const period = (req.query.period || "total")
+      .toString()
+      .trim()
+      .toLowerCase();
+
+    // Replace these with the EXACT @what values
+    // implemented in your SQL stored procedure.
+    const whatByPeriod = new Map([
+      ["total", "YOUR_B2R_TOTAL_MODE"],
+      ["today", "YOUR_B2R_TODAY_MODE"],
+      ["month", "YOUR_B2R_MONTH_MODE"],
+    ]);
+
+    const what = whatByPeriod.get(period);
+
+    if (!what) {
+      return res.status(400).json({
+        success: false,
+        message: "period must be total, today, or month",
+      });
+    }
+
+    pool = await openPool(databaseName);
+
+    const result = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "")
+      .input("what", sql.NVarChar(50), what)
+      .input("FromDate", sql.NVarChar(50), "")
+      .input("ToDate", sql.NVarChar(50), "")
+      .input("uuid", sql.NVarChar(50), decoded.userId)
+      .execute("A_SP_FOR_ApplicationChallangrid");
+
+    return res.json({
+      success: true,
+      data: {
+        period,
+        rows: result.recordset || [],
+      },
+    });
+  } catch (err) {
+    console.error("B2R DETAILS ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  } finally {
+    if (pool) await pool.close();
+  }
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/challan/vna-modelwise
 // Returns VNA (Vehicles Not Allocated) model+variant+color wise demand gap.
