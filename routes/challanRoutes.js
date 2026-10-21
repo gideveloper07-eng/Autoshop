@@ -2181,6 +2181,30 @@ router.get("/dashboard-stats", async (req, res) => {
     }
 
     // ======================================================
+    // B2R COUNT
+    // ======================================================
+
+    let b2rCount = 0;
+
+    try {
+      const b2rResult = await pool
+        .request()
+        .input("prefix", sql.NVarChar(50), "")
+        .input("what", sql.NVarChar(50), "BtoR")
+        .input("FromDate", sql.NVarChar(50), "")
+        .input("ToDate", sql.NVarChar(50), "")
+        .input("uuid", sql.NVarChar(50), decoded.userId)
+        .execute("A_SP_FOR_ApplicationChallangrid");
+
+      b2rCount = b2rResult.recordset?.length ?? 0;
+
+      console.log("B2R COUNT:", b2rCount);
+    } catch (e) {
+      console.error("B2R count SP failed:", e.message);
+      b2rCount = 0;
+    }
+
+    // ======================================================
     // PENDING DELIVERY
     // ======================================================
 
@@ -2331,6 +2355,7 @@ router.get("/dashboard-stats", async (req, res) => {
       vnaCount,
 
       vahanCount,
+      b2rCount,
     });
 
     // ======================================================
