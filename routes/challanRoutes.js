@@ -3158,6 +3158,7 @@ router.get("/b2r-details", async (req, res) => {
   let pool;
 
   try {
+    // 1. Validate authentication
     const decoded = decodeToken(req);
 
     if (!decoded) {
@@ -3167,6 +3168,7 @@ router.get("/b2r-details", async (req, res) => {
       });
     }
 
+    // 2. Get database from token
     const { currentDatabase: databaseName } = decoded;
 
     if (!databaseName) {
@@ -3176,44 +3178,50 @@ router.get("/b2r-details", async (req, res) => {
       });
     }
 
-    const period = (req.query.period || "total")
-      .toString()
+    // 3. Validate requested period
+    const period = String(req.query.period || "total")
       .trim()
       .toLowerCase();
 
-    // Replace these with the EXACT @what values
-    // implemented in your SQL stored procedure.
-    const whatByPeriod = new Map([
-      ["total", "YOUR_B2R_TOTAL_MODE"],
-      ["today", "YOUR_B2R_TODAY_MODE"],
-      ["month", "YOUR_B2R_MONTH_MODE"],
-    ]);
+    const allowedPeriods = ["total", "today", "month"];
 
-    const what = whatByPeriod.get(period);
-
-    if (!what) {
+    if (!allowedPeriods.includes(period)) {
       return res.status(400).json({
         success: false,
         message: "period must be total, today, or month",
       });
     }
 
+    // 4. Open database connection
     pool = await openPool(databaseName);
 
+    // Your stored procedure currently shows @what = 'BtoR'.
+    // That SQL block filters records to the current month.
     const result = await pool
       .request()
       .input("prefix", sql.NVarChar(50), "")
-      .input("what", sql.NVarChar(50), what)
+      .input("what", sql.NVarChar(50), "BtoR")
       .input("FromDate", sql.NVarChar(50), "")
       .input("ToDate", sql.NVarChar(50), "")
       .input("uuid", sql.NVarChar(50), decoded.userId)
       .execute("A_SP_FOR_ApplicationChallangrid");
 
-    return res.json({
+    const rows = result.recordset || [];
+
+    console.log("B2R DETAILS:", {
+      database: databaseName,
+      period,
+      what: "BtoR",
+      rowCount: rows.length,
+    });
+
+    // 5. Return results
+    return res.status(200).json({
       success: true,
       data: {
         period,
-        rows: result.recordset || [],
+        count: rows.length,
+        rows,
       },
     });
   } catch (err) {
@@ -3221,11 +3229,15 @@ router.get("/b2r-details", async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Server Error",
+      message: "Failed to load B2R details",
       error: err.message,
     });
   } finally {
-    if (pool) await pool.close();
+    if (pool) {
+      await pool.close().catch((closeErr) => {
+        console.error("B2R DB CLOSE ERROR:", closeErr.message);
+      });
+    }
   }
 });
 
