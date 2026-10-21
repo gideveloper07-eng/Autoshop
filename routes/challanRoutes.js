@@ -2403,7 +2403,7 @@ router.get("/dashboard-stats", async (req, res) => {
         vnaCount,
 
         vahanCount,
-
+        b2rCount,
         // Trend
         trendPeriod,
       },
