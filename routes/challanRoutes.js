@@ -5754,7 +5754,7 @@ router.post("/grid/delete", async (req, res) => {
   }
 });
 // POST /api/challan/vna-order
-// Creates one order header and one customer booking child row.
+// Creates one order header and one customer booking child row
 router.post("/vna-order", async (req, res) => {
   let pool;
 
