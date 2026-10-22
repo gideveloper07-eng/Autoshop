@@ -5916,7 +5916,7 @@ router.post("/vna-order", async (req, res) => {
           try {
             await createNotification(
               pool,
-              headId,
+              consultantName,
               title,
               message,
               "VNA_ORDER_CREATED",
