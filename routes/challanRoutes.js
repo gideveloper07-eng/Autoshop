@@ -5780,6 +5780,7 @@ router.post("/vna-order", async (req, res) => {
     const {
       bookingNo,
       modelName,
+      scname,
       variantName,
       colorName,
       customerName,
@@ -5866,6 +5867,90 @@ router.post("/vna-order", async (req, res) => {
       .input("SP_213_C_12", sql.NVarChar(50), String(supplierName || ""))
       .execute("A_SP_FOR_Order_detail");
 
+    // 4. Notify the head(s) only after both inserts succeed.
+    try {
+      const consultantName = String(scname || "").trim();
+
+      if (consultantName) {
+        const headResult = await pool
+          .request()
+          .input("scName", sql.NVarChar(200), consultantName).query(`
+            SELECT DISTINCT S.UTUNQ
+            FROM RH_SECUT S
+            WHERE S.UTUNQ IN (
+              SELECT LTRIM(RTRIM(DATA))
+              FROM dbo.split(
+                (
+                  SELECT MCM_38
+                  FROM RH_MCM_1
+                  WHERE MCM_15 = @scName
+                    AND MCM_29 = ''
+                ),
+                ','
+              )
+            )
+            AND S.UTG =
+              '12BB7261-3398-4881-A5BA-EC729496B329'
+          `);
+
+        const heads = headResult.recordset || [];
+
+        if (heads.length === 0) {
+          console.warn(
+            "VNA ORDER: No head user found for Sales Consultant:",
+            consultantName,
+          );
+        }
+
+        const title = "New Vehicle Order Created";
+        const message =
+          `Order No. ${orderNo} has been created for ` +
+          `${customerName}. Model: ${modelName}, ` +
+          `Variant: ${variantName}, Colour: ${colorName}.`;
+
+        for (const head of heads) {
+          const headId = String(head.UTUNQ || "").trim();
+
+          if (!headId) continue;
+
+          try {
+            await createNotification(
+              pool,
+              headId,
+              title,
+              message,
+              "VNA_ORDER_CREATED",
+              headerId,
+            );
+
+            await sendPushNotification(pool, headId, title, message, {
+              type: "VNA_ORDER_CREATED",
+              orderId: String(headerId),
+              orderNo: String(orderNo),
+              bookingNo: String(bookingNo),
+              salesConsultantName: consultantName,
+            });
+
+            console.log("VNA ORDER NOTIFICATION PROCESSED:", {
+              headId,
+              orderNo,
+              consultantName,
+            });
+          } catch (headNotificationError) {
+            console.error(
+              "VNA ORDER HEAD NOTIFICATION ERROR:",
+              headId,
+              headNotificationError,
+            );
+          }
+        }
+      } else {
+        console.warn("VNA ORDER: Sales Consultant name was not provided.");
+      }
+    } catch (notificationError) {
+      // Notification failure must not undo a successfully created order.
+      console.error("VNA ORDER NOTIFICATION ERROR:", notificationError);
+    }
     return res.status(200).json({
       success: true,
       message: "Order created successfully",
