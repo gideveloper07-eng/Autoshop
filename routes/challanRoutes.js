@@ -5869,7 +5869,7 @@ router.post("/vna-order", async (req, res) => {
 
     // 4. Notify the head(s) only after both inserts succeed.
     try {
-      const consultantName = String(scname || "").trim();
+      const consultantName = childResult.recordset?.[0]?.scName || ""; //String(scname || "").trim();
 
       if (consultantName) {
         const headResult = await pool
