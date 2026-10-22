@@ -5909,7 +5909,7 @@ router.post("/vna-order", async (req, res) => {
           `Variant: ${variantName}, Colour: ${colorName}.`;
 
         for (const head of heads) {
-          const headId = String(head.UTI || "").trim();
+          const headId = String(head.headName || "").trim();
 
           if (!headId) continue;
 
