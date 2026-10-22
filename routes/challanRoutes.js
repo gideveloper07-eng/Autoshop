@@ -3359,12 +3359,10 @@ router.get("/vna-details", async (req, res) => {
       });
     }
 
-    // 3. Read query parameters
-    const modelName = (req.query.modelName || "").toString().trim();
-
-    const variantName = (req.query.variantName || "").toString().trim();
-
-    const colorName = (req.query.colorName || "").toString().trim();
+    // 3. Read and validate query parameters
+    const modelName = String(req.query.modelName || "").trim();
+    const variantName = String(req.query.variantName || "").trim();
+    const colorName = String(req.query.colorName || "").trim();
 
     if (!modelName) {
       return res.status(400).json({
@@ -3395,24 +3393,70 @@ router.get("/vna-details", async (req, res) => {
       .input("ColourUnq", sql.NVarChar(50), colorName)
       .execute("A_SP_FOR_ApplicationChallangrid");
 
-    // 6. Map database rows to Flutter response
-    const rows = (result.recordset || []).map((row) => ({
-      bookingDate: row.BookingDate ?? row.bookingdate ?? null,
+    // 6. Case-insensitive column lookup
+    const getField = (row, fieldNames) => {
+      for (const fieldName of fieldNames) {
+        const actualKey = Object.keys(row).find(
+          (key) => key.toLowerCase() === fieldName.toLowerCase(),
+        );
 
-      customer: (row.Customer ?? row.customer ?? "").toString().trim(),
+        if (actualKey !== undefined && row[actualKey] !== undefined) {
+          return row[actualKey];
+        }
+      }
 
-      scname: (row.scname ?? row.SCName ?? row.ScName ?? "").toString().trim(),
+      return null;
+    };
 
-      model: (row.Model ?? row.model ?? "").toString().trim(),
+    const sqlRows = result.recordset || [];
 
-      variant: (row.Variant ?? row.variant ?? "").toString().trim(),
+    // 7. Diagnostic logs: inspect actual SQL output
+    console.log(
+      "VNA SQL COLUMN NAMES:",
+      sqlRows.length ? Object.keys(sqlRows[0]) : [],
+    );
 
-      color: (row.Color ?? row.color ?? "").toString().trim(),
+    console.log(
+      "VNA SQL FIRST ROW:",
+      sqlRows.length ? sqlRows[0] : "No rows returned",
+    );
 
-      ageing: row.Ageing ?? row.ageing ?? null,
-    }));
+    // 8. Map SQL rows to the Flutter response
+    const rows = sqlRows.map((row) => {
+      const scValue = getField(row, ["scname", "SCName", "ScName"]);
 
-    // 7. Return response
+      const ageingValue = getField(row, ["Ageing", "ageing"]);
+
+      return {
+        bookingDate: getField(row, ["BookingDate", "bookingdate"]),
+
+        customer: String(getField(row, ["Customer"]) ?? "").trim(),
+
+        scname: String(scValue ?? "").trim(),
+
+        model: String(getField(row, ["Model"]) ?? "").trim(),
+
+        variant: String(getField(row, ["Variant"]) ?? "").trim(),
+
+        color: String(getField(row, ["Color"]) ?? "").trim(),
+
+        ageing: ageingValue,
+      };
+    });
+
+    // 9. Diagnostic log: verify mapped values
+    console.log(
+      "VNA MAPPED FIRST ROW:",
+      rows.length ? rows[0] : "No rows returned",
+    );
+
+    console.log(
+      `VNA Details Result | Total: ${rows.length} | ` +
+        `SC Name: ${rows[0]?.scname ?? "N/A"} | ` +
+        `Ageing: ${rows[0]?.ageing ?? "N/A"}`,
+    );
+
+    // 10. Return response
     return res.json({
       success: true,
       data: {
