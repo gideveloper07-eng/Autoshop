@@ -3334,40 +3334,55 @@ router.get("/vna-modelwise", async (req, res) => {
 // Query params: modelName, variantName, colorName
 // SP mode: Vna_details
 // ─────────────────────────────────────────────────────────────────────────────
+
 router.get("/vna-details", async (req, res) => {
   let pool;
 
   try {
+    // 1. Authenticate user
     const decoded = decodeToken(req);
 
     if (!decoded) {
-      return res.status(401).json({ success: false, message: "Unauthorized" });
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
     }
 
+    // 2. Get database from token
     const { currentDatabase: databaseName } = decoded;
 
     if (!databaseName) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Database not found in token" });
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
     }
 
+    // 3. Read query parameters
     const modelName = (req.query.modelName || "").toString().trim();
+
     const variantName = (req.query.variantName || "").toString().trim();
+
     const colorName = (req.query.colorName || "").toString().trim();
 
     if (!modelName) {
-      return res
-        .status(400)
-        .json({ success: false, message: "modelName query param is required" });
+      return res.status(400).json({
+        success: false,
+        message: "modelName query param is required",
+      });
     }
 
     console.log(
-      `🚗 VNA Details | Model: ${modelName} | Variant: ${variantName} | Color: ${colorName} | DB: ${databaseName}`,
+      `VNA Details | Model: ${modelName} | ` +
+        `Variant: ${variantName} | Color: ${colorName} | ` +
+        `DB: ${databaseName}`,
     );
 
+    // 4. Open database connection
     pool = await openPool(databaseName);
 
+    // 5. Execute stored procedure
     const result = await pool
       .request()
       .input("prefix", sql.NVarChar(50), "")
@@ -3380,20 +3395,36 @@ router.get("/vna-details", async (req, res) => {
       .input("ColourUnq", sql.NVarChar(50), colorName)
       .execute("A_SP_FOR_ApplicationChallangrid");
 
+    // 6. Map database rows to Flutter response
     const rows = (result.recordset || []).map((row) => ({
       bookingDate: row.BookingDate ?? row.bookingdate ?? null,
+
       customer: (row.Customer ?? row.customer ?? "").toString().trim(),
+
+      scname: (row.scname ?? row.SCName ?? row.ScName ?? "").toString().trim(),
+
       model: (row.Model ?? row.model ?? "").toString().trim(),
+
       variant: (row.Variant ?? row.variant ?? "").toString().trim(),
+
       color: (row.Color ?? row.color ?? "").toString().trim(),
+
+      ageing: row.Ageing ?? row.ageing ?? null,
     }));
 
+    // 7. Return response
     return res.json({
       success: true,
-      data: { modelName, variantName, colorName, total: rows.length, rows },
+      data: {
+        modelName,
+        variantName,
+        colorName,
+        total: rows.length,
+        rows,
+      },
     });
   } catch (err) {
-    console.error("❌ VNA Details Error:", err);
+    console.error("VNA Details Error:", err);
 
     return res.status(500).json({
       success: false,
