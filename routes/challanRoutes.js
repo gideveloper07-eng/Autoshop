@@ -3087,9 +3087,11 @@ router.get("/pbna-modelwise-details", async (req, res) => {
     const rows = (result.recordset || []).map((row) => ({
       bookingDate: row.bookingdate ?? row.BookingDate ?? null,
       customer: (row.Customer ?? row.customer ?? "").toString().trim(),
+      scname: (row.scname ?? row.SCName ?? row.ScName ?? "").toString().trim(),
       model: (row.Model ?? row.model ?? "").toString().trim(),
       variant: (row.Variant ?? row.variant ?? "").toString().trim(),
       color: (row.Color ?? row.color ?? "").toString().trim(),
+      ageing: row.Ageing ?? row.ageing ?? null,
     }));
 
     return res.json({
