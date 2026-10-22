@@ -3429,6 +3429,7 @@ router.get("/vna-details", async (req, res) => {
 
       return {
         bookingDate: getField(row, ["BookingDate", "bookingdate"]),
+        bookingNo: String(getField(row, ["rcl_2", "bookingNo"]) ?? "").trim(),
 
         customer: String(getField(row, ["Customer"]) ?? "").trim(),
 
@@ -5752,7 +5753,138 @@ router.post("/grid/delete", async (req, res) => {
     }
   }
 });
+// POST /api/challan/vna-order
+// Creates one order header and one customer booking child row.
+router.post("/vna-order", async (req, res) => {
+  let pool;
 
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const databaseName = decoded.currentDatabase;
+
+    if (!databaseName) {
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
+    }
+
+    const {
+      bookingNo,
+      modelName,
+      variantName,
+      colorName,
+      customerName,
+      supplierName = "",
+      orderQty = 1,
+      toBeOrder = 1,
+    } = req.body;
+
+    if (
+      !bookingNo ||
+      !modelName ||
+      !variantName ||
+      !colorName ||
+      !customerName
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Booking number, model, variant, color and customer are required",
+      });
+    }
+
+    const qty = Number(orderQty);
+    const pendingQty = Number(toBeOrder);
+
+    if (
+      !Number.isInteger(qty) ||
+      qty <= 0 ||
+      !Number.isInteger(pendingQty) ||
+      pendingQty < 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid order quantity",
+      });
+    }
+
+    pool = await openPool(databaseName);
+
+    // 1. Get next order number.
+    const numberResult = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "")
+      .input("what", sql.NVarChar(50), "orderno")
+      .execute("A_SP_FOR_Order_detail");
+
+    const orderNo = String(numberResult.recordset?.[0]?.mx ?? "");
+
+    if (!orderNo) {
+      throw new Error("Could not generate order number");
+    }
+
+    // 2. Create the parent order.
+    const headerResult = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "")
+      .input("what", sql.NVarChar(50), "insert")
+      .input("SP_213_4", sql.NVarChar(50), String(decoded.userId || ""))
+      .input("SP_213_5", sql.NVarChar(50), String(req.ip || ""))
+      .input("SP_213_6", sql.NVarChar(50), orderNo)
+      .input("SP_213_8", sql.NVarChar(50), String(supplierName || ""))
+      .execute("A_SP_FOR_Order_detail");
+
+    const headerId = String(headerResult.recordset?.[0]?.err ?? "").trim();
+
+    if (!headerId) {
+      throw new Error("Order header was not created");
+    }
+
+    // 3. Insert this customer's booking into the child table.
+    const childResult = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "")
+      .input("what", sql.NVarChar(50), "inserttochild")
+      .input("SP_213_C_2", sql.NVarChar(50), headerId)
+      .input("SP_213_C_4", sql.NVarChar(50), String(modelName))
+      .input("SP_213_C_5", sql.NVarChar(50), String(variantName))
+      .input("SP_213_C_6", sql.NVarChar(50), String(colorName))
+      .input("SP_213_C_7", sql.NVarChar(50), String(customerName))
+      .input("SP_213_C_8", sql.NVarChar(50), String(bookingNo))
+      .input("SP_213_C_9", sql.NVarChar(50), String(pendingQty))
+      .input("SP_213_C_10", sql.NVarChar(50), String(qty))
+      .input("SP_213_C_11", sql.NVarChar(50), "")
+      .input("SP_213_C_12", sql.NVarChar(50), String(supplierName || ""))
+      .execute("A_SP_FOR_Order_detail");
+
+    return res.status(200).json({
+      success: true,
+      message: "Order created successfully",
+      data: {
+        orderNo,
+        orderId: headerId,
+        bookingNo,
+      },
+    });
+  } catch (err) {
+    console.error("VNA ORDER ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to create order",
+      error: err.message,
+    });
+  }
+});
 // ═══════════════════════════════════════════════════════════════════════════
 // NEW CHALLAN — DROPDOWN / FORM SUPPORT ROUTES
 // ═══════════════════════════════════════════════════════════════════════════
