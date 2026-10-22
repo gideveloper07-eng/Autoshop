@@ -3429,7 +3429,7 @@ router.get("/vna-details", async (req, res) => {
 
       return {
         bookingDate: getField(row, ["BookingDate", "bookingdate"]),
-        bookingNo: String(getField(row, ["rcl_2", "bookingNo"]) ?? "").trim(),
+        bookingNo: String(getField(row, ["rcl_2", "receiptid"]) ?? "").trim(),
 
         customer: String(getField(row, ["Customer"]) ?? "").trim(),
 
