@@ -5875,7 +5875,7 @@ router.post("/vna-order", async (req, res) => {
         const headResult = await pool
           .request()
           .input("scName", sql.NVarChar(200), consultantName).query(`
-            SELECT DISTINCT S.UTUNQ
+            SELECT DISTINCT S.uti as headName
             FROM RH_SECUT S
             WHERE S.UTUNQ IN (
               SELECT LTRIM(RTRIM(DATA))
@@ -5909,14 +5909,14 @@ router.post("/vna-order", async (req, res) => {
           `Variant: ${variantName}, Colour: ${colorName}.`;
 
         for (const head of heads) {
-          const headId = String(head.UTUNQ || "").trim();
+          const headId = String(head.UTI || "").trim();
 
           if (!headId) continue;
 
           try {
             await createNotification(
               pool,
-              consultantName,
+              headId,
               title,
               message,
               "VNA_ORDER_CREATED",
@@ -5928,7 +5928,7 @@ router.post("/vna-order", async (req, res) => {
               orderId: String(headerId),
               orderNo: String(orderNo),
               bookingNo: String(bookingNo),
-              salesConsultantName: consultantName,
+              salesConsultantName: headId,
             });
 
             console.log("VNA ORDER NOTIFICATION PROCESSED:", {
