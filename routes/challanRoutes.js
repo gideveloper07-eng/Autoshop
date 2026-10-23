@@ -6075,7 +6075,7 @@ router.get("/order-approval", async (req, res) => {
       });
     }
 
-    const { currentDatabase } = decoded;
+    const { currentDatabase, userId } = decoded;
 
     if (!currentDatabase) {
       return res.status(400).json({
@@ -6089,6 +6089,7 @@ router.get("/order-approval", async (req, res) => {
     const result = await pool
       .request()
       .input("prefix", sql.NVarChar(50), "")
+      .input("SP_213_4", sql.NVarChar(100), userId)
       .input("what", sql.NVarChar(50), "Approval")
       .execute("A_SP_FOR_Order_detail");
 
