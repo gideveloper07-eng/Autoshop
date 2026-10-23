@@ -3277,42 +3277,70 @@ router.post("/approved", async (req, res) => {
     if (!decoded) {
       return res.status(401).json({
         success: false,
-        message: "Unauthorized",
+        message: "Unauthorized. Please login again.",
       });
     }
 
-    const { orderdetailid } = req.body;
-    const approveUserId = decoded.UTUNQ || decoded.utunq;
+    const orderDetailId = String(req.body?.orderdetailid || "").trim();
 
-    if (!orderdetailid || !approveUserId) {
+    // Match the user ID field used by the other routes.
+    const approveUserId = String(
+      decoded.userId || decoded.UTUNQ || decoded.utunq || "",
+    ).trim();
+
+    const currentDatabase = decoded.currentDatabase;
+
+    console.log("VEHICLE ORDER APPROVAL DEBUG:", {
+      orderDetailId,
+      approveUserId,
+      currentDatabase,
+    });
+
+    if (!orderDetailId) {
       return res.status(400).json({
         success: false,
-        message: "Order detail ID or approving user ID is missing.",
+        message: "Order detail ID is missing.",
       });
     }
 
-    pool = await getPool();
+    if (!approveUserId) {
+      return res.status(400).json({
+        success: false,
+        message: "Approving user ID is missing from login token.",
+      });
+    }
+
+    if (!currentDatabase) {
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in login token.",
+      });
+    }
+
+    pool = await openPool(currentDatabase);
 
     const result = await pool
       .request()
       .input("prefix", sql.NVarChar(50), "")
       .input("what", sql.NVarChar(50), "Approve")
-      .input("SP_213_C_3", sql.NVarChar(50), orderdetailid)
+      .input("SP_213_C_3", sql.NVarChar(50), orderDetailId)
       .input("SP_213_C_13", sql.NVarChar(50), approveUserId)
       .execute("A_SP_FOR_Order_detail");
 
     const response = result.recordset?.[0];
 
+    console.log("VEHICLE ORDER APPROVAL RESULT:", response);
+
     if (Number(response?.success) !== 1) {
       return res.status(409).json({
         success: false,
-        message: response?.message || "Unable to approve order.",
+        message: response?.message || "Unable to approve vehicle order.",
       });
     }
 
-    return res.json({
+    return res.status(200).json({
       success: true,
-      message: response.message,
+      message: response.message || "Vehicle order approved successfully.",
     });
   } catch (error) {
     console.error("VEHICLE ORDER APPROVAL ERROR:", error);
@@ -3320,7 +3348,14 @@ router.post("/approved", async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to approve vehicle order.",
+      error: error.message,
     });
+  } finally {
+    if (pool) {
+      await pool.close().catch((error) => {
+        console.error("APPROVAL DB CLOSE ERROR:", error.message);
+      });
+    }
   }
 });
 
