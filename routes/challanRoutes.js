@@ -4821,7 +4821,7 @@ router.get("/new/load/:sp462", async (req, res) => {
     const result = await pool
       .request()
       .input("prefix", sql.NVarChar(50), "rh_")
-      .input("what", sql.NVarChar(50), "Edit")
+      .input("what", sql.NVarChar(50), "EditX")
       .input("sp_462", sql.NVarChar(50), sp462)
       .execute("A_SP_FOR_Challan");
 
@@ -4916,7 +4916,7 @@ router.post("/new/update", async (req, res) => {
     pool = await openPool(currentDatabase);
     const request = pool.request();
     request.input("prefix", sql.NVarChar(50), "rh_");
-    request.input("what", sql.NVarChar(50), "update");
+    request.input("what", sql.NVarChar(50), "updatex");
 
     const maxFields = {
       sp_524: true,
