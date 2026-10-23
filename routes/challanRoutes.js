@@ -600,7 +600,64 @@ router.get("/edit/:sp_462", async (req, res) => {
     });
   }
 });
+router.post("/vehicle-order/approve", async (req, res) => {
+  let pool;
 
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { orderdetailid } = req.body;
+
+    // Replace UTUNQ with the actual logged-in user's ID field
+    // if your token uses a different property.
+    const approveUserId = decoded.UTUNQ;
+
+    if (!orderdetailid || !approveUserId) {
+      return res.status(400).json({
+        success: false,
+        message: "Order detail ID or approving user ID is missing.",
+      });
+    }
+
+    pool = await getPool(); // Use your existing database pool function.
+
+    const result = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "")
+      .input("what", sql.NVarChar(50), "Approve")
+      .input("SP_213_C_3", sql.NVarChar(50), orderdetailid)
+      .input("SP_213_C_13", sql.NVarChar(50), approveUserId)
+      .execute("A_SP_FOR_Order_detail");
+
+    const response = result.recordset?.[0];
+
+    if (!response || response.success !== 1) {
+      return res.status(409).json({
+        success: false,
+        message: response?.message || "Unable to approve order.",
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: response.message,
+    });
+  } catch (error) {
+    console.error("VEHICLE ORDER APPROVAL ERROR:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to approve vehicle order.",
+    });
+  }
+});
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/challan/approve
 // Calls A_SP_FOR_ApplicationChallangrid with @what = 'approve' and all challan data
