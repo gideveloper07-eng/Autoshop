@@ -3268,7 +3268,7 @@ router.get("/b2r-details", async (req, res) => {
   }
 });
 
-router.post("/approve", async (req, res) => {
+router.post("/approved", async (req, res) => {
   let pool;
 
   try {
