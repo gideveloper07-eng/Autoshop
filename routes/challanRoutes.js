@@ -6112,6 +6112,56 @@ router.get("/order-approval", async (req, res) => {
   }
 });
 
+router.get("/order-approval/approved", async (req, res) => {
+  let pool;
+
+  try {
+    const decoded = decodeToken(req);
+
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { currentDatabase, userId } = decoded;
+
+    if (!currentDatabase) {
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
+    }
+
+    pool = await openPool(currentDatabase);
+
+    const result = await pool
+      .request()
+      .input("prefix", sql.NVarChar(50), "")
+      .input("SP_213_4", sql.NVarChar(100), userId)
+      .input("what", sql.NVarChar(50), "Approved")
+      .execute("A_SP_FOR_Order_detail");
+
+    return res.json({
+      success: true,
+      data: result.recordset || [],
+    });
+  } catch (err) {
+    console.error("APPROVED VEHICLE ORDERS ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load approved vehicle orders",
+      error: err.message,
+    });
+  } finally {
+    if (pool) {
+      await pool.close();
+    }
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 // NEW CHALLAN — DROPDOWN / FORM SUPPORT ROUTES
 // ═══════════════════════════════════════════════════════════════════════════
