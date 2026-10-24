@@ -3085,6 +3085,7 @@ router.get("/pbna-modelwise-details", async (req, res) => {
       .execute("A_SP_FOR_ApplicationChallangrid");
 
     const rows = (result.recordset || []).map((row) => ({
+      customerUnq: String(row.CustomerUnq ?? row.customerUnq ?? "").trim(),
       bookingDate: row.bookingdate ?? row.BookingDate ?? null,
       customer: (row.Customer ?? row.customer ?? "").toString().trim(),
       scname: (row.scname ?? row.SCName ?? row.ScName ?? "").toString().trim(),
