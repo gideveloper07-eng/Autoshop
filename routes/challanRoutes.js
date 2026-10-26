@@ -3046,34 +3046,54 @@ router.get("/pbna-modelwise-details", async (req, res) => {
   let pool;
 
   try {
+    // ============================================
+    // 1. AUTHENTICATION
+    // ============================================
     const decoded = decodeToken(req);
 
     if (!decoded) {
-      return res.status(401).json({ success: false, message: "Unauthorized" });
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
     }
 
+    // ============================================
+    // 2. DATABASE
+    // ============================================
     const { currentDatabase: databaseName } = decoded;
 
     if (!databaseName) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Database not found in token" });
+      return res.status(400).json({
+        success: false,
+        message: "Database not found in token",
+      });
     }
 
-    const modelName = (req.query.modelName || "").toString().trim();
+    // ============================================
+    // 3. MODEL NAME
+    // ============================================
+    const modelName = String(req.query.modelName || "").trim();
 
     if (!modelName) {
-      return res
-        .status(400)
-        .json({ success: false, message: "modelName query param is required" });
+      return res.status(400).json({
+        success: false,
+        message: "modelName query param is required",
+      });
     }
 
     console.log(
-      `📋 PBNA Modelwise Details | Model: ${modelName} | DB: ${databaseName}`,
+      `PBNA Modelwise Details | Model: ${modelName} | DB: ${databaseName}`,
     );
 
+    // ============================================
+    // 4. DATABASE CONNECTION
+    // ============================================
     pool = await openPool(databaseName);
 
+    // ============================================
+    // 5. EXECUTE STORED PROCEDURE
+    // ============================================
     const result = await pool
       .request()
       .input("prefix", sql.NVarChar(50), "")
@@ -3084,23 +3104,69 @@ router.get("/pbna-modelwise-details", async (req, res) => {
       .input("ModelUnq", sql.NVarChar(50), modelName)
       .execute("A_SP_FOR_ApplicationChallangrid");
 
-    const rows = (result.recordset || []).map((row) => ({
-      customerUnq: String(row.CustomerUnq ?? row.customerUnq ?? "").trim(),
-      bookingDate: row.bookingdate ?? row.BookingDate ?? null,
-      customer: (row.Customer ?? row.customer ?? "").toString().trim(),
-      scname: (row.scname ?? row.SCName ?? row.ScName ?? "").toString().trim(),
-      model: (row.Model ?? row.model ?? "").toString().trim(),
-      variant: (row.Variant ?? row.variant ?? "").toString().trim(),
-      color: (row.Color ?? row.color ?? "").toString().trim(),
-      ageing: row.Ageing ?? row.ageing ?? null,
-    }));
+    // ============================================
+    // 6. MAP ALL STORED PROCEDURE FIELDS
+    // Case-insensitive column lookup
+    // ============================================
+    const rows = (result.recordset || []).map((row) => {
+      const get = (...names) => {
+        for (const name of names) {
+          const key = Object.keys(row).find(
+            (column) => column.toLowerCase() === name.toLowerCase(),
+          );
 
+          if (key !== undefined) {
+            return row[key];
+          }
+        }
+
+        return null;
+      };
+
+      return {
+        // Booking details
+        customerUnq: String(get("CustomerUnq") ?? "").trim(),
+        bookingDate: get("bookingdate"),
+        customer: String(get("Customer") ?? "").trim(),
+        scname: String(get("scname") ?? "").trim(),
+        model: String(get("Model") ?? "").trim(),
+        variant: String(get("Variant") ?? "").trim(),
+        color: String(get("Color") ?? "").trim(),
+        ageing: get("Ageing"),
+
+        // Finance details
+        status: get("status"),
+        financeType: get("Finance Type"),
+        financerName: get("Financer Name"),
+        loanAmount: get("LOAN AMOUNT"),
+        disbursedAmount: get("DISBURSED AMOUNT"),
+        remarks: get("remarks"),
+      };
+    });
+
+    // ============================================
+    // 7. DEBUG LOG
+    // ============================================
+    console.log("PBNA MODEL:", modelName);
+    console.log("PBNA TOTAL ROWS:", rows.length);
+
+    if (rows.length > 0) {
+      console.log("PBNA FIRST ROW:", rows[0]);
+    }
+
+    // ============================================
+    // 8. API RESPONSE
+    // ============================================
     return res.json({
       success: true,
-      data: { modelName, total: rows.length, rows },
+      data: {
+        modelName,
+        total: rows.length,
+        rows,
+      },
     });
   } catch (err) {
-    console.error("❌ PBNA Modelwise Details Error:", err);
+    console.error("PBNA Modelwise Details Error:", err);
 
     return res.status(500).json({
       success: false,
