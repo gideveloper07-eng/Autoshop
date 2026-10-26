@@ -3135,7 +3135,7 @@ router.get("/pbna-modelwise-details", async (req, res) => {
         ageing: get("Ageing"),
 
         // Finance details
-        status: get("status"),
+        status: get("finstatus"),
         financeType: get("Finance Type"),
         financerName: get("Financer Name"),
         loanAmount: get("LOAN AMOUNT"),
