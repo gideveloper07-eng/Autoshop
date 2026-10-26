@@ -3551,7 +3551,7 @@ router.get("/vna-details", async (req, res) => {
       .input("ColourUnq", sql.NVarChar(50), colorName)
       .execute("A_SP_FOR_ApplicationChallangrid");
 
-    // 6. Case-insensitive column lookup
+    // 6. Case-insensitive SQL column lookup
     const getField = (row, fieldNames) => {
       for (const fieldName of fieldNames) {
         const actualKey = Object.keys(row).find(
@@ -3568,7 +3568,7 @@ router.get("/vna-details", async (req, res) => {
 
     const sqlRows = result.recordset || [];
 
-    // 7. Diagnostic logs: inspect actual SQL output
+    // 7. Diagnostic logs
     console.log(
       "VNA SQL COLUMN NAMES:",
       sqlRows.length ? Object.keys(sqlRows[0]) : [],
@@ -3579,14 +3579,37 @@ router.get("/vna-details", async (req, res) => {
       sqlRows.length ? sqlRows[0] : "No rows returned",
     );
 
-    // 8. Map SQL rows to the Flutter response
+    // 8. Map SQL rows to Flutter response
     const rows = sqlRows.map((row) => {
-      const scValue = getField(row, ["scname", "SCName", "ScName"]);
-
+      const scValue = getField(row, ["scname", "SCName"]);
       const ageingValue = getField(row, ["Ageing", "ageing"]);
 
-      return {
+      // Finance fields
+      const financeStatus = getField(row, [
+        "finstatus",
+        "status",
+        "Finance Status",
+      ]);
+
+      const financeType = getField(row, ["financeType", "Finance Type"]);
+
+      const financerName = getField(row, ["financerName", "Financer Name"]);
+
+      const loanAmount = getField(row, ["loanAmount", "LOAN AMOUNT"]);
+
+      const disbursedAmount = getField(row, [
+        "disbursedAmount",
+        "DISBURSED AMOUNT",
+      ]);
+
+      const remarks = getField(row, ["remarks"]);
+
+      const mappedRow = {
+        // Existing booking fields
+        receiptid: getField(row, ["receiptid"]),
+
         bookingDate: getField(row, ["BookingDate", "bookingdate"]),
+
         bookingNo: String(getField(row, ["receiptid"]) ?? "").trim(),
 
         customer: String(getField(row, ["Customer"]) ?? "").trim(),
@@ -3600,10 +3623,35 @@ router.get("/vna-details", async (req, res) => {
         color: String(getField(row, ["Color"]) ?? "").trim(),
 
         ageing: ageingValue,
+
+        // Finance fields
+        status: financeStatus,
+        finstatus: financeStatus,
+
+        financeType: financeType,
+        financerName: financerName,
+
+        loanAmount: loanAmount,
+        disbursedAmount: disbursedAmount,
+
+        remarks: remarks,
       };
+
+      // Diagnostic: inspect finance mapping for each row
+      console.log("VNA FINANCE MAPPING:", {
+        customer: mappedRow.customer,
+        status: mappedRow.status,
+        financeType: mappedRow.financeType,
+        financerName: mappedRow.financerName,
+        loanAmount: mappedRow.loanAmount,
+        disbursedAmount: mappedRow.disbursedAmount,
+        remarks: mappedRow.remarks,
+      });
+
+      return mappedRow;
     });
 
-    // 9. Diagnostic log: verify mapped values
+    // 9. Summary log
     console.log(
       "VNA MAPPED FIRST ROW:",
       rows.length ? rows[0] : "No rows returned",
