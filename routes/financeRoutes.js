@@ -4,36 +4,37 @@ const sql = require("mssql");
 const multer = require("multer");
 const fs = require("fs/promises");
 const path = require("path");
+const crypto = require("crypto");
 
 const router = express.Router();
 const openPool = require("../utils/dynamicPoolManager");
 
-// ==========================================
-// DOCUMENT UPLOAD CONFIGURATION
-// ==========================================
+// ============================================================
+// UPLOAD CONFIGURATION
+// ============================================================
 
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 10 * 1024 * 1024,
+    files: 1,
   },
   fileFilter: (_req, file, cb) => {
     const allowed = /\.(pdf|png|jpe?g|docx?)$/i.test(file.originalname || "");
 
-    cb(
-      allowed
-        ? null
-        : new Error(
-            "Only PDF, PNG, JPG, JPEG, DOC and DOCX files are allowed.",
-          ),
-      allowed,
-    );
+    if (!allowed) {
+      return cb(
+        new Error("Only PDF, PNG, JPG, JPEG, DOC, and DOCX files are allowed."),
+      );
+    }
+
+    cb(null, true);
   },
 });
 
-// ==========================================
+// ============================================================
 // AUTHENTICATION
-// ==========================================
+// ============================================================
 
 function decodeToken(req) {
   const header = req.headers.authorization;
@@ -44,7 +45,7 @@ function decodeToken(req) {
 
   try {
     return jwt.verify(header.slice(7), process.env.JWT_SECRET);
-  } catch {
+  } catch (err) {
     return null;
   }
 }
@@ -73,9 +74,9 @@ function auth(req, res) {
   return { decoded, database };
 }
 
-// ==========================================
+// ============================================================
 // HELPERS
-// ==========================================
+// ============================================================
 
 function safeSegment(value) {
   return (
@@ -83,6 +84,16 @@ function safeSegment(value) {
       .replace(/[^a-zA-Z0-9_-]/g, "_")
       .slice(0, 80) || "default"
   );
+}
+
+function getFirstValue(...values) {
+  for (const value of values) {
+    if (value !== undefined && value !== null && String(value).trim() !== "") {
+      return value;
+    }
+  }
+
+  return "";
 }
 
 async function runFinance(pool, what, inputs = {}) {
@@ -109,17 +120,23 @@ async function runFinance(pool, what, inputs = {}) {
 
 async function withPool(database, callback) {
   const pool = await openPool(database);
-
-  // Assumes openPool returns a request-ready connection pool.
-  // If dynamicPoolManager caches shared pools, do not close
-  // them per request.
   return callback(pool);
 }
 
-// ==========================================
-// GET FINANCE CUSTOMERS
+function sendServerError(res, message, err) {
+  console.error(message, err);
+
+  return res.status(500).json({
+    success: false,
+    message,
+    error: err?.message || String(err),
+  });
+}
+
+// ============================================================
+// GET CUSTOMERS
 // GET /api/finance/customers
-// ==========================================
+// ============================================================
 
 router.get("/customers", async (req, res) => {
   const session = auth(req, res);
@@ -132,25 +149,19 @@ router.get("/customers", async (req, res) => {
       }),
     );
 
-    return res.json({
+    res.json({
       success: true,
       data: result.recordset || [],
     });
   } catch (err) {
-    console.error("FINANCE CUSTOMERS ERROR:", err);
-
-    return res.status(500).json({
-      success: false,
-      message: "Unable to load eligible customers.",
-      error: err.message,
-    });
+    sendServerError(res, "Unable to load eligible customers.", err);
   }
 });
 
-// ==========================================
+// ============================================================
 // GET FINANCERS / BANKS
 // GET /api/finance/banks
-// ==========================================
+// ============================================================
 
 router.get("/banks", async (req, res) => {
   const session = auth(req, res);
@@ -163,57 +174,54 @@ router.get("/banks", async (req, res) => {
       }),
     );
 
-    return res.json({
+    res.json({
       success: true,
       data: result.recordset || [],
     });
   } catch (err) {
-    console.error("FINANCE BANKS ERROR:", err);
-
-    return res.status(500).json({
-      success: false,
-      message: "Unable to load financiers.",
-      error: err.message,
-    });
+    sendServerError(res, "Unable to load financiers.", err);
   }
 });
 
-// ==========================================
+// ============================================================
 // GET FINANCER BRANCHES
 // GET /api/finance/banks/:bankId/branches
-// ==========================================
+// ============================================================
 
 router.get("/banks/:bankId/branches", async (req, res) => {
   const session = auth(req, res);
   if (!session) return;
 
+  const bankId = String(req.params.bankId || "").trim();
+
+  if (!bankId) {
+    return res.status(400).json({
+      success: false,
+      message: "Financer ID is required.",
+    });
+  }
+
   try {
     const result = await withPool(session.database, (pool) =>
       runFinance(pool, "branch", {
         prefix: "rh_",
-        sp_688: req.params.bankId,
+        sp_688: bankId,
       }),
     );
 
-    return res.json({
+    res.json({
       success: true,
       data: result.recordset || [],
     });
   } catch (err) {
-    console.error("FINANCE BRANCHES ERROR:", err);
-
-    return res.status(500).json({
-      success: false,
-      message: "Unable to load financier branches.",
-      error: err.message,
-    });
+    sendServerError(res, "Unable to load financier branches.", err);
   }
 });
 
-// ==========================================
-// GET COMPANY BRANCH BY CUSTOMER
+// ============================================================
+// GET COMPANY BRANCH
 // GET /api/finance/company-branch/:customerId
-// ==========================================
+// ============================================================
 
 router.get("/company-branch/:customerId", async (req, res) => {
   const session = auth(req, res);
@@ -227,25 +235,19 @@ router.get("/company-branch/:customerId", async (req, res) => {
       }),
     );
 
-    return res.json({
+    res.json({
       success: true,
       data: result.recordset || [],
     });
   } catch (err) {
-    console.error("FINANCE COMPANY BRANCH ERROR:", err);
-
-    return res.status(500).json({
-      success: false,
-      message: "Unable to load company branch.",
-      error: err.message,
-    });
+    sendServerError(res, "Unable to load company branch.", err);
   }
 });
 
-// ==========================================
-// GET FINANCE STATUS HISTORY
+// ============================================================
+// FINANCE HISTORY
 // GET /api/finance/history/:financeId
-// ==========================================
+// ============================================================
 
 router.get("/history/:financeId", async (req, res) => {
   const session = auth(req, res);
@@ -259,28 +261,19 @@ router.get("/history/:financeId", async (req, res) => {
       }),
     );
 
-    return res.json({
+    res.json({
       success: true,
       data: result.recordset || [],
     });
   } catch (err) {
-    console.error("FINANCE HISTORY ERROR:", err);
-
-    return res.status(500).json({
-      success: false,
-      message: "Unable to load finance history.",
-      error: err.message,
-    });
+    sendServerError(res, "Unable to load finance history.", err);
   }
 });
 
-// ==========================================
-// GET EXISTING FINANCE RECORD FOR EDIT
+// ============================================================
+// GET FINANCE RECORD FOR EDIT
 // GET /api/finance/edit/:financeId
-// ==========================================
-
-// This uses the legacy stored procedure:
-// A_SP_FOR_FINANCE_DETAIL_NEW @what='onedit'
+// ============================================================
 
 router.get("/edit/:financeId", async (req, res) => {
   const session = auth(req, res);
@@ -295,32 +288,25 @@ router.get("/edit/:financeId", async (req, res) => {
         .execute("A_SP_FOR_FINANCE_DETAIL_NEW"),
     );
 
-    return res.json({
+    res.json({
       success: true,
       data: result.recordset?.[0] || null,
     });
   } catch (err) {
-    console.error("FINANCE EDIT ERROR:", err);
-
-    return res.status(500).json({
-      success: false,
-      message: "Unable to load finance record.",
-      error: err.message,
-    });
+    sendServerError(res, "Unable to load finance record.", err);
   }
 });
 
-// ==========================================
+// ============================================================
 // INSERT / UPDATE FINANCE DETAILS
 // POST /api/finance/save
-// ==========================================
+// ============================================================
 
 router.post("/save", async (req, res) => {
   const session = auth(req, res);
   if (!session) return;
 
   const body = req.body || {};
-
   const customerId = String(body.customerId || "").trim();
 
   if (!customerId) {
@@ -344,41 +330,33 @@ router.post("/save", async (req, res) => {
 
   const fields = {
     prefix: "rh_",
-
     sp_672: financeId,
     sp_673: userId,
     sp_674: ip,
-
     sp_677: body.entryDate || new Date().toISOString().slice(0, 10),
-
     sp_678: customerId,
-    sp_679: body.contact || "0",
+    sp_679: getFirstValue(body.contact, body.contactNo, "0"),
     sp_680: body.address || "",
-
     sp_681: body.tlId || "",
     sp_682: body.scId || "",
     sp_683: body.modelId || "",
     sp_684: body.variantId || "",
-    sp_685: body.colorId || "",
-
+    sp_685: getFirstValue(body.colorId, body.colourId, ""),
     sp_686: body.bookingDate || "",
     sp_687: body.financeArrangement || "In",
-
     sp_688: body.financerId || "",
-    sp_689: body.branchId || "",
-
+    sp_689: getFirstValue(body.branchId, body.financerBranchId, ""),
     sp_690: body.concerningName || "",
     sp_691: body.concerningMobile || "",
-
     sp_692: body.status || "Pending",
     sp_693: body.financeDate || "",
     sp_694: body.remark || "",
-
     sp_695: body.receiptId || "",
     sp_696: body.loanAmount || "0.00",
-
     sp_697: body.expectedDelivery || "",
-    sp_698: body.doUpload || "",
+
+    // Uploaded document path saved into sp_698.
+    sp_698: getFirstValue(body.doUpload, body.DOUPLOAD, ""),
 
     sp_699: body.companyBranchId || "",
     sp_700: body.disbursedAmount || "0.00",
@@ -396,102 +374,114 @@ router.post("/save", async (req, res) => {
       row.message ||
       (what === "insert" ? "Save Successfully" : "Update Successfully");
 
-    return res.json({
+    res.json({
       success: true,
       message: String(message),
       data: row,
       financeId: row.sp_672 || financeId || null,
     });
   } catch (err) {
-    console.error("FINANCE SAVE ERROR:", err);
-
-    return res.status(500).json({
-      success: false,
-      message: "Unable to save finance details.",
-      error: err.message,
-    });
+    sendServerError(res, "Unable to save finance details.", err);
   }
 });
 
-// ==========================================
-// UPLOAD FINANCE DO DOCUMENT
+// ============================================================
+// UPLOAD FINANCE DO IMAGE / DOCUMENT
 // POST /api/finance/upload
-// ==========================================
+//
+// Multipart fields:
+//   file       = image or document
+//   customerId = selected customer ID
+//
+// Returns:
+//   data.doUpload = path to save into sp_698
+// ============================================================
 
-router.post("/upload", upload.single("file"), async (req, res) => {
-  const session = auth(req, res);
-  if (!session) return;
+router.post(
+  "/upload",
+  (req, res, next) => {
+    const session = auth(req, res);
+    if (!session) return;
 
-  if (!req.file) {
-    return res.status(400).json({
-      success: false,
-      message: "Choose a document first.",
-    });
-  }
+    req.financeSession = session;
+    next();
+  },
+  upload.single("file"),
+  async (req, res) => {
+    const session = req.financeSession;
 
-  const customerId = String(req.body.customerId || "").trim();
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "Choose an image or document first.",
+      });
+    }
 
-  if (!customerId) {
-    return res.status(400).json({
-      success: false,
-      message: "Select a customer before uploading the document.",
-    });
-  }
+    const customerId = String(req.body.customerId || "").trim();
 
-  try {
-    const companyCode = safeSegment(session.decoded.companyCode || "default");
+    if (!customerId) {
+      return res.status(400).json({
+        success: false,
+        message: "Select a customer before uploading.",
+      });
+    }
 
-    const customerSegment = safeSegment(customerId);
+    try {
+      const companyCode = safeSegment(
+        session.decoded.companyCode ||
+          session.decoded.company_code ||
+          "default",
+      );
 
-    const extension = path.extname(req.file.originalname).toLowerCase();
+      const customerSegment = safeSegment(customerId);
 
-    const fileName = `${customerSegment}_DOUPLOAD${extension}`;
+      const extension = path.extname(req.file.originalname).toLowerCase();
 
-    const uploadRoot =
-      process.env.FINANCE_UPLOAD_DIR || path.join(process.cwd(), "Upload");
+      const uniqueId = crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}_${crypto.randomBytes(8).toString("hex")}`;
 
-    const destination = path.join(uploadRoot, companyCode);
+      const fileName = `${customerSegment}_DOUPLOAD_${uniqueId}${extension}`;
 
-    await fs.mkdir(destination, {
-      recursive: true,
-    });
+      const uploadRoot =
+        process.env.FINANCE_UPLOAD_DIR || path.join(process.cwd(), "Upload");
 
-    await fs.writeFile(path.join(destination, fileName), req.file.buffer);
+      const destination = path.join(uploadRoot, companyCode);
 
-    const doUpload = `~/Upload/${companyCode}/${fileName}`;
+      await fs.mkdir(destination, {
+        recursive: true,
+      });
 
-    return res.json({
-      success: true,
-      message: "Document uploaded.",
-      data: {
-        doUpload,
-        fileName,
-      },
-    });
-  } catch (err) {
-    console.error("FINANCE UPLOAD ERROR:", err);
+      await fs.writeFile(path.join(destination, fileName), req.file.buffer);
 
-    return res.status(500).json({
-      success: false,
-      message: "Unable to upload document.",
-      error: err.message,
-    });
-  }
-});
+      const doUpload = `~/Upload/${companyCode}/${fileName}`;
 
-// ==========================================
-// UPLOAD ERROR HANDLER
-// ==========================================
+      res.json({
+        success: true,
+        message: "Document uploaded.",
+        data: {
+          doUpload,
+          fileName,
+        },
+        path: doUpload,
+      });
+    } catch (err) {
+      sendServerError(res, "Unable to upload document.", err);
+    }
+  },
+);
 
-router.use((err, _req, res, next) => {
-  if (err) {
-    return res.status(400).json({
-      success: false,
-      message: err.message || "Upload failed.",
-    });
-  }
+// ============================================================
+// ERROR HANDLER
+// ============================================================
 
-  return next();
+router.use((err, req, res, next) => {
+  console.error("FINANCE ROUTE ERROR:", err);
+
+  res.status(400).json({
+    success: false,
+    message: err.message || "Upload failed.",
+  });
 });
 
 module.exports = router;
