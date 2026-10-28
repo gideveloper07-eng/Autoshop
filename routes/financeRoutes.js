@@ -461,8 +461,8 @@ router.post(
       // COMPANY AND FILE DETAILS
       // ------------------------------------------------------
       const companyCode = safeSegment(
-        session.decoded.companyCode ||
-          session.decoded.company_code ||
+        session.decoded.loginPropertyCode ||
+          session.decoded.loginPropertyCode ||
           "default",
       );
 
