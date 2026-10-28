@@ -445,9 +445,10 @@ router.post(
       const fileName = `${customerSegment}_DOUPLOAD_${uniqueId}${extension}`;
 
       const secret = process.env.FINANCE_UPLOAD_SECRET;
+
       const endpoint =
         process.env.FINANCE_ASPNET_UPLOAD_URL ||
-        "http://myautoshop365.com/FinanceImageUpload.aspx";
+        "https://myautoshop365.com/FinanceImageUpload.aspx";
 
       if (!secret || !endpoint) {
         console.error("Finance ASP.NET upload configuration is missing.");
@@ -458,9 +459,12 @@ router.post(
         });
       }
 
+      // Forward the image to the ASP.NET website server.
       const form = new FormData();
+
       form.append("companyCode", companyCode);
       form.append("fileName", fileName);
+
       form.append("file", req.file.buffer, {
         filename: fileName,
         contentType: req.file.mimetype,
@@ -478,8 +482,13 @@ router.post(
 
       const result = response.data;
 
-      if (!result || result.success !== true || !result.path) {
-        console.error("ASP.NET upload returned an invalid response.");
+      if (
+        !result ||
+        result.success !== true ||
+        typeof result.path !== "string" ||
+        !result.path.trim()
+      ) {
+        console.error("ASP.NET upload returned an invalid response:", result);
 
         return res.status(502).json({
           success: false,
@@ -487,13 +496,17 @@ router.post(
         });
       }
 
-      const doUpload = String(result.path).replace(/^\/+/, "");
+      const doUpload = result.path.replace(/^\/+/, "");
+
+      // Accept only the expected website-relative directory.
+      const expectedPrefix = `upload/doupload/${companyCode}/`;
 
       if (
-        !doUpload.startsWith(`upload/doupload/${companyCode}/`) ||
-        doUpload.includes("..")
+        !doUpload.startsWith(expectedPrefix) ||
+        doUpload.includes("..") ||
+        doUpload.includes("\\")
       ) {
-        console.error("ASP.NET returned an invalid upload path.");
+        console.error("ASP.NET returned an invalid upload path:", doUpload);
 
         return res.status(502).json({
           success: false,
@@ -516,18 +529,17 @@ router.post(
           fileName: result.fileName || fileName,
         },
         path: doUpload,
-        imageUrl: `http://myautoshop365.com/${doUpload}`,
+        imageUrl: `https://myautoshop365.com/${doUpload}`,
       });
     } catch (err) {
-      console.error(
-        "Finance image forwarding failed:",
-        err.response
-          ? {
-              status: err.response.status,
-              data: err.response.data,
-            }
-          : err.message,
-      );
+      console.error("FINANCE IMAGE FORWARDING FAILED");
+
+      if (err.response) {
+        console.error("ASP.NET HTTP STATUS:", err.response.status);
+        console.error("ASP.NET RESPONSE:", err.response.data);
+      } else {
+        console.error("CONNECTION ERROR:", err.code || err.message);
+      }
 
       return res.status(502).json({
         success: false,
