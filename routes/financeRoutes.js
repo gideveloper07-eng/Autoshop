@@ -444,21 +444,31 @@ router.post(
       const fileName = `${customerSegment}_DOUPLOAD_${uniqueId}${extension}`;
 
       const uploadRoot =
-        process.env.FINANCE_UPLOAD_DIR || path.join(process.cwd(), "Upload");
+        process.env.FINANCE_UPLOAD_DIR ||
+        path.join(process.cwd(), "upload", "doupload");
 
       const destination = path.join(uploadRoot, companyCode);
 
-      await fs.mkdir(destination, {
-        recursive: true,
+      await fs.mkdir(destination, { recursive: true });
+
+      const fullFilePath = path.join(destination, fileName);
+
+      await fs.writeFile(fullFilePath, req.file.buffer);
+
+      // Relative path to store in the Finance Details record.
+      const doUpload = `upload/doupload/${companyCode}/${fileName}`;
+
+      console.log("FINANCE DO UPLOAD SUCCESS:", {
+        companyCode,
+        fileName,
+        directory: destination,
+        savedPath: doUpload,
+        bytes: req.file.size,
       });
 
-      await fs.writeFile(path.join(destination, fileName), req.file.buffer);
-
-      const doUpload = `~/Upload/${companyCode}/${fileName}`;
-
-      res.json({
+      return res.json({
         success: true,
-        message: "Document uploaded.",
+        message: "DO image uploaded successfully.",
         data: {
           doUpload,
           fileName,
