@@ -2,9 +2,10 @@ const express = require("express");
 const jwt = require("jsonwebtoken");
 const sql = require("mssql");
 const multer = require("multer");
-const fs = require("fs/promises");
 const path = require("path");
 const crypto = require("crypto");
+const axios = require("axios");
+const FormData = require("form-data");
 
 const router = express.Router();
 const openPool = require("../utils/dynamicPoolManager");
@@ -20,12 +21,10 @@ const upload = multer({
     files: 1,
   },
   fileFilter: (_req, file, cb) => {
-    const allowed = /\.(pdf|png|jpe?g|docx?)$/i.test(file.originalname || "");
+    const allowed = /\.(png|jpe?g|webp)$/i.test(file.originalname || "");
 
     if (!allowed) {
-      return cb(
-        new Error("Only PDF, PNG, JPG, JPEG, DOC, and DOCX files are allowed."),
-      );
+      return cb(new Error("Only PNG, JPG, JPEG, and WebP images are allowed."));
     }
 
     cb(null, true);
@@ -317,9 +316,7 @@ router.post("/save", async (req, res) => {
   }
 
   const financeId = String(body.financeId || "").trim();
-
   const what = financeId ? "update" : "insert";
-
   const userId = session.decoded.userId || session.decoded.user_id || "";
 
   const ip = String(
@@ -354,10 +351,8 @@ router.post("/save", async (req, res) => {
     sp_695: body.receiptId || "",
     sp_696: body.loanAmount || "0.00",
     sp_697: body.expectedDelivery || "",
-
     // Uploaded document path saved into sp_698.
     sp_698: getFirstValue(body.doUpload, body.DOUPLOAD, ""),
-
     sp_699: body.companyBranchId || "",
     sp_700: body.disbursedAmount || "0.00",
   };
@@ -386,15 +381,15 @@ router.post("/save", async (req, res) => {
 });
 
 // ============================================================
-// UPLOAD FINANCE DO IMAGE / DOCUMENT
+// UPLOAD FINANCE DO IMAGE
 // POST /api/finance/upload
 //
 // Multipart fields:
-//   file       = image or document
+//   file       = image
 //   customerId = selected customer ID
 //
-// Returns:
-//   data.doUpload = path to save into sp_698
+// ASP.NET saves the image on the website server.
+// Returns data.doUpload for SQL sp_698.
 // ============================================================
 
 router.post(
@@ -410,10 +405,10 @@ router.post(
   async (req, res) => {
     const session = req.financeSession;
 
-    if (!req.file) {
+    if (!req.file || !req.file.buffer) {
       return res.status(400).json({
         success: false,
-        message: "Choose an image or document first.",
+        message: "Choose an image first.",
       });
     }
 
@@ -434,8 +429,14 @@ router.post(
       );
 
       const customerSegment = safeSegment(customerId);
-
       const extension = path.extname(req.file.originalname).toLowerCase();
+
+      if (![".png", ".jpg", ".jpeg", ".webp"].includes(extension)) {
+        return res.status(400).json({
+          success: false,
+          message: "Only PNG, JPG, JPEG and WebP images are supported.",
+        });
+      }
 
       const uniqueId = crypto.randomUUID
         ? crypto.randomUUID()
@@ -443,25 +444,66 @@ router.post(
 
       const fileName = `${customerSegment}_DOUPLOAD_${uniqueId}${extension}`;
 
-      const uploadRoot =
-        process.env.FINANCE_UPLOAD_DIR ||
-        path.join(process.cwd(), "upload", "doupload");
+      const secret = process.env.FINANCE_UPLOAD_SECRET;
+      const endpoint =
+        process.env.FINANCE_ASPNET_UPLOAD_URL ||
+        "https://myautoshop365.com/FinanceImageUpload.aspx";
 
-      const destination = path.join(uploadRoot, companyCode);
+      if (!secret || !endpoint) {
+        console.error("Finance ASP.NET upload configuration is missing.");
 
-      await fs.mkdir(destination, { recursive: true });
+        return res.status(500).json({
+          success: false,
+          message: "Upload service is not configured.",
+        });
+      }
 
-      const fullFilePath = path.join(destination, fileName);
+      const form = new FormData();
+      form.append("companyCode", companyCode);
+      form.append("fileName", fileName);
+      form.append("file", req.file.buffer, {
+        filename: fileName,
+        contentType: req.file.mimetype,
+      });
 
-      await fs.writeFile(fullFilePath, req.file.buffer);
+      const response = await axios.post(endpoint, form, {
+        headers: {
+          ...form.getHeaders(),
+          "X-Upload-Secret": secret,
+        },
+        maxBodyLength: 11 * 1024 * 1024,
+        maxContentLength: 11 * 1024 * 1024,
+        timeout: 30000,
+      });
 
-      // Relative path to store in the Finance Details record.
-      const doUpload = `upload/doupload/${companyCode}/${fileName}`;
+      const result = response.data;
+
+      if (!result || result.success !== true || !result.path) {
+        console.error("ASP.NET upload returned an invalid response.");
+
+        return res.status(502).json({
+          success: false,
+          message: "Website server did not confirm the upload.",
+        });
+      }
+
+      const doUpload = String(result.path).replace(/^\/+/, "");
+
+      if (
+        !doUpload.startsWith(`upload/doupload/${companyCode}/`) ||
+        doUpload.includes("..")
+      ) {
+        console.error("ASP.NET returned an invalid upload path.");
+
+        return res.status(502).json({
+          success: false,
+          message: "Website server returned an invalid image path.",
+        });
+      }
 
       console.log("FINANCE DO UPLOAD SUCCESS:", {
         companyCode,
-        fileName,
-        directory: destination,
+        fileName: result.fileName || fileName,
         savedPath: doUpload,
         bytes: req.file.size,
       });
@@ -471,12 +513,26 @@ router.post(
         message: "DO image uploaded successfully.",
         data: {
           doUpload,
-          fileName,
+          fileName: result.fileName || fileName,
         },
         path: doUpload,
+        imageUrl: `https://myautoshop365.com/${doUpload}`,
       });
     } catch (err) {
-      sendServerError(res, "Unable to upload document.", err);
+      console.error(
+        "Finance image forwarding failed:",
+        err.response
+          ? {
+              status: err.response.status,
+              data: err.response.data,
+            }
+          : err.message,
+      );
+
+      return res.status(502).json({
+        success: false,
+        message: "Could not upload the image to the website server.",
+      });
     }
   },
 );
