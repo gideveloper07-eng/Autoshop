@@ -503,7 +503,7 @@ router.post(
 
       const endpointUrl = new URL(endpoint);
 
-      // This route is intentionally restricted to local IIS.
+      // Allow only the local IIS upload endpoint.
       if (
         endpointUrl.protocol !== "http:" ||
         !["127.0.0.1", "localhost"].includes(
@@ -533,10 +533,7 @@ router.post(
       });
 
       // ------------------------------------------------------
-      // FORWARD TO LOCAL IIS
-      //
-      // 127.0.0.1 routes locally.
-      // Host header selects the correct IIS website binding.
+      // FORWARD IMAGE TO LOCAL IIS
       // ------------------------------------------------------
       const response = await axios.post(endpoint, form, {
         headers: {
@@ -544,13 +541,90 @@ router.post(
           Host: "myautoshop365.com",
           "X-Upload-Secret": secret,
         },
-
         maxBodyLength: 11 * 1024 * 1024,
         maxContentLength: 11 * 1024 * 1024,
         timeout: 30000,
       });
 
-      const result = response.data;
+      // ------------------------------------------------------
+      // PARSE ASP.NET RESPONSE
+      //
+      // The ASP.NET page may return JSON followed by Web Forms
+      // HTML. Extract the first complete JSON object.
+      // ------------------------------------------------------
+      let result = response.data;
+
+      if (typeof result === "string") {
+        const start = result.indexOf('{"success":true');
+
+        if (start === -1) {
+          console.error(
+            "ASP.NET response did not contain a success JSON object:",
+            result,
+          );
+
+          return res.status(502).json({
+            success: false,
+            message: "Website server returned an invalid response.",
+          });
+        }
+
+        const jsonText = result.slice(start);
+
+        let depth = 0;
+        let inString = false;
+        let escaped = false;
+        let end = -1;
+
+        for (let i = 0; i < jsonText.length; i++) {
+          const char = jsonText[i];
+
+          if (inString) {
+            if (escaped) {
+              escaped = false;
+            } else if (char === "\\") {
+              escaped = true;
+            } else if (char === '"') {
+              inString = false;
+            }
+
+            continue;
+          }
+
+          if (char === '"') {
+            inString = true;
+          } else if (char === "{") {
+            depth++;
+          } else if (char === "}") {
+            depth--;
+
+            if (depth === 0) {
+              end = i + 1;
+              break;
+            }
+          }
+        }
+
+        if (end === -1) {
+          console.error("Incomplete JSON returned by ASP.NET.");
+
+          return res.status(502).json({
+            success: false,
+            message: "Incomplete JSON returned by website server.",
+          });
+        }
+
+        try {
+          result = JSON.parse(jsonText.slice(0, end));
+        } catch (parseError) {
+          console.error("ASP.NET JSON parsing error:", parseError.message);
+
+          return res.status(502).json({
+            success: false,
+            message: "Could not parse the website upload response.",
+          });
+        }
+      }
 
       // ------------------------------------------------------
       // VALIDATE ASP.NET RESPONSE
@@ -569,8 +643,13 @@ router.post(
         });
       }
 
-      // Normalize the relative path.
-      const doUpload = result.path.replace(/^\/+/, "");
+      // ------------------------------------------------------
+      // NORMALIZE RETURNED PATH
+      // ------------------------------------------------------
+      const doUpload = result.path
+        .trim()
+        .replace(/\\/g, "/")
+        .replace(/^\/+/, "");
 
       // ------------------------------------------------------
       // VALIDATE RETURNED PATH
@@ -580,7 +659,10 @@ router.post(
       if (
         !doUpload.startsWith(expectedPrefix) ||
         doUpload.includes("..") ||
-        doUpload.includes("\\")
+        doUpload.includes("\\") ||
+        doUpload.includes(":") ||
+        doUpload.includes("?") ||
+        doUpload.includes("#")
       ) {
         console.error("ASP.NET returned an invalid upload path:", doUpload);
 
@@ -603,12 +685,10 @@ router.post(
       return res.json({
         success: true,
         message: "DO image uploaded successfully.",
-
         data: {
           doUpload,
           fileName: result.fileName || fileName,
         },
-
         path: doUpload,
         imageUrl: `https://myautoshop365.com/${doUpload}`,
       });
@@ -620,7 +700,10 @@ router.post(
           process.env.FINANCE_ASPNET_UPLOAD_URL ||
           "http://127.0.0.1/FinanceImageUpload.aspx",
         status: err.response?.status,
-        response: err.response?.data,
+        response:
+          typeof err.response?.data === "string"
+            ? err.response.data.slice(0, 2000)
+            : err.response?.data,
       });
 
       return res.status(502).json({
