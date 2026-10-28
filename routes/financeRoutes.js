@@ -447,7 +447,7 @@ router.post(
       const secret = process.env.FINANCE_UPLOAD_SECRET;
       const endpoint =
         process.env.FINANCE_ASPNET_UPLOAD_URL ||
-        "https://myautoshop365.com/FinanceImageUpload.aspx";
+        "http://myautoshop365.com/FinanceImageUpload.aspx";
 
       if (!secret || !endpoint) {
         console.error("Finance ASP.NET upload configuration is missing.");
@@ -516,7 +516,7 @@ router.post(
           fileName: result.fileName || fileName,
         },
         path: doUpload,
-        imageUrl: `https://myautoshop365.com/${doUpload}`,
+        imageUrl: `http://myautoshop365.com/${doUpload}`,
       });
     } catch (err) {
       console.error(
