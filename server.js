@@ -59,6 +59,7 @@ app.use("/api/ai", aiRoutes);
 app.use("/api/vehicle-allocation", vehicleAllocationRoutes);
 app.use("/api/booking", bookingRoutes);
 app.use("/api/app-permissions", appPermissionRoutes);
+app.use("/api/finance", require("./routes/financeRoutes"));
 // ── HEALTH CHECK ─────────────────────────────────────
 app.get("/", (_, res) => {
   res.json({
