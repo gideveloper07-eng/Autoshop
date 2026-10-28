@@ -6,9 +6,34 @@ const path = require("path");
 const crypto = require("crypto");
 const axios = require("axios");
 const FormData = require("form-data");
+const dns = require("dns");
+const http = require("http");
 
 const router = express.Router();
 const openPool = require("../utils/dynamicPoolManager");
+
+// ============================================================
+// LOCAL IIS ROUTING
+// Connect to local IIS while preserving the hostname binding.
+// ============================================================
+
+function localIisLookup(hostname, options, callback) {
+  if (typeof options === "function") {
+    callback = options;
+    options = {};
+  }
+
+  if (String(hostname).toLowerCase() === "myautoshop365.com") {
+    return callback(null, "127.0.0.1", 4);
+  }
+
+  return dns.lookup(hostname, options || {}, callback);
+}
+
+const localIisHttpAgent = new http.Agent({
+  keepAlive: true,
+  lookup: localIisLookup,
+});
 
 // ============================================================
 // UPLOAD CONFIGURATION
@@ -316,7 +341,9 @@ router.post("/save", async (req, res) => {
   }
 
   const financeId = String(body.financeId || "").trim();
+
   const what = financeId ? "update" : "insert";
+
   const userId = session.decoded.userId || session.decoded.user_id || "";
 
   const ip = String(
@@ -383,13 +410,6 @@ router.post("/save", async (req, res) => {
 // ============================================================
 // UPLOAD FINANCE DO IMAGE
 // POST /api/finance/upload
-//
-// Multipart fields:
-//   file       = image
-//   customerId = selected customer ID
-//
-// ASP.NET saves the image on the website server.
-// Returns data.doUpload for SQL sp_698.
 // ============================================================
 
 router.post(
@@ -448,9 +468,27 @@ router.post(
 
       const endpoint =
         process.env.FINANCE_ASPNET_UPLOAD_URL ||
-        "https://myautoshop365.com/FinanceImageUpload.aspx";
+        "http://myautoshop365.com/FinanceImageUpload.aspx";
 
-      if (!secret || !endpoint) {
+      const endpointUrl = new URL(endpoint);
+
+      if (
+        endpointUrl.protocol !== "http:" ||
+        endpointUrl.hostname.toLowerCase() !== "myautoshop365.com"
+      ) {
+        console.error(
+          "Finance upload endpoint must use the local HTTP IIS binding:",
+          endpoint,
+        );
+
+        return res.status(500).json({
+          success: false,
+          message:
+            "Upload endpoint must be configured as the local HTTP IIS URL.",
+        });
+      }
+
+      if (!secret) {
         console.error("Finance ASP.NET upload configuration is missing.");
 
         return res.status(500).json({
@@ -459,7 +497,7 @@ router.post(
         });
       }
 
-      // Forward the image to the ASP.NET website server.
+      // Build multipart request for ASP.NET.
       const form = new FormData();
 
       form.append("companyCode", companyCode);
@@ -470,6 +508,7 @@ router.post(
         contentType: req.file.mimetype,
       });
 
+      // Local IIS connection, with Host: myautoshop365.com.
       const response = await axios.post(endpoint, form, {
         headers: {
           ...form.getHeaders(),
@@ -478,6 +517,7 @@ router.post(
         maxBodyLength: 11 * 1024 * 1024,
         maxContentLength: 11 * 1024 * 1024,
         timeout: 30000,
+        httpAgent: localIisHttpAgent,
       });
 
       const result = response.data;
