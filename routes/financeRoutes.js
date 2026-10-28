@@ -532,14 +532,13 @@ router.post(
         imageUrl: `https://myautoshop365.com/${doUpload}`,
       });
     } catch (err) {
-      console.error("FINANCE IMAGE FORWARDING FAILED");
-
-      if (err.response) {
-        console.error("ASP.NET HTTP STATUS:", err.response.status);
-        console.error("ASP.NET RESPONSE:", err.response.data);
-      } else {
-        console.error("CONNECTION ERROR:", err.code || err.message);
-      }
+      console.error("FINANCE UPLOAD ERROR:", {
+        code: err.code,
+        message: err.message,
+        endpoint: process.env.FINANCE_ASPNET_UPLOAD_URL,
+        status: err.response?.status,
+        response: err.response?.data,
+      });
 
       return res.status(502).json({
         success: false,
