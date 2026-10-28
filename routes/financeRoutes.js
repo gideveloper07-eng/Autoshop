@@ -412,19 +412,34 @@ router.post("/save", async (req, res) => {
 // POST /api/finance/upload
 // ============================================================
 
+// ============================================================
+// UPLOAD FINANCE DO IMAGE
+// POST /api/finance/upload
+// ============================================================
+
 router.post(
   "/upload",
+
+  // ----------------------------------------------------------
+  // AUTHENTICATION
+  // ----------------------------------------------------------
   (req, res, next) => {
     const session = auth(req, res);
+
     if (!session) return;
 
     req.financeSession = session;
     next();
   },
+
   upload.single("file"),
+
   async (req, res) => {
     const session = req.financeSession;
 
+    // --------------------------------------------------------
+    // VALIDATE IMAGE
+    // --------------------------------------------------------
     if (!req.file || !req.file.buffer) {
       return res.status(400).json({
         success: false,
@@ -442,6 +457,9 @@ router.post(
     }
 
     try {
+      // ------------------------------------------------------
+      // COMPANY AND FILE DETAILS
+      // ------------------------------------------------------
       const companyCode = safeSegment(
         session.decoded.companyCode ||
           session.decoded.company_code ||
@@ -449,7 +467,8 @@ router.post(
       );
 
       const customerSegment = safeSegment(customerId);
-      const extension = path.extname(req.file.originalname).toLowerCase();
+
+      const extension = path.extname(req.file.originalname || "").toLowerCase();
 
       if (![".png", ".jpg", ".jpeg", ".webp"].includes(extension)) {
         return res.status(400).json({
@@ -464,32 +483,17 @@ router.post(
 
       const fileName = `${customerSegment}_DOUPLOAD_${uniqueId}${extension}`;
 
+      // ------------------------------------------------------
+      // CONFIGURATION
+      // ------------------------------------------------------
       const secret = process.env.FINANCE_UPLOAD_SECRET;
 
       const endpoint =
         process.env.FINANCE_ASPNET_UPLOAD_URL ||
-        "http://myautoshop365.com/FinanceImageUpload.aspx";
-
-      const endpointUrl = new URL(endpoint);
-
-      if (
-        endpointUrl.protocol !== "http:" ||
-        endpointUrl.hostname.toLowerCase() !== "myautoshop365.com"
-      ) {
-        console.error(
-          "Finance upload endpoint must use the local HTTP IIS binding:",
-          endpoint,
-        );
-
-        return res.status(500).json({
-          success: false,
-          message:
-            "Upload endpoint must be configured as the local HTTP IIS URL.",
-        });
-      }
+        "http://127.0.0.1/FinanceImageUpload.aspx";
 
       if (!secret) {
-        console.error("Finance ASP.NET upload configuration is missing.");
+        console.error("Finance upload secret is not configured.");
 
         return res.status(500).json({
           success: false,
@@ -497,7 +501,27 @@ router.post(
         });
       }
 
-      // Build multipart request for ASP.NET.
+      const endpointUrl = new URL(endpoint);
+
+      // This route is intentionally restricted to local IIS.
+      if (
+        endpointUrl.protocol !== "http:" ||
+        !["127.0.0.1", "localhost"].includes(
+          endpointUrl.hostname.toLowerCase(),
+        ) ||
+        endpointUrl.pathname !== "/FinanceImageUpload.aspx"
+      ) {
+        console.error("Invalid local IIS upload endpoint:", endpoint);
+
+        return res.status(500).json({
+          success: false,
+          message: "Invalid local IIS upload endpoint configuration.",
+        });
+      }
+
+      // ------------------------------------------------------
+      // BUILD MULTIPART REQUEST
+      // ------------------------------------------------------
       const form = new FormData();
 
       form.append("companyCode", companyCode);
@@ -508,20 +532,29 @@ router.post(
         contentType: req.file.mimetype,
       });
 
-      // Local IIS connection, with Host: myautoshop365.com.
+      // ------------------------------------------------------
+      // FORWARD TO LOCAL IIS
+      //
+      // 127.0.0.1 routes locally.
+      // Host header selects the correct IIS website binding.
+      // ------------------------------------------------------
       const response = await axios.post(endpoint, form, {
         headers: {
           ...form.getHeaders(),
+          Host: "myautoshop365.com",
           "X-Upload-Secret": secret,
         },
+
         maxBodyLength: 11 * 1024 * 1024,
         maxContentLength: 11 * 1024 * 1024,
         timeout: 30000,
-        httpAgent: localIisHttpAgent,
       });
 
       const result = response.data;
 
+      // ------------------------------------------------------
+      // VALIDATE ASP.NET RESPONSE
+      // ------------------------------------------------------
       if (
         !result ||
         result.success !== true ||
@@ -536,9 +569,12 @@ router.post(
         });
       }
 
+      // Normalize the relative path.
       const doUpload = result.path.replace(/^\/+/, "");
 
-      // Accept only the expected website-relative directory.
+      // ------------------------------------------------------
+      // VALIDATE RETURNED PATH
+      // ------------------------------------------------------
       const expectedPrefix = `upload/doupload/${companyCode}/`;
 
       if (
@@ -554,6 +590,9 @@ router.post(
         });
       }
 
+      // ------------------------------------------------------
+      // SUCCESS
+      // ------------------------------------------------------
       console.log("FINANCE DO UPLOAD SUCCESS:", {
         companyCode,
         fileName: result.fileName || fileName,
@@ -564,10 +603,12 @@ router.post(
       return res.json({
         success: true,
         message: "DO image uploaded successfully.",
+
         data: {
           doUpload,
           fileName: result.fileName || fileName,
         },
+
         path: doUpload,
         imageUrl: `https://myautoshop365.com/${doUpload}`,
       });
@@ -575,7 +616,9 @@ router.post(
       console.error("FINANCE UPLOAD ERROR:", {
         code: err.code,
         message: err.message,
-        endpoint: process.env.FINANCE_ASPNET_UPLOAD_URL,
+        endpoint:
+          process.env.FINANCE_ASPNET_UPLOAD_URL ||
+          "http://127.0.0.1/FinanceImageUpload.aspx",
         status: err.response?.status,
         response: err.response?.data,
       });
