@@ -513,6 +513,54 @@ router.post("/save", async (req, res) => {
 });
 
 // ============================================================
+// FINANCE GRID
+// GET /api/finance/grid?page=1&search=
+// Stored procedure: A_SP_FOR_FINANCE_DETAIL_NEW
+// ============================================================
+
+router.get("/grid", async (req, res) => {
+  const session = auth(req, res);
+  if (!session) return;
+
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+
+  const search = String(req.query.search || "").trim();
+
+  try {
+    const result = await withPool(session.database, async (pool) => {
+      const request = pool.request();
+
+      request
+        .input("prefix", sql.NVarChar(50), "rh_")
+        .input("what", sql.NVarChar(50), search ? "search" : "griddata")
+        .input("pageno", sql.NVarChar(50), String(page));
+
+      if (search) {
+        request.input("sp_677", sql.NVarChar(50), search);
+      }
+
+      return request.execute("A_SP_FOR_FINANCE_DETAIL_NEW");
+    });
+
+    return res.json({
+      success: true,
+      page,
+      pageSize: 10,
+      data: result.recordset || [],
+      hasMore: (result.recordset || []).length === 10,
+    });
+  } catch (err) {
+    console.error("FINANCE GRID ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to load finance grid.",
+      error: err.message,
+    });
+  }
+});
+
+// ============================================================
 // UPLOAD FINANCE DO IMAGE
 // POST /api/finance/upload
 // ============================================================
