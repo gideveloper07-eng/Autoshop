@@ -397,7 +397,9 @@ router.post("/save", async (req, res) => {
     // Uploaded document path
     sp_698: String(body.doUpload ?? body.DOUPLOAD ?? "").trim(),
 
+    // Company branch ID
     sp_699: String(body.companyBranchId ?? body.sp_699 ?? "").trim(),
+
     sp_700: body.disbursedAmount || "0.00",
   };
 
@@ -411,6 +413,7 @@ router.post("/save", async (req, res) => {
     console.log("Operation:", what);
     console.log("Finance ID:", financeId || "(new record)");
     console.log("Customer ID:", customerId);
+    console.log("Company Branch ID:", fields.sp_699);
     console.log("Document path present:", Boolean(fields.sp_698));
     console.log("Document path:", fields.sp_698 || "(empty)");
     console.log("----------------------------------------");
@@ -426,35 +429,49 @@ router.post("/save", async (req, res) => {
     console.log("Rows affected:", result?.rowsAffected);
 
     // =====================================================
-    // 5. CHECK STORED PROCEDURE FAILURE
+    // 5. DETECT ACTUAL PROCEDURE FAILURE
     // =====================================================
-    // Adjust these checks if your stored procedure uses
-    // a different output column or failure convention.
-    const errorMessage = row.err || row.error || row.ErrorMessage || null;
+    // The stored procedure returns "Save Successfully"
+    // in the "err" field. Do not treat that as a failure.
+
+    const rawMessage =
+      row.err ??
+      row.error ??
+      row.ErrorMessage ??
+      row.message ??
+      row.Message ??
+      "";
+
+    const procedureMessage = String(rawMessage).trim();
+
+    const normalizedMessage = procedureMessage.toLowerCase();
+
+    const isSuccessMessage = /\b(success|successfully|saved|updated)\b/i.test(
+      procedureMessage,
+    );
 
     const statusValue = String(row.success ?? row.Success ?? row.status ?? "")
       .trim()
       .toLowerCase();
 
     const explicitlyFailed =
-      errorMessage ||
       statusValue === "false" ||
       statusValue === "0" ||
       statusValue === "fail" ||
       statusValue === "failed" ||
-      statusValue === "error";
+      statusValue === "error" ||
+      (Boolean(procedureMessage) &&
+        !isSuccessMessage &&
+        (/\b(error|failed|failure|invalid|cannot)\b/i.test(procedureMessage) ||
+          Boolean(row.error) ||
+          Boolean(row.ErrorMessage)));
 
     if (explicitlyFailed) {
-      console.error("FINANCE SAVE DEBUG - PROCEDURE REPORTED FAILURE:", row);
+      console.error("FINANCE SAVE - PROCEDURE FAILURE:", row);
 
       return res.status(400).json({
         success: false,
-        message: String(
-          errorMessage ||
-            row.message ||
-            row.Message ||
-            "Finance details could not be saved.",
-        ),
+        message: procedureMessage || "Finance details could not be saved.",
         data: row,
       });
     }
@@ -463,17 +480,17 @@ router.post("/save", async (req, res) => {
     // 6. SUCCESS RESPONSE
     // =====================================================
     const message =
-      row.message ||
-      row.Message ||
+      procedureMessage ||
       (what === "insert" ? "Save Successfully" : "Update Successfully");
 
-    console.log("FINANCE SAVE DEBUG - COMPLETED");
+    console.log("FINANCE SAVE - COMPLETED");
     console.log("Message:", message);
+    console.log("Company Branch ID:", fields.sp_699);
     console.log("----------------------------------------");
 
     return res.json({
       success: true,
-      message: String(message),
+      message,
       data: row,
       financeId: row.sp_672 || row.financeId || financeId || null,
     });
