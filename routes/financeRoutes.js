@@ -397,7 +397,7 @@ router.post("/save", async (req, res) => {
     // Uploaded document path
     sp_698: String(body.doUpload ?? body.DOUPLOAD ?? "").trim(),
 
-    sp_699: body.companyBranchId || "",
+    sp_699: String(body.companyBranchId ?? body.sp_699 ?? "").trim(),
     sp_700: body.disbursedAmount || "0.00",
   };
 
