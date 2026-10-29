@@ -325,7 +325,19 @@ router.get("/edit/:financeId", async (req, res) => {
 // INSERT / UPDATE FINANCE DETAILS
 // POST /api/finance/save
 // ============================================================
+function safeNumeric(value, fallback = "0.00") {
+  if (value === undefined || value === null || String(value).trim() === "") {
+    return fallback;
+  }
 
+  const text = String(value).trim();
+
+  if (!/^-?\d+(\.\d+)?$/.test(text)) {
+    return fallback;
+  }
+
+  return text;
+}
 router.post("/save", async (req, res) => {
   const session = auth(req, res);
   if (!session) return;
@@ -386,7 +398,7 @@ router.post("/save", async (req, res) => {
     sp_693: body.financeDate || "",
     sp_694: body.remark || "",
     sp_695: body.receiptId || "",
-    sp_696: body.loanAmount || "0.00",
+    sp_696: safeNumeric(body.loanAmount),
     sp_697: body.expectedDelivery || "",
 
     // Uploaded document path
@@ -395,7 +407,7 @@ router.post("/save", async (req, res) => {
     // Company branch ID
     sp_699: String(body.companyBranchId ?? body.sp_699 ?? "").trim(),
 
-    sp_700: body.disbursedAmount || "0.00",
+    sp_700: safeNumeric(body.disbursedAmount),
   };
 
   // =====================================================
