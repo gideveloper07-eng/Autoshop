@@ -394,7 +394,7 @@ router.post("/save", async (req, res) => {
     sp_693: body.financeDate || "",
     sp_694: body.remark || "",
     sp_695: body.receiptId || "",
-    sp_696: safeNumeric(body.loanAmount),
+    sp_696: safeNumeric(body.loanAmount || "0"),
     sp_697: body.expectedDelivery || "",
 
     // Uploaded document path
@@ -403,7 +403,7 @@ router.post("/save", async (req, res) => {
     // Company branch ID
     sp_699: String(body.companyBranchId ?? body.sp_699 ?? "").trim(),
 
-    sp_700: safeNumeric(body.disbursedAmount),
+    sp_700: safeNumeric(body.disbursedAmount || "0"),
   };
 
   // =====================================================
