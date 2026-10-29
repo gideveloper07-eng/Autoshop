@@ -331,6 +331,10 @@ router.post("/save", async (req, res) => {
   if (!session) return;
 
   const body = req.body || {};
+
+  // =====================================================
+  // 1. VALIDATE CUSTOMER
+  // =====================================================
   const customerId = String(body.customerId || "").trim();
 
   if (!customerId) {
@@ -341,23 +345,30 @@ router.post("/save", async (req, res) => {
   }
 
   const financeId = String(body.financeId || "").trim();
-
   const what = financeId ? "update" : "insert";
 
   const userId = session.decoded.userId || session.decoded.user_id || "";
 
+  // =====================================================
+  // 2. GET CLIENT IP
+  // =====================================================
   const ip = String(
     req.headers["x-forwarded-for"] || req.socket?.remoteAddress || req.ip || "",
   )
     .split(",")[0]
     .trim();
 
+  // =====================================================
+  // 3. PREPARE STORED PROCEDURE PARAMETERS
+  // =====================================================
   const fields = {
     prefix: "rh_",
     sp_672: financeId,
     sp_673: userId,
     sp_674: ip,
+
     sp_677: body.entryDate || new Date().toISOString().slice(0, 10),
+
     sp_678: customerId,
     sp_679: getFirstValue(body.contact, body.contactNo, "0"),
     sp_680: body.address || "",
@@ -365,11 +376,15 @@ router.post("/save", async (req, res) => {
     sp_682: body.scId || "",
     sp_683: body.modelId || "",
     sp_684: body.variantId || "",
+
     sp_685: getFirstValue(body.colorId, body.colourId, ""),
+
     sp_686: body.bookingDate || "",
     sp_687: body.financeArrangement || "In",
     sp_688: body.financerId || "",
+
     sp_689: getFirstValue(body.branchId, body.financerBranchId, ""),
+
     sp_690: body.concerningName || "",
     sp_691: body.concerningMobile || "",
     sp_692: body.status || "Pending",
@@ -378,33 +393,105 @@ router.post("/save", async (req, res) => {
     sp_695: body.receiptId || "",
     sp_696: body.loanAmount || "0.00",
     sp_697: body.expectedDelivery || "",
-    // Uploaded document path saved into sp_698.
+
+    // Uploaded document path
     sp_698: String(body.doUpload ?? body.DOUPLOAD ?? "").trim(),
+
     sp_699: body.companyBranchId || "",
     sp_700: body.disbursedAmount || "0.00",
   };
 
+  // =====================================================
+  // 4. EXECUTE STORED PROCEDURE
+  // =====================================================
   try {
+    console.log("----------------------------------------");
+    console.log("FINANCE SAVE DEBUG - START");
+    console.log("Database:", session.database);
+    console.log("Operation:", what);
+    console.log("Finance ID:", financeId || "(new record)");
+    console.log("Customer ID:", customerId);
+    console.log("Document path present:", Boolean(fields.sp_698));
+    console.log("Document path:", fields.sp_698 || "(empty)");
+    console.log("----------------------------------------");
+
     const result = await withPool(session.database, (pool) =>
       runFinance(pool, what, fields),
     );
-    console.log("FINANCE SAVE - DO IMAGE PATH:", fields.sp_698);
 
-    const row = result.recordset?.[0] || {};
+    const row = result?.recordset?.[0] || {};
 
+    console.log("FINANCE SAVE DEBUG - RESULT");
+    console.log("Result row:", row);
+    console.log("Rows affected:", result?.rowsAffected);
+
+    // =====================================================
+    // 5. CHECK STORED PROCEDURE FAILURE
+    // =====================================================
+    // Adjust these checks if your stored procedure uses
+    // a different output column or failure convention.
+    const errorMessage = row.err || row.error || row.ErrorMessage || null;
+
+    const statusValue = String(row.success ?? row.Success ?? row.status ?? "")
+      .trim()
+      .toLowerCase();
+
+    const explicitlyFailed =
+      errorMessage ||
+      statusValue === "false" ||
+      statusValue === "0" ||
+      statusValue === "fail" ||
+      statusValue === "failed" ||
+      statusValue === "error";
+
+    if (explicitlyFailed) {
+      console.error("FINANCE SAVE DEBUG - PROCEDURE REPORTED FAILURE:", row);
+
+      return res.status(400).json({
+        success: false,
+        message: String(
+          errorMessage ||
+            row.message ||
+            row.Message ||
+            "Finance details could not be saved.",
+        ),
+        data: row,
+      });
+    }
+
+    // =====================================================
+    // 6. SUCCESS RESPONSE
+    // =====================================================
     const message =
-      row.err ||
       row.message ||
+      row.Message ||
       (what === "insert" ? "Save Successfully" : "Update Successfully");
 
-    res.json({
+    console.log("FINANCE SAVE DEBUG - COMPLETED");
+    console.log("Message:", message);
+    console.log("----------------------------------------");
+
+    return res.json({
       success: true,
       message: String(message),
       data: row,
-      financeId: row.sp_672 || financeId || null,
+      financeId: row.sp_672 || row.financeId || financeId || null,
     });
   } catch (err) {
-    sendServerError(res, "Unable to save finance details.", err);
+    // =====================================================
+    // 7. SQL / SERVER ERROR
+    // =====================================================
+    console.error("----------------------------------------");
+    console.error("FINANCE SAVE DEBUG - ERROR");
+    console.error("Operation:", what);
+    console.error("Database:", session.database);
+    console.error("Error message:", err?.message);
+    console.error("Error code:", err?.code);
+    console.error("SQL original error:", err?.originalError?.message);
+    console.error("SQL number:", err?.number);
+    console.error("----------------------------------------");
+
+    return sendServerError(res, "Unable to save finance details.", err);
   }
 });
 
