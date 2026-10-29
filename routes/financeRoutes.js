@@ -325,18 +325,14 @@ router.get("/edit/:financeId", async (req, res) => {
 // INSERT / UPDATE FINANCE DETAILS
 // POST /api/finance/save
 // ============================================================
-function safeNumeric(value, fallback = "0.00") {
+function safeNumeric(value, fallback = "0") {
   if (value === undefined || value === null || String(value).trim() === "") {
     return fallback;
   }
 
-  const text = String(value).trim();
+  const num = Number(value);
 
-  if (!/^-?\d+(\.\d+)?$/.test(text)) {
-    return fallback;
-  }
-
-  return text;
+  return Number.isFinite(num) ? String(num) : fallback;
 }
 router.post("/save", async (req, res) => {
   const session = auth(req, res);
