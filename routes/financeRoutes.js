@@ -333,24 +333,20 @@ router.post("/save", async (req, res) => {
   const body = req.body || {};
 
   // =====================================================
-  // 1. VALIDATE CUSTOMER
+  // 1. CUSTOMER IS OPTIONAL
   // =====================================================
   const customerId = String(body.customerId || "").trim();
 
-  if (!customerId) {
-    return res.status(400).json({
-      success: false,
-      message: "Select a customer before saving.",
-    });
-  }
-
+  // =====================================================
+  // 2. FINANCE OPERATION
+  // =====================================================
   const financeId = String(body.financeId || "").trim();
   const what = financeId ? "update" : "insert";
 
   const userId = session.decoded.userId || session.decoded.user_id || "";
 
   // =====================================================
-  // 2. GET CLIENT IP
+  // 3. GET CLIENT IP
   // =====================================================
   const ip = String(
     req.headers["x-forwarded-for"] || req.socket?.remoteAddress || req.ip || "",
@@ -359,7 +355,7 @@ router.post("/save", async (req, res) => {
     .trim();
 
   // =====================================================
-  // 3. PREPARE STORED PROCEDURE PARAMETERS
+  // 4. PREPARE STORED PROCEDURE PARAMETERS
   // =====================================================
   const fields = {
     prefix: "rh_",
@@ -369,6 +365,7 @@ router.post("/save", async (req, res) => {
 
     sp_677: body.entryDate || new Date().toISOString().slice(0, 10),
 
+    // Customer details are optional
     sp_678: customerId,
     sp_679: getFirstValue(body.contact, body.contactNo, "0"),
     sp_680: body.address || "",
@@ -376,15 +373,13 @@ router.post("/save", async (req, res) => {
     sp_682: body.scId || "",
     sp_683: body.modelId || "",
     sp_684: body.variantId || "",
-
     sp_685: getFirstValue(body.colorId, body.colourId, ""),
-
     sp_686: body.bookingDate || "",
+
+    // Finance details are optional
     sp_687: body.financeArrangement || "In",
     sp_688: body.financerId || "",
-
     sp_689: getFirstValue(body.branchId, body.financerBranchId, ""),
-
     sp_690: body.concerningName || "",
     sp_691: body.concerningMobile || "",
     sp_692: body.status || "Pending",
@@ -404,7 +399,7 @@ router.post("/save", async (req, res) => {
   };
 
   // =====================================================
-  // 4. EXECUTE STORED PROCEDURE
+  // 5. EXECUTE STORED PROCEDURE
   // =====================================================
   try {
     console.log("----------------------------------------");
@@ -412,10 +407,9 @@ router.post("/save", async (req, res) => {
     console.log("Database:", session.database);
     console.log("Operation:", what);
     console.log("Finance ID:", financeId || "(new record)");
-    console.log("Customer ID:", customerId);
-    console.log("Company Branch ID:", fields.sp_699);
+    console.log("Customer ID:", customerId || "(not selected)");
+    console.log("Company Branch ID:", fields.sp_699 || "(empty)");
     console.log("Document path present:", Boolean(fields.sp_698));
-    console.log("Document path:", fields.sp_698 || "(empty)");
     console.log("----------------------------------------");
 
     const result = await withPool(session.database, (pool) =>
@@ -429,11 +423,8 @@ router.post("/save", async (req, res) => {
     console.log("Rows affected:", result?.rowsAffected);
 
     // =====================================================
-    // 5. DETECT ACTUAL PROCEDURE FAILURE
+    // 6. DETECT STORED PROCEDURE FAILURE
     // =====================================================
-    // The stored procedure returns "Save Successfully"
-    // in the "err" field. Do not treat that as a failure.
-
     const rawMessage =
       row.err ??
       row.error ??
@@ -444,8 +435,6 @@ router.post("/save", async (req, res) => {
 
     const procedureMessage = String(rawMessage).trim();
 
-    const normalizedMessage = procedureMessage.toLowerCase();
-
     const isSuccessMessage = /\b(success|successfully|saved|updated)\b/i.test(
       procedureMessage,
     );
@@ -455,11 +444,7 @@ router.post("/save", async (req, res) => {
       .toLowerCase();
 
     const explicitlyFailed =
-      statusValue === "false" ||
-      statusValue === "0" ||
-      statusValue === "fail" ||
-      statusValue === "failed" ||
-      statusValue === "error" ||
+      ["false", "0", "fail", "failed", "error"].includes(statusValue) ||
       (Boolean(procedureMessage) &&
         !isSuccessMessage &&
         (/\b(error|failed|failure|invalid|cannot)\b/i.test(procedureMessage) ||
@@ -477,7 +462,7 @@ router.post("/save", async (req, res) => {
     }
 
     // =====================================================
-    // 6. SUCCESS RESPONSE
+    // 7. SUCCESS RESPONSE
     // =====================================================
     const message =
       procedureMessage ||
@@ -485,7 +470,6 @@ router.post("/save", async (req, res) => {
 
     console.log("FINANCE SAVE - COMPLETED");
     console.log("Message:", message);
-    console.log("Company Branch ID:", fields.sp_699);
     console.log("----------------------------------------");
 
     return res.json({
@@ -496,7 +480,7 @@ router.post("/save", async (req, res) => {
     });
   } catch (err) {
     // =====================================================
-    // 7. SQL / SERVER ERROR
+    // 8. SQL / SERVER ERROR
     // =====================================================
     console.error("----------------------------------------");
     console.error("FINANCE SAVE DEBUG - ERROR");
