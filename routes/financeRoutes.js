@@ -398,7 +398,7 @@ router.post("/save", async (req, res) => {
     sp_698: String(body.doUpload ?? body.DOUPLOAD ?? "").trim(),
 
     // Company branch ID
-    sp_699: String(body.companyBranchId ?? body.sp_699 ?? "").trim(),
+    sp_699: String(fields.companyBranchId ?? fields.sp_699 ?? "").trim(),
 
     sp_700: body.disbursedAmount || "0.00",
   };
