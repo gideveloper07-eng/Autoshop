@@ -379,7 +379,7 @@ router.post("/save", async (req, res) => {
     sp_696: body.loanAmount || "0.00",
     sp_697: body.expectedDelivery || "",
     // Uploaded document path saved into sp_698.
-    sp_698: getFirstValue(body.doUpload, body.DOUPLOAD, ""),
+    sp_698: String(body.doUpload ?? body.DOUPLOAD ?? "").trim(),
     sp_699: body.companyBranchId || "",
     sp_700: body.disbursedAmount || "0.00",
   };
@@ -388,6 +388,7 @@ router.post("/save", async (req, res) => {
     const result = await withPool(session.database, (pool) =>
       runFinance(pool, what, fields),
     );
+    console.log("FINANCE SAVE - DO IMAGE PATH:", fields.sp_698);
 
     const row = result.recordset?.[0] || {};
 
